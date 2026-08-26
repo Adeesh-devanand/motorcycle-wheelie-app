@@ -40,7 +40,7 @@ public enum LogFile {
         return d
     }
 
-    public static func encode(_ m: Measurement) throws -> Data {
+    public static func encode(_ m: Sample) throws -> Data {
         var d = try JSONEncoder().encode(m)
         d.append(0x0A)
         return d
@@ -48,7 +48,7 @@ public enum LogFile {
 
     /// Reads a whole log into memory. Fine for a 30 min session (~16 KB/s);
     /// switch to streaming if sessions get long.
-    public static func read(contentsOf url: URL) throws -> (LogHeader, [Measurement]) {
+    public static func read(contentsOf url: URL) throws -> (LogHeader, [Sample]) {
         let text = try String(contentsOf: url, encoding: .utf8)
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         guard let headerLine = lines.first else {
@@ -58,7 +58,7 @@ public enum LogFile {
         lines.removeFirst()
         let dec = JSONDecoder()
         let header = try dec.decode(LogHeader.self, from: Data(headerLine.utf8))
-        let items = try lines.map { try dec.decode(Measurement.self, from: Data($0.utf8)) }
+        let items = try lines.map { try dec.decode(Sample.self, from: Data($0.utf8)) }
         return (header, items)
     }
 }
@@ -66,14 +66,14 @@ public enum LogFile {
 /// Replays a log through the pipeline. Orders on FIX time, not arrival time,
 /// so a run on your desk is identical to the ride that produced it.
 public struct ReplaySource: MeasurementSource {
-    private var items: [Measurement]
+    private var items: [Sample]
     private var index = 0
 
-    public init(measurements: [Measurement]) {
-        self.items = measurements.sorted { $0.time < $1.time }
+    public init(samples: [Sample]) {
+        self.items = samples.sorted { $0.time < $1.time }
     }
 
-    public mutating func next() -> Measurement? {
+    public mutating func next() -> Sample? {
         guard index < items.count else { return nil }
         defer { index += 1 }
         return items[index]

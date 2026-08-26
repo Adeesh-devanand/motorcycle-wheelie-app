@@ -1,0 +1,70 @@
+{
+  "phase": "tasks",
+  "decisions": [
+    {
+      "id": "calibration-copy",
+      "title": "UI spec §7.4 says the calibrating overlay reads 'Ride in a straight line at a constant speed', but bias zeroing must be stationary and idling. How do we reconcile?",
+      "options": [
+        "Phase-specific instruction copy inside one calibrating state (stationary zero / hard pull / in-ride verify)",
+        "Keep the UI spec sentence as the only copy and move bias zeroing out of the calibrating state entirely",
+        "Change the UI spec sentence to the stationary instruction"
+      ],
+      "recommended": "Phase-specific instruction copy inside one calibrating state (stationary zero / hard pull / in-ride verify)",
+      "answer": "Change the UI spec sentence to the stationary instruction"
+    },
+    {
+      "id": "measurement-rename",
+      "title": "What does the core Measurement enum get renamed to, given the Foundation collision?",
+      "options": [
+        "Sample (leaves the UI spec's TelemetrySample name free for the display record)",
+        "TelemetrySample (forces the UI display record to be renamed instead)"
+      ],
+      "recommended": "Sample (leaves the UI spec's TelemetrySample name free for the display record)",
+      "answer": "Sample (leaves the UI spec's TelemetrySample name free for the display record)"
+    },
+    {
+      "id": "run-storage",
+      "title": "How is a WheelieRun persisted relative to the raw NDJSON session log?",
+      "options": [
+        "Derived metrics + intervals + ~30 Hz decimated display series + a reference (session id + time span) into the raw log",
+        "Embed the run's raw samples in the run record, duplicating them out of the session log"
+      ],
+      "recommended": "Derived metrics + intervals + ~30 Hz decimated display series + a reference (session id + time span) into the raw log",
+      "answer": "Derived metrics + intervals + ~30 Hz decimated display series + a reference (session id + time span) into the raw log"
+    },
+    {
+      "id": "event-exit-threshold",
+      "title": "Config.eventExitPitch is currently 4.0 deg but UI spec §7.6 says 5 deg. Which wins?",
+      "options": [
+        "Change Config to 5 deg, add eventEntryDwell/eventExitDwell, bump Config.version to 2",
+        "Keep 4 deg and treat the UI spec number as illustrative"
+      ],
+      "recommended": "Change Config to 5 deg, add eventEntryDwell/eventExitDwell, bump Config.version to 2",
+      "answer": "Change Config to 5 deg, add eventEntryDwell/eventExitDwell, bump Config.version to 2"
+    },
+    {
+      "id": "r5-withdrawal",
+      "title": "R5 (audio/video time alignment) is withdrawn. Does the microphone survive anywhere?",
+      "options": [
+        "Keep the mic for the stationary once-per-bike vibration recording only — it is the only unaliased view of engine frequency",
+        "Remove the microphone from the product entirely and drop the RPM-labelled vibration profile"
+      ],
+      "recommended": "Keep the mic for the stationary once-per-bike vibration recording only — it is the only unaliased view of engine frequency",
+      "answer": "Keep the mic for the stationary once-per-bike vibration recording only (implied by approving requirements.md as written)"
+    },
+    {
+      "id": "synthetic-frame-defect",
+      "title": "SyntheticSource's gyro sign and gravity x-sign contradict AxisElevation's quaternion convention (verified numerically). Which side moves?",
+      "options": [
+        "Correct SyntheticSource to the AxisElevation/Z-up convention and add a convention-guard test before the ESKF",
+        "Adopt the generator's aerospace convention and change AxisElevation plus its passing test"
+      ],
+      "recommended": "Correct SyntheticSource to the AxisElevation/Z-up convention and add a convention-guard test before the ESKF",
+      "answer": "Correct SyntheticSource to the AxisElevation/Z-up convention and add a convention-guard test before the ESKF"
+    }
+  ],
+  "blocking": null,
+  "context": {
+    "template": "docs/ui-spec.md (canonical UI reference) + the M0 MotoTelemetryCore Stage/MeasurementSource pipeline"
+  }
+}

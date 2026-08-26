@@ -47,7 +47,7 @@ case "replay":
     print("config:   v\(header.config.version)")
     print("samples:  \(items.count)")
 
-    var source = ReplaySource(measurements: items)
+    var source = ReplaySource(samples: items)
     var gate = ValidityGate(config: header.config)
     var gateOpen = 0
     while let m = source.next() {

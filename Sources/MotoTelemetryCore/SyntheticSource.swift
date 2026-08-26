@@ -65,7 +65,7 @@ public struct SyntheticSource: MeasurementSource {
         return (truePitch(at: t + h) - truePitch(at: t - h)) / (2 * h)
     }
 
-    public mutating func next() -> Measurement? {
+    public mutating func next() -> Sample? {
         if let fix = pendingGNSS {
             pendingGNSS = nil
             return .gnss(fix)
@@ -82,24 +82,37 @@ public struct SyntheticSource: MeasurementSource {
         // Sustained wheelie needs thrust ~ g*tan(theta) — which is exactly why
         // acceleration and pitch are almost perfectly correlated and the
         // accelerometer alone is systematically confounded here.
-        let g = 9.80665
+        let g = Conventions.g
         let longitudinal = g * tan(min(pitch, 60 * .pi / 180))
 
-        // Specific force in the body frame for a body pitched by `pitch`
-        // undergoing `longitudinal` forward acceleration.
-        var fx = longitudinal * cos(pitch) + g * sin(pitch)
-        var fz = -longitudinal * sin(pitch) - g * cos(pitch)
+        // Specific force in the body frame, per Conventions.specificForce:
+        //   f = ( -g sin(theta) - a cos(theta), 0, -g cos(theta) + a sin(theta) )
+        // The signs here are NOT free. This generator originally emitted
+        //   fx = +a cos(theta) + g sin(theta)
+        //   fz = -a sin(theta) - g cos(theta)
+        // which is an aerospace-style frame (nose-up positive about +Y, Z down)
+        // and contradicts the Z-up convention that AxisElevation and its passing
+        // test encode. Nothing caught it: the validity gate only tests |f|, which
+        // is 1.000 g either way, and the naive-tilt test uses atan2(fx, -fz),
+        // which is sign-symmetric. An estimator built to the old signs would
+        // report NEGATIVE angles for real wheelies. See Conventions.swift and
+        // ConventionTests.
+        var f = Conventions.specificForce(pitch: pitch,
+                                          forwardAcceleration: longitudinal)
+        var fx = f.x
+        var fz = f.z
 
         if scenario.vibrationAmplitude > 0 {
             let phase = 2 * .pi * scenario.vibrationFrequency * t
             fx += scenario.vibrationAmplitude * sin(phase)
             fz += scenario.vibrationAmplitude * sin(phase + 1.1)
         }
+        f = Vector3(fx, 0, fz)
 
         let imu = IMUSample(
             time: t,
-            rotationRate: Vector3(0, rate, 0) + scenario.gyroBias,
-            specificForce: Vector3(fx, 0, fz)
+            rotationRate: Conventions.rotationRate(pitchRate: rate) + scenario.gyroBias,
+            specificForce: f
         )
 
         if scenario.emitGNSS, t >= nextGNSSTime {

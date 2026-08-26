@@ -18,7 +18,10 @@ public protocol Stage {
 /// A source of measurements. Three implementations, one protocol: live sensors,
 /// replay from a log file, and the synthetic generator. The pipeline cannot
 /// tell them apart, which is what makes it testable without a motorcycle.
+///
+/// The protocol keeps its name — it names a source of measurements, which does
+/// not collide with anything — while its element type is `Sample`.
 public protocol MeasurementSource {
-    /// Next measurement in monotonic time order, or nil when exhausted.
-    mutating func next() -> Measurement?
+    /// Next sample in monotonic time order, or nil when exhausted.
+    mutating func next() -> Sample?
 }

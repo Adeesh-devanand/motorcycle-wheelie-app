@@ -6,7 +6,17 @@ import Foundation
 ///
 /// `time` is always a MONOTONIC clock in seconds. Never wall-clock: wall-clock
 /// jumps and the pipeline must be replayable bit-for-bit.
-public enum Measurement: Codable, Sendable {
+///
+/// Named `Sample` rather than `Measurement` to avoid colliding with
+/// Foundation's generic `Measurement<Unit>` in any file that imports both.
+/// The name `TelemetrySample` is deliberately NOT used here: it belongs to the
+/// UI-facing display record in docs/ui-spec.md §5.1, which is a derived,
+/// display-unit, run-relative point. This type is a raw tagged sensor reading
+/// in SI units on a monotonic clock. Different layers, different names.
+///
+/// The case names below are the JSON wire keys, so renaming the enum did not
+/// change the log format. `Fixtures/pre-rename-session.ndjson` proves it.
+public enum Sample: Codable, Sendable {
     case imu(IMUSample)
     case gnss(GNSSFix)
     case baro(BaroSample)

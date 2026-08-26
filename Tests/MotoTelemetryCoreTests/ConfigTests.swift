@@ -1,0 +1,91 @@
+import XCTest
+@testable import MotoTelemetryCore
+
+/// R1.8, R1.9 — Config is the only home for tunable constants, and an older
+/// header must keep decoding.
+final class ConfigTests: XCTestCase {
+
+    func testRoundTripsUnchanged() throws {
+        let original = Config()
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(Config.self, from: data)
+        XCTAssertEqual(original, decoded)
+    }
+
+    func testVersionIsTwo() {
+        XCTAssertEqual(Config().version, 2)
+    }
+
+    func testExitThresholdMatchesTheUISpec() {
+        // docs/ui-spec.md 7.6: end an attempt below 5 deg for 250 ms.
+        XCTAssertEqual(Config().eventExitPitch * 180 / .pi, 5.0, accuracy: 1e-12)
+        XCTAssertEqual(Config().eventExitDwell, 0.25, accuracy: 1e-12)
+        XCTAssertEqual(Config().eventEntryPitch * 180 / .pi, 8.0, accuracy: 1e-12)
+        XCTAssertEqual(Config().eventEntryDwell, 0.15, accuracy: 1e-12)
+    }
+
+    func testEntryExitHysteresisIsPositive() {
+        // Entry above exit, or the segmenter oscillates on any sample near the
+        // boundary. 3 deg of hysteresis by construction.
+        let c = Config()
+        XCTAssertGreaterThan(c.eventEntryPitch, c.eventExitPitch)
+        XCTAssertEqual((c.eventEntryPitch - c.eventExitPitch) * 180 / .pi,
+                       3.0, accuracy: 1e-12)
+    }
+
+    /// The v1-tolerance path. A header written before v2's fields existed must
+    /// decode, taking current defaults for what it lacks.
+    func testVersionOneHeaderDecodesWithDefaultsForMissingFields() throws {
+        // A minimal v1-shaped config: only fields that existed in v1.
+        let v1JSON = """
+        {
+          "version": 1,
+          "gateSpecificForceLow": 9.512450499999999,
+          "gateSpecificForceHigh": 10.100849500000001,
+          "gateMaxRotationRate": 0.05235987755982989,
+          "gateDwell": 0.5,
+          "baselineTimeConstant": 25,
+          "accelLowPassCutoff": 5,
+          "timeToThresholdWarn": 0.4,
+          "audioLatencyCompensation": 0.05,
+          "eventEntryPitchRate": 0.2617993877991494,
+          "eventEntryPitch": 0.13962634015954636,
+          "eventExitPitch": 0.06981317007977318,
+          "eventMinDuration": 0.4,
+          "biasCalibrationDuration": 8,
+          "biasStaleAfter": 300,
+          "gyroNoiseDensity": 0.00006981317007977318,
+          "gyroBiasInstability": 0.000014544410433286077,
+          "accelNoiseDensity": 0.000980665,
+          "baroDynamicPressureK": 0
+        }
+        """
+        let decoded = try JSONDecoder().decode(Config.self, from: Data(v1JSON.utf8))
+
+        // Its own values are preserved, including the v1 exit threshold of 4 deg.
+        XCTAssertEqual(decoded.version, 1)
+        XCTAssertEqual(decoded.eventExitPitch * 180 / .pi, 4.0, accuracy: 1e-9,
+                       "a v1 log must re-score under the thresholds that "
+                       + "produced it when replayed with its own header config")
+        // Fields it never had take current defaults.
+        XCTAssertEqual(decoded.eventEntryDwell, Config().eventEntryDwell)
+        XCTAssertEqual(decoded.eventExitDwell, Config().eventExitDwell)
+        XCTAssertEqual(decoded.accelNoiseInflation, Config().accelNoiseInflation)
+        XCTAssertEqual(decoded.writerRingCapacity, Config().writerRingCapacity)
+        XCTAssertEqual(decoded.thermalBiasNoiseScale, Config().thermalBiasNoiseScale)
+    }
+
+    func testEmptyObjectDecodesToAllDefaults() throws {
+        let decoded = try JSONDecoder().decode(Config.self, from: Data("{}".utf8))
+        XCTAssertEqual(decoded, Config())
+    }
+
+    func testThermalScaleCoversEveryThermalState() {
+        // ProcessInfo.ThermalState has four cases; the app indexes this by raw
+        // value, so a short array would trap at runtime on a hot phone.
+        XCTAssertEqual(Config().thermalBiasNoiseScale.count, 4)
+        XCTAssertEqual(Config().thermalBiasNoiseScale.sorted(),
+                       Config().thermalBiasNoiseScale,
+                       "scale must be monotonically non-decreasing with heat")
+    }
+}

@@ -2,9 +2,16 @@ name: CI
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: macos-14
+    # macos-15 + Xcode 16: Package.swift is swift-tools-version 6.0, which the
+    # Swift 5.10 toolchain on the macos-14 image cannot parse, and .iOS(.v18)
+    # needs the iOS 18 SDK.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+      - name: Swift version
+        run: swift --version
       - name: Build
         run: swift build
       - name: Test
