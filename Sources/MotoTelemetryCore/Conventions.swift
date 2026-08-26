@@ -38,6 +38,19 @@ import Foundation
 ///     f_B = ( -g*sin(theta) - a*cos(theta), 0, -g*cos(theta) + a*sin(theta) )
 ///
 /// At theta = 0, a = 0 that is `(0, 0, -g)`.
+/// ## Composing a crooked mount
+/// `SyntheticSource.Scenario.mountRotation` maps BIKE components to DEVICE
+/// components, so it acts as a bike->device quaternion. Given the bike's attitude
+/// in the world, the device's attitude in the world is
+///
+///     deviceToWorld = bikeToWorld * conjugate(mountRotation)
+///
+/// and at rest on level ground that reduces to `conjugate(mountRotation)`.
+/// This matters for initialisation: integrating device-frame gyro from IDENTITY
+/// yields attitude relative to the initial DEVICE frame, which for a crooked mount
+/// differs from the world by the entire mount rotation. On a real phone the initial
+/// attitude comes from the gate-open gravity anchor instead, which is what the
+/// estimator must do rather than assuming identity.
 public enum Conventions {
 
     /// Standard gravity, m/s^2.

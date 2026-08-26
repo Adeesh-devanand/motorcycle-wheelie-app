@@ -78,6 +78,9 @@ public struct Config: Codable, Sendable, Equatable {
     // confidence with it.
     public var biasCalibrationDuration: TimeInterval = 8.0
     public var biasStaleAfter: TimeInterval = 300.0            // seconds
+    /// How long a zeroing attempt may fail to open the gate before it gives up
+    /// and tells the rider why, rather than spinning indefinitely.
+    public var biasAttemptWindow: TimeInterval = 30.0
     /// A zeroing whose per-axis sigma exceeds this FAILS, naming the axis, rather
     /// than being accepted. Expected sigma after 10 s at 100 Hz is ~0.0014 deg/s,
     /// so a breach here is real signal, not a tight threshold.
@@ -145,6 +148,19 @@ public struct Config: Codable, Sendable, Equatable {
     /// Above this 1 s RMS, calibration fails and rides are flagged. The fix named
     /// to the rider is mechanical isolation, never a software setting.
     public var highFreqRMSThreshold: Double = 1.5              // m/s^2
+    /// Standard deviation of |specific force| above which a stationary
+    /// calibration is rejected as too shaky, m/s^2. A separate, much lower
+    /// threshold than the ride-time one, and a different statistic.
+    ///
+    /// The validity gate's specific-force window is +/-0.03 g, i.e. 0.294 m/s^2,
+    /// so any vibration big enough to reach `highFreqRMSThreshold` has already
+    /// been rejected by the gate — instantaneously, since the gate does not
+    /// average. That left the vibration failure unreachable during calibration
+    /// and told a rider with a buzzing mount that the bike "is not level and
+    /// still", which is true but useless. So: the gate remains the detector, and
+    /// this threshold decides whether an out-of-band rejection is REPORTED as
+    /// vibration. It must sit below the gate's window to be reachable.
+    public var calibrationVibrationThreshold: Double = 0.1  // m/s^2
     /// Runs whose reported uncertainty exceeds these are marked lowConfidence and
     /// excluded from personal bests.
     public var liveSigmaLimit: Double = 3.0 * .pi / 180        // rad
@@ -225,6 +241,7 @@ public struct Config: Codable, Sendable, Equatable {
 
         biasCalibrationDuration = try get(.biasCalibrationDuration, d.biasCalibrationDuration)
         biasStaleAfter          = try get(.biasStaleAfter, d.biasStaleAfter)
+        biasAttemptWindow       = try get(.biasAttemptWindow, d.biasAttemptWindow)
         biasSigmaLimit          = try get(.biasSigmaLimit, d.biasSigmaLimit)
         thermalBiasNoiseScale   = try get(.thermalBiasNoiseScale, d.thermalBiasNoiseScale)
 
@@ -249,6 +266,8 @@ public struct Config: Codable, Sendable, Equatable {
 
         highFreqCutoff       = try get(.highFreqCutoff, d.highFreqCutoff)
         highFreqRMSThreshold = try get(.highFreqRMSThreshold, d.highFreqRMSThreshold)
+        calibrationVibrationThreshold = try get(.calibrationVibrationThreshold,
+                                                   d.calibrationVibrationThreshold)
         liveSigmaLimit       = try get(.liveSigmaLimit, d.liveSigmaLimit)
         smoothedSigmaLimit   = try get(.smoothedSigmaLimit, d.smoothedSigmaLimit)
 

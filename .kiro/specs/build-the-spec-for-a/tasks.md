@@ -11,6 +11,16 @@ governs the view layer; UI tasks cite its sections rather than restating them.
 Legend: `[R…]` = requirement, `[D §…]` = design section, `[UI §…]` = ui-spec
 section. Every task's **Done when** is a command to run or a number to read.
 
+Checkbox states:
+- `[ ]` not started
+- `[x]` done, every acceptance criterion met
+- `[~]` **staged** — logic implemented and unit-tested, but at least one
+  acceptance criterion is owed and is named inline. Used on branch
+  `staging/core-pipeline`, where the estimation pipeline is being built ahead of
+  the iOS app: criteria needing an iPhone (microsecond budgets, on-device
+  sigma), a recorded ride (video agreement), or measured bench noise cannot be
+  met yet. A `[~]` task is NOT done and must not be read as device-verified.
+
 ---
 
 ## M0 — Scaffold ✅ COMPLETE
@@ -254,14 +264,17 @@ and you can re-score any past ride against new tuning without riding.
 
 First milestone that produces an angle. Blocked on T1.4/T1.5.
 
-- [ ] **T3.1 `BiasEstimator` + `CalibrationStatus`.** `[R6.1–R6.9] [D §6]`
+- [~] **T3.1 `BiasEstimator` + `CalibrationStatus`.** STAGED — synthetic-noise
+  tests pass (bias recovered to 1e-4 rad/s, sigma ~2e-5 rad/s, all failure paths
+  covered). OWED: the sigma < 0.01 deg/s number and the revving-capture failure
+  must be measured on the real phone. `[R6.1–R6.9] [D §6]`
   Welford over gate-open samples, restart on closure reporting
   `ValidityGate.Reason`, σ = sample σ/√n, fail on `biasSigmaLimit` naming the
   axis, exclude saturated samples, age → σ_b projection with `thermalBiasNoiseScale`.
   **Done when** a 10 s stationary zeroing yields per-axis σ < 0.01 °/s on the real
   phone, and a deliberately-revving capture **fails** with a vibration reason.
 
-- [ ] **T3.2 `AlignmentSolver` + `MountAlignment`.** `[R7.1–R7.5] [D §7]`
+- [x] **T3.2 `AlignmentSolver` + `MountAlignment`.** `[R7.1–R7.5] [D §7]`
   Two-gesture closed form; reject below 0.25 g pull or above 5° residual.
   **Done when** `Scenario.mountRotation` is added to the generator and the solver
   recovers axes reproducing `truePitch` within 0.5° for an arbitrary mount

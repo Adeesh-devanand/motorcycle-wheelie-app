@@ -28,6 +28,13 @@ public struct SyntheticSource: MeasurementSource {
         public var emitGNSS: Bool = true
         public var gnssRate: Double = 1.0
 
+        /// Rotation from bike axes into DEVICE axes, i.e. a crooked mount.
+        /// Identity means the phone is perfectly aligned with the bike. Every
+        /// emitted vector is rotated by this, so the alignment solver has
+        /// something real to recover and the estimator can be tested against a
+        /// mount that is not axis-aligned.
+        public var mountRotation: Quaternion = .identity
+
         public init() {}
     }
 
@@ -109,10 +116,18 @@ public struct SyntheticSource: MeasurementSource {
         }
         f = Vector3(fx, 0, fz)
 
+        // A crooked mount rotates every measured vector out of bike axes into
+        // device axes. Both channels get the same rotation, which is what makes
+        // the alignment recoverable at all.
+        let bikeRate = Conventions.rotationRate(pitchRate: rate)
+        let mount = scenario.mountRotation
+        let measuredRate = mount.rotate(bikeRate) + scenario.gyroBias
+        let measuredForce = mount.rotate(f)
+
         let imu = IMUSample(
             time: t,
-            rotationRate: Conventions.rotationRate(pitchRate: rate) + scenario.gyroBias,
-            specificForce: f
+            rotationRate: measuredRate,
+            specificForce: measuredForce
         )
 
         if scenario.emitGNSS, t >= nextGNSSTime {
