@@ -100,6 +100,40 @@ public func skew(_ v: Vector3) -> Matrix3 {
                    -v.y,  v.x,    0])
 }
 
+extension Matrix3 {
+    /// Outer product `a * b^T`. Kalman gains for a scalar measurement are
+    /// rank-one, so the covariance update is built from these.
+    public static func outer(_ a: Vector3, _ b: Vector3) -> Matrix3 {
+        Matrix3(rows: [a.x*b.x, a.x*b.y, a.x*b.z,
+                       a.y*b.x, a.y*b.y, a.y*b.z,
+                       a.z*b.x, a.z*b.y, a.z*b.z])
+    }
+}
+
+extension Quaternion {
+    /// Shortest-arc rotation taking unit vector `from` onto unit vector `to`.
+    ///
+    /// Used to seed attitude from the gravity anchor: heading is unobservable from
+    /// gravity alone, so the minimal rotation is the honest choice — it adds no
+    /// yaw information the measurement does not contain.
+    public static func rotation(from: Vector3, to: Vector3) -> Quaternion {
+        let a = from.normalized
+        let b = to.normalized
+        let dot = max(-1, min(1, a.dot(b)))
+
+        if dot > 1 - 1e-12 { return .identity }
+        if dot < -1 + 1e-12 {
+            // Antiparallel: any perpendicular axis works, so pick a stable one.
+            var axis = Vector3(1, 0, 0).cross(a)
+            if axis.magnitude < 1e-6 { axis = Vector3(0, 1, 0).cross(a) }
+            return Quaternion.exp(rotationVector: axis.normalized * Double.pi)
+        }
+        let axis = a.cross(b)
+        let angle = acos(dot)
+        return Quaternion.exp(rotationVector: axis.normalized * angle).normalized
+    }
+}
+
 /// Row-major 6x6 matrix. The error state is [attitude error; gyro bias error].
 public struct Matrix6: Equatable, Sendable {
     public var e: [Double]

@@ -280,7 +280,7 @@ First milestone that produces an angle. Blocked on T1.4/T1.5.
   recovers axes reproducing `truePitch` within 0.5° for an arbitrary mount
   rotation.
 
-- [ ] **T3.3 `AttitudeESKF` propagation.** `[R8.1] [D §8.1, §8.2]`
+- [x] **T3.3 `AttitudeESKF` propagation.** `[R8.1] [D §8.1, §8.2]`
   6-state error filter, body-frame attitude error, Joseph-form updates,
   symmetrise every step, renormalise the quaternion every sample, `dt` clamped
   with dropouts recorded not hidden.
@@ -288,12 +288,14 @@ First milestone that produces an angle. Blocked on T1.4/T1.5.
   filter's drift matches analytic gyro integration to 1e-9, and `P` stays
   symmetric positive-definite over 180 000 steps.
 
-- [ ] **T3.4 Gravity measurement with graded inflation.** `[R8.2] [D §8.3]`
+- [x] **T3.4 Gravity measurement with graded inflation.** DESIGN CORRECTED —
+  inflation cannot reject a systematic error, so out-of-band/rotating now SKIP
+  rather than inflate. See AttitudeESKF.updateWithGravity. `[R8.2] [D §8.3]`
   `H = [skew(f̂_B) 0]`; κ ∈ {1, 100, 10 000}; skip entirely on saturation.
   **Done when** a synthetic run shows no covariance step at gate transitions
   (compare against a hard on/off branch to see the difference you avoided).
 
-- [ ] **T3.5 GNSS-aided pitch measurement.** `[R8.3] [D §8.4]`
+- [x] **T3.5 GNSS-aided pitch measurement.** `[R8.3] [D §8.4]`
   `z = −f_x − a_gnss·cosθ̂`, `h = g·sinθ`,
   `H = [−g·ê_zᵀ·R(q̂)·skew(x̂_B) 0]`. Suppress during events and within
   `gnssAidingEventMargin`, and when `speedAccuracy > 0.5 m/s`.
@@ -301,19 +303,20 @@ First milestone that produces an angle. Blocked on T1.4/T1.5.
   measurement reduces bias error at event onset by ≥5× versus gravity-only, and
   disabling it does not change in-event behaviour.
 
-- [ ] **T3.6 Delayed-state GNSS application.** `[R8.3] [D §8.5]`
+- [x] **T3.6 Delayed-state GNSS application.** `[R8.3] [D §8.5]`
   2.0 s ring of `(time, q̂, b̂, P, ω̂)`; apply at the bracketing state, re-propagate
   forward; discard and count fixes older than the window.
   **Done when** injecting a synthetic 250 ms fix latency changes the estimate by
   <0.1° versus a zero-latency run, and the naive apply-at-present path is
   measurably worse (record the number).
 
-- [ ] **T3.7 `GradeBaseline`.** `[R8.8] [D §8.6]`
+- [x] **T3.7 `GradeBaseline`.** `[R8.8] [D §8.6]`
   τ = 25 s low-pass over gate-open pitch, **frozen while the gate is closed**.
   **Done when** `Scenario.roadGrade = ±4°` yields reported wheelie angle within
   2° of truth, and a 10 s hold is not absorbed into its own reference.
 
-- [ ] **T3.8 `Pipeline` composition + `PipelineOutput`.** `[R1.3] [D §4]`
+- [~] **T3.8 `Pipeline` composition + `PipelineOutput`.** STAGED — composed and
+  building; the byte-identical determinism test lands with T3.9. `[R1.3] [D §4]`
   Stage order per design; output only on `.imu`.
   **Done when** a determinism test running one fixture twice produces
   byte-identical encoded output.

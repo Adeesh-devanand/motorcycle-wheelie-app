@@ -8,14 +8,22 @@ import Foundation
 /// read as nose-down. Integrate the gyro during anything dynamic; only
 /// re-anchor when quasi-static is provable.
 public struct ValidityGate: Stage {
-    public struct Verdict: Sendable, Equatable {
+    public struct Verdict: Sendable, Equatable, Codable {
         public var isOpen: Bool
         /// How long the underlying condition has held continuously.
         public var heldFor: TimeInterval
         public var reason: Reason
+
+        public init(isOpen: Bool, heldFor: TimeInterval, reason: Reason) {
+            self.isOpen = isOpen
+            self.heldFor = heldFor
+            self.reason = reason
+        }
     }
 
-    public enum Reason: String, Sendable, Equatable {
+    /// Codable because every stage's output gets logged, not just the final angle:
+    /// when a reading is wrong you need to see which stage first went wrong.
+    public enum Reason: String, Sendable, Equatable, Codable {
         case open
         case specificForceOutOfBand
         case rotating
