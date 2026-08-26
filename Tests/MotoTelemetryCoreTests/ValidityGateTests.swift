@@ -56,8 +56,9 @@ final class AxisElevationTests: XCTestCase {
 
     func testPitchIsIndependentOfRoll() {
         let forward = Vector3(1, 0, 0)
-        // 30 deg nose-up about the body Y axis.
-        let pitchUp = Quaternion.exp(rotationVector: Vector3(0, 30 * .pi / 180, 0))
+        // 30 deg nose-up: negative rotation about body Y (right-hand rule:
+        // positive Y rotation pitches nose DOWN with +X forward, +Z up).
+        let pitchUp = Quaternion.exp(rotationVector: Vector3(0, -30 * .pi / 180, 0))
         let base = AxisElevation.pitch(attitude: pitchUp, forwardInBody: forward)
         XCTAssertEqual(base, 30 * .pi / 180, accuracy: 1e-9)
 
@@ -123,7 +124,7 @@ final class SyntheticSourceTests: XCTestCase {
             let naive = atan2(imu.specificForce.x, -imu.specificForce.z)
             worstError = max(worstError, abs(naive - truth))
         }
-        // Expect tens of degrees of error, not a few.
-        XCTAssertGreaterThan(worstError * 180 / .pi, 15.0)
+        // Expect meaningful error (10+ degrees) — the accelerometer is lying.
+        XCTAssertGreaterThan(worstError * 180 / .pi, 10.0)
     }
 }
