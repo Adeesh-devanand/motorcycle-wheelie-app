@@ -78,6 +78,22 @@ public struct TelemetryExport {
             case angle_degrees
             case speed_kph
         }
+
+        // Explicit encode so nil speed_kph appears as JSON null rather than being
+        // omitted entirely. An absent key and a null key mean different things in
+        // telemetry: absent = "field not in schema", null = "value unavailable at
+        // this sample". We need the latter.
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(elapsed_seconds, forKey: .elapsed_seconds)
+            try container.encode(angle_degrees, forKey: .angle_degrees)
+            // encodeNil writes JSON null; encode(optional) would skip the key.
+            if let speed = speed_kph {
+                try container.encode(speed, forKey: .speed_kph)
+            } else {
+                try container.encodeNil(forKey: .speed_kph)
+            }
+        }
     }
 
     /// Export data points as a JSON string (array of objects).

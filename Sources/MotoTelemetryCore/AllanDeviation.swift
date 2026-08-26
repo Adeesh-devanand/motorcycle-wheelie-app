@@ -8,12 +8,13 @@ import Foundation
 /// not just non-overlapping blocks. This gives better confidence at long tau
 /// from a finite data set. The formula implemented:
 ///
-///   ADEV^2(tau) = 1 / (2 * tau^2 * (N - 2m + 1))
-///                * SUM_{j=0}^{N-2m} [ x(j+2m) - 2*x(j+m) + x(j) ]^2
+///   ADEV^2(tau) = 1 / (2 * tau^2 * (N - 2m))
+///                * SUM_{j=0}^{N-2m-1} [ x(j+2m) - 2*x(j+m) + x(j) ]^2
 ///
 /// where x(j) = cumulative sum of the rate series (i.e. integrated angle in rad),
 /// tau = m * tau0, tau0 = 1/sampleRate, and N is the number of PHASE points
-/// (one more than the number of rate samples).
+/// (one more than the number of rate samples). The sum has (N-2m) terms because
+/// x is indexed 0..N-1 and j+2m must not exceed N-1.
 ///
 /// Reference: IEEE Std 1139-2008, eq (10).
 ///
@@ -84,11 +85,10 @@ public struct AllanDeviation {
         var points: [Point] = []
         var m = 1
         while 2 * m < N {
-            let count = N - 2 * m  // number of second-differences (N-2m+1 - 1 for 0-indexed limit, but we iterate 0..<count which is N-2m terms)
-            // Actually: j ranges 0...(N-2m-1), giving (N-2m) terms if we use
-            // the strict < bound. But the formula says j=0 to N-2m, which is
-            // (N-2m+1) terms. Let's be precise:
-            let terms = N - 2 * m + 1
+            // j ranges from 0 to (N - 2m - 1) because x[j + 2m] must be valid.
+            // x has N elements indexed 0..(N-1), so j + 2m <= N-1, i.e. j <= N-2m-1.
+            // Number of valid second-differences: N - 2*m.
+            let terms = N - 2 * m
             guard terms >= 1 else { break }
 
             let tau = Double(m) * tau0

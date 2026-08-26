@@ -237,7 +237,10 @@ Turns M1's files into the numbers that parameterise M3. No device needed.
   **Done when** the vibration sweep produces a profile that names at least one
   RPM band and its aliased image, and marks bands whose tilt offset exceeds 1°.
 
-- [ ] **T2.3 `motolog allan`.** `[R20.5]`
+- [~] **T2.3 `motolog allan`.** STAGED — the overlapping-ADEV maths is implemented
+  and tested: ARW recovered within 10%, log-log slope -0.5 +/-0.05 over 7 octaves,
+  bias instability to order of magnitude (wide by nature from synthetic data).
+  OWED: the `motolog allan` subcommand wiring, and real bench data for precision. `[R20.5]`
   Overlapping Allan deviation from the bench session: ARW off the −1/2 slope at
   τ = 1 s, bias instability off the flat minimum ÷ 0.664, formatted as the
   `Config` fields they replace.
@@ -659,7 +662,9 @@ you having to remember it.
   **Done when** a share requires a deliberate confirm and the image states
   live-vs-smoothed.
 
-- [ ] **T10.2 CSV / raw export.** `[R17.6] [UI §9.7]`
+- [~] **T10.2 CSV / raw export.** STAGED — exact ui-spec 9.7 header, SI->display
+  conversion, locale-independent formatting, missing speed renders empty rather than
+  a fabricated 0. OWED: opening it in a spreadsheet, and the iOS share sheet. `[R17.6] [UI §9.7]`
   `elapsed_seconds,angle_degrees,speed_kph`; raw NDJSON as the full-fidelity path.
   **Done when** the CSV opens in a spreadsheet and the NDJSON replays.
 
