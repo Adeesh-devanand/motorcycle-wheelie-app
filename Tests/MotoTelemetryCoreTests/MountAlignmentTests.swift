@@ -225,7 +225,29 @@ final class MountAlignmentTests: XCTestCase {
         }
         let data = try JSONEncoder().encode(alignment)
         let decoded = try JSONDecoder().decode(MountAlignment.self, from: data)
-        XCTAssertEqual(alignment, decoded)
+
+        let eps = 1e-14
+
+        // Non-Double fields: exact equality
+        XCTAssertEqual(alignment.capturedAt, decoded.capturedAt)
+        XCTAssertEqual(alignment.bikeProfileID, decoded.bikeProfileID)
+
+        // Double fields via accuracy tolerance
+        XCTAssertEqual(alignment.residual, decoded.residual, accuracy: eps)
+        XCTAssertEqual(alignment.peakPullAcceleration, decoded.peakPullAcceleration, accuracy: eps)
+
+        // Vector3 fields: compare each component with tolerance
+        XCTAssertEqual(alignment.forwardInBody.x, decoded.forwardInBody.x, accuracy: eps)
+        XCTAssertEqual(alignment.forwardInBody.y, decoded.forwardInBody.y, accuracy: eps)
+        XCTAssertEqual(alignment.forwardInBody.z, decoded.forwardInBody.z, accuracy: eps)
+
+        XCTAssertEqual(alignment.upInBody.x, decoded.upInBody.x, accuracy: eps)
+        XCTAssertEqual(alignment.upInBody.y, decoded.upInBody.y, accuracy: eps)
+        XCTAssertEqual(alignment.upInBody.z, decoded.upInBody.z, accuracy: eps)
+
+        XCTAssertEqual(alignment.leftInBody.x, decoded.leftInBody.x, accuracy: eps)
+        XCTAssertEqual(alignment.leftInBody.y, decoded.leftInBody.y, accuracy: eps)
+        XCTAssertEqual(alignment.leftInBody.z, decoded.leftInBody.z, accuracy: eps)
     }
 
     func testResidualIsReportedSoAFabricatedAxisIsVisible() throws {

@@ -119,4 +119,80 @@ final class QualityMonitorTests: XCTestCase {
         let data = try JSONEncoder().encode(flags)
         XCTAssertEqual(try JSONDecoder().decode(QualityFlags.self, from: data), flags)
     }
+
+    // MARK: - Pipeline integration: aliasing disclosure (R14.1-R14.3, R21.3)
+
+    /// A vibration that aliases INTO the detectable band (above the high-pass
+    /// corner) MUST set `highVibration` when run through the full pipeline.
+    ///
+    /// 130 Hz at 100 Hz sample rate folds to |130-100| = 30 Hz, which is ABOVE
+    /// the 20 Hz corner and IS visible to the high-pass RMS indicator.
+    ///
+    /// This test does NOT assert pitch accuracy - the aliased channel is
+    /// corrupted. The flag's job is to DISCLOSE corruption, not fix it.
+    func testPipelineFlagsHighVibrationForDetectableAlias() {
+        var scenario = SyntheticSource.Scenario()
+        scenario.duration = 5.0
+        scenario.eventStart = 100.0  // no event - just vibration
+        scenario.vibrationFrequency = 130.0  // aliases to 30 Hz (above 20 Hz cutoff)
+        scenario.vibrationAmplitude = 15.0   // m/s^2, must be large relative to g to produce
+                                             // enough variation in |f| magnitude for the RMS
+        scenario.emitGNSS = false
+
+        var source = SyntheticSource(scenario: scenario)
+        let config = Config()
+        let alignment = MountAlignment.identity()
+        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: nil,
+                                gravityAnchor: Conventions.restSpecificForce)
+
+        let outputs = runPipeline(source: &source, pipeline: &pipeline)
+        guard let last = outputs.last else {
+            XCTFail("Pipeline produced no output"); return
+        }
+
+        // The pipeline MUST flag this run.
+        let finalFlags = last.flags
+        XCTAssertTrue(finalFlags.contains(.highVibration),
+            "Pipeline must set .highVibration when aliased content exceeds the "
+            + "RMS threshold - this IS the aliasing disclosure mechanism")
+
+        // Prove the assertion is load-bearing: without the flag the run would
+        // incorrectly appear trustworthy.
+        let withoutFlag = QualityFlags(rawValue: finalFlags.rawValue & ~QualityFlags.highVibration.rawValue)
+        XCTAssertTrue(withoutFlag.isTrustworthy,
+            "Without .highVibration the run would incorrectly appear trustworthy")
+        XCTAssertFalse(finalFlags.isTrustworthy,
+            "With .highVibration the run is correctly disqualified")
+    }
+
+    /// 100 Hz vibration at 100 Hz sample rate aliases PERFECTLY to DC - the
+    /// hardest case, invisible to any frequency-domain detector.
+    ///
+    /// Detection of the DC-aliased case requires the once-per-bike audio profile
+    /// (sampled at 44.1 kHz, not subject to aliasing). That is a separate path.
+    func testDCAliasingIsDocumentedLimitationOfRMSDetector() {
+        var scenario = SyntheticSource.Scenario()
+        scenario.duration = 5.0
+        scenario.eventStart = 100.0  // no event
+        scenario.vibrationFrequency = 100.0  // aliases to DC (0 Hz)
+        scenario.vibrationAmplitude = 3.0    // same amplitude as above
+        scenario.emitGNSS = false
+
+        var source = SyntheticSource(scenario: scenario)
+        let config = Config()
+        let alignment = MountAlignment.identity()
+        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: nil,
+                                gravityAnchor: Conventions.restSpecificForce)
+
+        let outputs = runPipeline(source: &source, pipeline: &pipeline)
+        guard let last = outputs.last else {
+            XCTFail("Pipeline produced no output"); return
+        }
+        let finalFlags = last.flags
+
+        // The high-pass RMS path CANNOT detect this - documented limitation.
+        XCTAssertFalse(finalFlags.contains(.highVibration),
+            "Documented limitation: DC-aliased vibration is invisible to the "
+            + "high-pass RMS detector. Detection needs unaliased audio.")
+    }
 }

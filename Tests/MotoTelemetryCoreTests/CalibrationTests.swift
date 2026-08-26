@@ -311,7 +311,25 @@ final class CalibrationTests: XCTestCase {
                                     thermalStateAtCapture: 1)
         let data = try JSONEncoder().encode(estimate)
         let decoded = try JSONDecoder().decode(BiasEstimate.self, from: data)
-        XCTAssertEqual(estimate, decoded)
+
+        // Exact equality for non-floating-point fields
+        XCTAssertEqual(estimate.id, decoded.id)
+        XCTAssertEqual(estimate.sampleCount, decoded.sampleCount)
+        XCTAssertEqual(estimate.bikeProfileID, decoded.bikeProfileID)
+        XCTAssertEqual(estimate.thermalStateAtCapture, decoded.thermalStateAtCapture)
+        XCTAssertEqual(estimate.wallClock, decoded.wallClock)
+
+        // Tolerance-based comparison for Double fields that lose precision in JSON round-trip
+        let accuracy = 1e-15
+        XCTAssertEqual(estimate.monotonicTime, decoded.monotonicTime, accuracy: accuracy)
+
+        XCTAssertEqual(estimate.bias.x, decoded.bias.x, accuracy: accuracy)
+        XCTAssertEqual(estimate.bias.y, decoded.bias.y, accuracy: accuracy)
+        XCTAssertEqual(estimate.bias.z, decoded.bias.z, accuracy: accuracy)
+
+        XCTAssertEqual(estimate.sigma.x, decoded.sigma.x, accuracy: accuracy)
+        XCTAssertEqual(estimate.sigma.y, decoded.sigma.y, accuracy: accuracy)
+        XCTAssertEqual(estimate.sigma.z, decoded.sigma.z, accuracy: accuracy)
     }
 }
 

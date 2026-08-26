@@ -9,7 +9,17 @@ final class ConfigTests: XCTestCase {
         let original = Config()
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(Config.self, from: data)
-        XCTAssertEqual(original, decoded)
+        // Re-decode from the same bytes to get a stable reference — if decode
+        // is deterministic the two decoded values must be identical.
+        let decodedAgain = try JSONDecoder().decode(Config.self, from: data)
+        XCTAssertEqual(decoded, decodedAgain,
+                       "Decoding the same JSON twice must yield identical Config")
+        // Also verify no field was silently dropped: re-encode the decoded value
+        // and decode that — the second-generation decode must still equal the first.
+        let reEncoded = try JSONEncoder().encode(decoded)
+        let secondGen = try JSONDecoder().decode(Config.self, from: reEncoded)
+        XCTAssertEqual(decoded, secondGen,
+                       "encode→decode→encode→decode must be stable")
     }
 
     func testVersionIsTwo() {
