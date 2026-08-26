@@ -94,8 +94,13 @@ final class RunRecorder: @unchecked Sendable {
         )
 
         // Initialize downstream stages
-        cueEngine = CueEngine(config: config,
-                              angleTargetUpper: angleTarget.upper * .pi / 180)
+        cueEngine = CueEngine(
+            angleTargetUpper: angleTarget.upper * .pi / 180,
+            timeToThresholdWarn: config.timeToThresholdWarn,
+            audioLatencyCompensation: config.audioLatencyCompensation,
+            loopOutPitchRate: config.loopOutPitchRate,
+            cueReleaseTime: config.cueReleaseTime
+        )
         segmenter = EventSegmenter(config: config)
         scorer = RunScorer(config: config)
 
@@ -303,34 +308,4 @@ final class RunRecorder: @unchecked Sendable {
     }
 }
 
-// MARK: - CueEngine convenience extension
 
-private extension CueEngine {
-    mutating func process(pitch: Double, pitchRate: Double, time: TimeInterval) -> CueState {
-        // CueEngine.process takes a PipelineOutput-like input; adapt here
-        // The actual CueEngine API processes per-sample — this bridges the call
-        let input = CueEngine.Input(pitch: pitch, pitchRate: pitchRate, time: time)
-        return self.process(input) ?? CueState()
-    }
-
-    struct Input {
-        let pitch: Double
-        let pitchRate: Double
-        let time: TimeInterval
-    }
-}
-
-// MARK: - EventSegmenter convenience extension
-
-private extension EventSegmenter {
-    mutating func process(pitch: Double, pitchRate: Double, time: TimeInterval) -> Transition? {
-        let input = EventSegmenter.Input(pitch: pitch, pitchRate: pitchRate, time: time)
-        return self.process(input)
-    }
-
-    struct Input {
-        let pitch: Double
-        let pitchRate: Double
-        let time: TimeInterval
-    }
-}

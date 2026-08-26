@@ -111,7 +111,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
                 guard let self, let motion else { return }
                 let q = motion.attitude.quaternion
                 self.lock.lock()
-                self.latestAttitude = Quaternion(q.w, q.x, q.y, q.z)
+                self.latestAttitude = Quaternion(w: q.w, x: q.x, y: q.y, z: q.z)
                 self.lock.unlock()
             }
         }
