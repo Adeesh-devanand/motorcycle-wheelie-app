@@ -111,6 +111,28 @@ extension Matrix3 {
 }
 
 extension Quaternion {
+    /// Rotation vector (axis * angle) of this rotation — the inverse of
+    /// `Quaternion.exp(rotationVector:)`.
+    ///
+    /// Needed by the smoother, which has to express the DIFFERENCE between two
+    /// nominal attitudes as a 3-vector so it can be pushed through a linear
+    /// recursion. Takes the shorter arc, because q and -q are the same rotation and
+    /// the longer one would make a small discrepancy look like a 350 degree error.
+    public var log: Vector3 {
+        let n = normalized
+        // Shorter arc.
+        let q = n.w < 0 ? Quaternion(w: -n.w, x: -n.x, y: -n.y, z: -n.z) : n
+        let vector = Vector3(q.x, q.y, q.z)
+        let sine = vector.magnitude
+        guard sine > 1e-12 else { return .zero }
+        let angle = 2 * atan2(sine, q.w)
+        return vector * (angle / sine)
+    }
+
+    public var conjugate: Quaternion {
+        Quaternion(w: w, x: -x, y: -y, z: -z)
+    }
+
     /// Shortest-arc rotation taking unit vector `from` onto unit vector `to`.
     ///
     /// Used to seed attitude from the gravity anchor: heading is unobservable from

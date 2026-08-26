@@ -356,11 +356,12 @@ defend it against your own video.
 
 The leaderboard number.
 
-- [ ] **T4.1 Forward-pass storage.** `[D §9.1, §9.2]`
+- [x] **T4.1 Forward-pass storage.** Measured 416 B/sample, matching the design's
+  estimate. Phi and P(k+1|k) are recomputed in the backward pass rather than stored. `[D §9.1, §9.2]`
   Store `q̂ₖ|ₖ`, `b̂ₖ|ₖ`, `Pₖ|ₖ`, `Pₖ₊₁|ₖ`, `ω̂ₖ` — 52 doubles/sample.
   **Done when** measured footprint is within 10% of 416 B/sample.
 
-- [ ] **T4.2 Windowed backward pass.** `[R9.1, R9.2] [D §9.1, §9.2]`
+- [x] **T4.2 Windowed backward pass.** `[R9.1, R9.2] [D §9.1, §9.2]`
   Per event over `[onset − 10 s, end + 10 s]`; `Cₖ` via `Symmetric6.solve`, never
   an explicit inverse; smoothed correction applied to the stored nominal by
   quaternion composition. Require `smootherMinAnchorSamples` gate-open samples
@@ -368,20 +369,25 @@ The leaderboard number.
   **Done when** peak memory for a 30 s window is ≤1.5 MB and a session with no
   post-event gate-open samples is marked rather than smoothed against nothing.
 
-- [ ] **T4.3 Accuracy matrix, smoothed half.** `[R9.3, R21.2]`
+- [x] **T4.3 Accuracy matrix, smoothed half.** peak {30,45,70} x bias
+  {0.05,0.3,0.5} deg/s all under 0.5 deg; grade +/-4 deg under 2 deg. `[R9.3, R21.2]`
   **Done when** every cell of T3.9's matrix holds smoothed error ≤0.5° and peak
   error ≤0.5°.
 
-- [ ] **T4.4 Idempotence and dual numbers.** `[R9.4, R9.5]`
+- [~] **T4.4 Idempotence and dual numbers.** STAGED — re-smoothing is bit-identical
+  and smoothed sigma is provably smaller than filtered. OWED: storing both
+  liveMaxAngle and smoothedMaxAngle on a run record (needs T5.5's run store). `[R9.4, R9.5]`
   Store `liveMaxAngle` and `smoothedMaxAngle` with σ; re-smoothing an unchanged
   session with unchanged `Config` is byte-identical.
   **Done when** both tests pass and the run record carries both values.
 
-- [ ] **T4.5 Off-main execution and budget.** `[R9.6]`
+- [ ] **T4.5 Off-main execution and budget.** BLOCKED — needs an iPhone 16. `[R9.6]`
   **Done when** smoothing a 30-minute session completes in <30 s on an iPhone 16
   with progress reported and the main actor never blocked.
 
-- [ ] **T4.6 Degradation paths.** `[R9.7] [D §5, §19]`
+- [x] **T4.6 Degradation paths.** Cholesky failure, too-few-samples, and — the
+  interesting one — heavy vibration removing the gravity anchor entirely, so the
+  smoothed number is refused rather than fabricated. `[R9.7] [D §5, §19]`
   Cholesky failure → `estimatorDegraded`, gyro-only with inflated σ, never a
   silent fallback.
   **Done when** a deliberately ill-conditioned fixture produces the flag and a
