@@ -391,27 +391,30 @@ synthetic truth and labelled with its own uncertainty.
 
 ## M5 — Segmentation and scoring
 
-- [ ] **T5.1 `EventSegmenter`.** `[R10.1–R10.3, R10.5, R10.7] [D §10]`
+- [x] **T5.1 `EventSegmenter`.** `[R10.1–R10.3, R10.5, R10.7] [D §10]`
   4-state machine (idle/arming/active/disarming), interpolated boundaries,
   `eventMinDuration` discard with a debug bypass.
   **Done when** unit tests cover: dwell not met → no onset; jitter across the
   exit threshold does not end an event; a 0.3 s blip is discarded; boundaries land
   between samples.
 
-- [ ] **T5.2 Confidence signals.** `[R10.4] [D §10]`
+- [x] **T5.2 Confidence signals.** `[R10.4] [D §10]`
   `eventEntryPitchRate` as confidence, not a gate; GNSS/IMU longitudinal
   divergence upgrades confidence and never vetoes.
   **Done when** a slow deliberate lift still registers as an event, marked
   `.weak`.
 
-- [ ] **T5.3 `RunScorer`.** `[R11.1–R11.4] [D §11.1]`
+- [x] **T5.3 `RunScorer`.** Review addition: `holdWindowResolved` reports when the
+  hold window could not be located and a middle-of-event heuristic was substituted,
+  so an unmeasurable consistency number cannot compete for a personal best. `[R11.1–R11.4] [D §11.1]`
   All metrics, hold window from pitch-rate zero crossings with
   `holdRateEpsilon`, `distance` nil below `distanceMinFixes`, uncertainty carried
   per metric.
   **Done when** `angleStdDev` on a synthetic perfect hold is <0.1° and on a
   deliberately wobbly hold is >2° — i.e. it measures steadiness, not the ramp.
 
-- [ ] **T5.4 Session summary.** `[R11.3]`
+- [~] **T5.4 Session summary.** STAGED — SessionSummary implemented and tested.
+  OWED: `motolog replay` printing it for the M1 ride (needs the CLI task + a ride). `[R11.3]`
   Event count, cumulative hold time, best per metric.
   **Done when** `motolog replay` prints it for the M1 ride.
 
@@ -439,19 +442,20 @@ find by hand.
 
 The coaching product. This is the first milestone a rider would pay for.
 
-- [ ] **T6.1 `IntervalDetector`.** `[R12.2, R12.3] [UI §9.6] [D §11.2]`
+- [x] **T6.1 `IntervalDetector`.** `[R12.2, R12.3] [UI §9.6] [D §11.2]`
   Interpolated boundaries → **merge** ≤0.10 s gaps → **then** drop <0.15 s
   fragments. Order matters.
   **Done when** ui-spec §17 fixtures 5, 6, 7 pass, and a filter-then-merge
   implementation demonstrably fails the jitter case (record it once).
 
-- [ ] **T6.2 Targets and snapshots.** `[R12.1, R12.4, R12.5] [UI §5.1, §5.2]`
+- [x] **T6.2 Targets and snapshots.** `[R12.1, R12.4, R12.5] [UI §5.1, §5.2]`
   `RiderPreferences` in display units, `TargetSnapshot` in SI captured per run;
   intervals computed once at finalisation against the snapshot.
   **Done when** changing current preferences does not alter any stored run's
   bands or intervals.
 
-- [ ] **T6.3 `CueEngine`.** `[R13.2–R13.4, R13.7] [D §12]`
+- [~] **T6.3 `CueEngine`.** STAGED — decision logic complete and tested with no
+  audio hardware. OWED: `motolog replay --cues` printing the timeline (CLI task). `[R13.2–R13.4, R13.7] [D §12]`
   `timeToThreshold` on the band's upper bound, lead = `timeToThresholdWarn` +
   latency, `urgency = 1 − ttt/L`, `.loopOut` preempts `.approach`,
   `cueReleaseTime` hysteresis.
@@ -473,7 +477,8 @@ The coaching product. This is the first milestone a rider would pay for.
   **Done when** measured end-to-end sample-timestamp-to-tone latency is <120 ms
   on wired or HFP, measured on the bench with an external recorder.
 
-- [ ] **T6.6 Per-event band score.** `[R12.6]`
+- [~] **T6.6 Per-event band score.** STAGED — computed and tested. OWED: appearing
+  in `motolog replay` output (CLI task). `[R12.6]`
   **Done when** time-in-band appears per event in `motolog replay` and in the run
   record.
 
@@ -559,7 +564,8 @@ specification; do not simplify it.
   `#12` numbering.
   **Done when** ui-spec §16.2's row criteria check.
 
-- [ ] **T8.3 `RelativeMetricColorScale`.** `[R16.2] [UI §8.4]`
+- [x] **T8.3 `RelativeMetricColorScale`.** OKLCH implemented from scratch (sRGB ->
+  linear -> OKLab -> OKLCh) since the core may not import a platform colour library. `[R16.2] [UI §8.4]`
   Per-field independent normalisation; anchors from the date scope **before**
   row-level metric filters; anchors unmoved by sorting or filtering; all-equal ⇒
   t = 1; the four stops, OKLCH-interpolated with linear-RGB fallback; no yellow.
@@ -579,7 +585,9 @@ specification; do not simplify it.
   **Done when** skeleton rows carry no fake values and filtered-empty offers
   Clear filters.
 
-- [ ] **T8.7 `RunDetailsView` hero + charts.** `[R17.1, R17.2] [UI §9.3, §9.4]`
+- [~] **T8.7 `RunDetailsView` hero + charts.** PARTIAL — the LTTB downsampler is
+  done and tested (10k -> <=300, first/last preserved, beats naive decimation on
+  extrema). The SwiftUI charts themselves are blocked on Xcode. `[R17.1, R17.2] [UI §9.3, §9.4]`
   Three-region hero; two stacked charts on one x-domain; recorded target bands
   behind traces with right-edge labels; separate bright-green maximum markers for
   angle and speed; ≤300 rendered points via LTTB or min/max buckets.
