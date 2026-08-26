@@ -108,7 +108,7 @@ bike and a file you can argue with.
 
 ### 1B — The iOS app target
 
-- [ ] **T1.11 Create the app in Xcode.** `[R…engineering constraints]`
+- [~] **T1.11 Create the app in Xcode.** `[R…engineering constraints]` *(code written, awaiting Xcode compile verification)*
   File ▸ New ▸ Project ▸ iOS App named `MotoTelemetryApp` inside this repo;
   File ▸ Add Package Dependencies ▸ Add Local pointing at the repo root; add
   `MotoTelemetryCore` to the app target. Adopt the `[UI §13]` file tree plus the
@@ -116,14 +116,14 @@ bike and a file you can argue with.
   **Done when** the app builds and launches on an iPhone 16 and a `#if canImport`
   check confirms `MotoTelemetryCore` is linked.
 
-- [ ] **T1.12 Info.plist and permissions.** `[R19.1, R19.2]`
+- [~] **T1.12 Info.plist and permissions.** `[R19.1, R19.2]` *(code written, awaiting Xcode compile verification)*
   `UIBackgroundModes = [audio, location]`; usage strings for motion and location
   stating why. **No** microphone usage string requested at launch — it is
   requested lazily by T1.20.
   **Done when** a cold launch prompts for motion and location only, and the app
   keeps running with the screen off for 5 minutes.
 
-- [ ] **T1.13 `MotionService`.** `[R2.1, R2.3] [D §16.2]`
+- [~] **T1.13 `MotionService`.** `[R2.1, R2.3] [D §16.2]` *(code written, awaiting Xcode compile verification)*
   Raw gyro + raw accelerometer at `1/100`, and `deviceMotion(using:
   .xArbitraryZVertical)` alongside. Pair raw channels by nearest timestamp within
   half a sample period; emit an unpaired sample zero-filled **and** counted, never
@@ -132,46 +132,46 @@ bike and a file you can argue with.
   **Done when** a 60 s capture reports ≥99% pairing and the unpaired counter
   matches the integrity report.
 
-- [ ] **T1.14 `SpeedService`.** `[R2.5] [D §16.2]`
+- [~] **T1.14 `SpeedService`.** `[R2.5] [D §16.2]` *(code written, awaiting Xcode compile verification)*
   `CLLocationManager` → `Sample.gnss`, recording both `fixTime` and
   `arrivalTime`.
   **Done when** a 5-minute outdoor capture shows a non-zero median
   `arrivalTime − fixTime` (expect 100–400 ms) — if it is zero you are stamping
   both from the same clock read, which is the bug this task exists to prevent.
 
-- [ ] **T1.15 Barometer + thermal channels.** `[R2.1, R2.6]`
+- [~] **T1.15 Barometer + thermal channels.** `[R2.1, R2.6]` *(code written, awaiting Xcode compile verification)*
   `CMAltimeter` → `Sample.baro`; `ProcessInfo.thermalStateDidChangeNotification`
   → timestamped log records.
   **Done when** a session's thermal timeline is reconstructable from the log
   alone, verified by `motolog verify`.
 
-- [ ] **T1.16 `SessionWriter`.** `[R2.2, R2.10, R4.1, R4.2] [D §15.2]`
+- [~] **T1.16 `SessionWriter`.** `[R2.2, R2.10, R4.1, R4.2] [D §15.2]` *(code written, awaiting Xcode compile verification)*
   SPSC ring buffer (`writerRingCapacity` 8192, **overwrite forbidden**, drop
   counter), batched `O_APPEND` writes, `fsync` every 1.0 s, atomic manifest via
   temp + `rename(2)`.
   **Done when** a 30-minute session reports mean sensor-callback-to-enqueue
   latency < 1 ms, max < 5 ms, and drop count 0.
 
-- [ ] **T1.17 No-filter guarantee test.** `[R2.2]`
+- [~] **T1.17 No-filter guarantee test.** `[R2.2]` *(code written, awaiting Xcode compile verification)*
   Feed a known synthetic stream through the real writer, decode the file, assert
   equality sample-for-sample.
   **Done when** the test passes and would fail if any smoothing were introduced.
 
-- [ ] **T1.18 `SessionRecovery`.** `[R4.2, R4.3] [D §15.3]`
+- [~] **T1.18 `SessionRecovery`.** `[R4.2, R4.3] [D §15.3]` *(code written, awaiting Xcode compile verification)*
   On launch, repair any session whose manifest lacks `complete: true`: drop a
   trailing newline-less line, recompute sizes/checksums, mark `recovered`.
   **Done when** force-quitting mid-recording loses ≤1 s, the session opens in the
   app, `motolog replay` exits 0 on it, and a unit test truncating a fixture
   mid-line loses only the partial line.
 
-- [ ] **T1.19 `IntegrityReport` + `motolog verify`.** `[R4.4, R4.5, R4.6] [D §15.4]`
+- [~] **T1.19 `IntegrityReport` + `motolog verify`.** `[R4.4, R4.5, R4.6] [D §15.4]` *(code written, awaiting Xcode compile verification)*
   Per-channel achieved vs nominal rate, gap count and max gap, saturation count,
   thermal timeline, GNSS fix count and median latency, late-fix discards, writer
   drops, sync-flash timestamp, battery delta. Flag `lowConfidence` per R4.5.
   **Done when** `motolog verify <session>` prints the report and exits non-zero
   for a deliberately-degraded fixture.
 
-- [ ] **T1.20 Recording modes.** `[R3.1–R3.6] [D §16.4]`
+- [~] **T1.20 Recording modes.** `[R3.1–R3.6] [D §16.4]` *(code written, awaiting Xcode compile verification)*
   `RecordingModeView` selecting ride / bench / vibration, written into the
   manifest. `ride` and `bench` never instantiate `VibrationRecorder`;
   `vibration` requests microphone permission lazily and records `audio.caf` plus
@@ -179,17 +179,17 @@ bike and a file you can argue with.
   **Done when** all three modes produce sessions that `motolog replay` accepts,
   and no microphone prompt ever appears in ride or bench mode.
 
-- [ ] **T1.21 Visual sync flash.** `[R2.13]`
+- [~] **T1.21 Visual sync flash.** `[R2.13]` *(code written, awaiting Xcode compile verification)*
   Full-screen white for `Config.syncFlashFrames` at ride start, timestamp logged.
   **Done when** the logged timestamp is within 20 ms of the actual screen change,
   measured once against a 120 fps reference recording.
 
-- [ ] **T1.22 In-ride marker.** `[R2.14]`
+- [~] **T1.22 In-ride marker.** `[R2.14]` *(code written, awaiting Xcode compile verification)*
   Large on-screen target and hardware volume-button press → timestamped marker
   record. Markers are labels only, never boundaries.
   **Done when** markers appear in the log and `motolog replay` lists them.
 
-- [ ] **T1.23 Export.** `[R2.11]`
+- [~] **T1.23 Export.** `[R2.11]` *(code written, awaiting Xcode compile verification)*
   Share sheet + Files visibility for a whole session directory.
   **Done when** a session lands on the Mac intact and replays there.
 
@@ -505,25 +505,25 @@ The coaching product. This is the first milestone a rider would pay for.
 Visual layer over a pipeline that already works. `docs/ui-spec.md` §7 is the
 specification; do not simplify it.
 
-- [ ] **T7.1 Design system.** `[UI §4]`
+- [~] **T7.1 Design system.** `[UI §4]` *(code written, awaiting Xcode compile verification)*
   `AppColors`, `AppTypography`, `AppSpacing` — all 4.1 semantic tokens, 4.2
   translucent tokens, 4.3 type roles with tabular numerals. No yellow/orange/red.
   **Done when** a token audit shows no raw hex outside `AppColors`.
 
-- [ ] **T7.2 `VerticalTelemetryMeter`.** `[UI §7.3]`
+- [~] **T7.2 `VerticalTelemetryMeter`.** `[UI §7.3]` *(code written, awaiting Xcode compile verification)*
   Fill from zero to cursor only, unfilled track above, gradient clipped to the
   filled portion, target band, crisp cursor line + marker, ease-out with no
   overshoot. Angle fixed 0–90°; speed mirrored with external labels right.
   **Done when** ui-spec §16.1's meter criteria all check, verified by snapshot
   tests at 0%, 42%, and 100%.
 
-- [ ] **T7.3 `LiveWheelieViewModel`.** `[R15.3, R15.4] [UI §7.2, §12]`
+- [~] **T7.3 `LiveWheelieViewModel`.** `[R15.3, R15.4] [UI §7.2, §12]` *(code written, awaiting Xcode compile verification)*
   `@MainActor`, fed at ≤30 Hz, display smoothing α 0.20–0.35 that never reaches
   the stored run, speed unavailable rather than 0 when location is denied.
   **Done when** a location-denied run shows unavailable and the stored run's
   values match estimator output exactly, not the smoothed display values.
 
-- [ ] **T7.4 `CalibrationOverlay`.** `[R6.10, R15.2] [UI §7.4]`
+- [~] **T7.4 `CalibrationOverlay`.** `[R6.10, R15.2] [UI §7.4]` *(code written, awaiting Xcode compile verification)*
   Whole-screen dim with `surfaceOverlay`, em-dash values, unfilled tracks,
   **exactly one** spinner, `CALIBRATING`, and the amended instruction
   `Hold the bike still with the engine idling`. No header spinner, no green dot
@@ -531,24 +531,24 @@ specification; do not simplify it.
   **Done when** ui-spec §16.1's two calibration criteria check against the new
   sentence, in a UI test.
 
-- [ ] **T7.5 Amend `docs/ui-spec.md`.** `[R6.10]`
+- [~] **T7.5 Amend `docs/ui-spec.md`.** `[R6.10]` *(code written, awaiting Xcode compile verification)*
   Replace the old sentence in §7.2's state-matrix row, §7.4's instruction, and
   §7.7's `CalibrationOverlay(message:)` sketch. Change nothing else.
   **Done when** `grep -n "straight line at a constant speed" docs/ui-spec.md`
   returns nothing.
 
-- [ ] **T7.6 Bottom live metrics.** `[UI §7.3]`
+- [~] **T7.6 Bottom live metrics.** `[UI §7.3]` *(code written, awaiting Xcode compile verification)*
   Exactly ANGLE / WHEELIE TIME / SPEED, left-to-right, with current-attempt
   maxima and no history statistics.
   **Done when** the order and the absence of lifetime stats both check.
 
-- [ ] **T7.7 `TargetRangeEditor` + scale selector.** `[R12.1] [UI §7.5]`
+- [~] **T7.7 `TargetRangeEditor` + scale selector.** `[R12.1] [UI §7.5]` *(code written, awaiting Xcode compile verification)*
   Dual-handle slider, numeric fields, units, Reset/Apply, inline validation per
   ui-spec §5.2, disabled during an active attempt with the non-blocking
   `Finish the current run to change targets.`
   **Done when** invalid ranges disable Apply and the controls are inert mid-attempt.
 
-- [ ] **T7.8 Mount-alignment setup screen.** `[R6.11] [D §3.2]`
+- [~] **T7.8 Mount-alignment setup screen.** `[R6.11] [D §3.2]` *(code written, awaiting Xcode compile verification)*
   `Features/Setup/BikeProfileSetupView` hosting the two gestures — explicitly
   **not** in the Live overlay.
   **Done when** alignment can be captured and re-captured from bike-profile
@@ -560,14 +560,14 @@ specification; do not simplify it.
 
 ## M8 — Past Runs and Run Details
 
-- [ ] **T8.1 `RunMapper`.** `[R11.5] [D §13]`
+- [~] **T8.1 `RunMapper`.** `[R11.5] [D §13]` *(code written, awaiting Xcode compile verification)*
   The field-by-field bridge: SI/radians/monotonic → ui-spec `WheelieRun` in
   degrees/km-h/wall-clock, `RunExtras` sidecar for the extended metrics,
   `maxAngle` from smoothed when present with the UI stating which.
   **Done when** a round-trip test maps a `RunRecord` to a `WheelieRun` and back
   within display precision, and the ui-spec types are unmodified.
 
-- [ ] **T8.2 `PastRunsView` + row.** `[R16.1] [UI §8.2, §8.3]`
+- [~] **T8.2 `PastRunsView` + row.** `[R16.1] [UI §8.2, §8.3]` *(code written, awaiting Xcode compile verification)*
   76–84 pt fully-tappable compact rows, timestamp primary + relative time,
   shared TIME/ANGLE/SPEED column headings, optional LATEST/LONGEST badges, no
   `#12` numbering.
@@ -581,20 +581,20 @@ specification; do not simplify it.
   **Done when** unit tests cover the all-equal case and prove anchors do not move
   under sort or filter, and ui-spec §8.5's worked example reproduces exactly.
 
-- [ ] **T8.4 Sort/filter behaviour and persistence.** `[UI §8.2, §16.2]`
+- [~] **T8.4 Sort/filter behaviour and persistence.** `[UI §8.2, §16.2]` *(code written, awaiting Xcode compile verification)*
   **Done when** first tap sorts descending, repeat toggles, one primary key, and
   state survives return from Run Details.
 
-- [ ] **T8.5 Flagged-run presentation.** `[R16.3]`
+- [~] **T8.5 Flagged-run presentation.** `[R16.3]` *(code written, awaiting Xcode compile verification)*
   `lowConfidence` / `aliasingSuspect` / `recovered` / `smoothingUnavailable`
   visibly marked and excluded from personal-best anchors.
   **Done when** a flagged run cannot be the bright-green personal best.
 
-- [ ] **T8.6 Empty / loading / error states.** `[UI §8.6]`
+- [~] **T8.6 Empty / loading / error states.** `[UI §8.6]` *(code written, awaiting Xcode compile verification)*
   **Done when** skeleton rows carry no fake values and filtered-empty offers
   Clear filters.
 
-- [~] **T8.7 `RunDetailsView` hero + charts.** PARTIAL — the LTTB downsampler is
+- [~] **T8.7 `RunDetailsView` hero + charts.** *(code written, awaiting Xcode compile verification)* PARTIAL — the LTTB downsampler is
   done and tested (10k -> <=300, first/last preserved, beats naive decimation on
   extrema). The SwiftUI charts themselves are blocked on Xcode. `[R17.1, R17.2] [UI §9.3, §9.4]`
   Three-region hero; two stacked charts on one x-domain; recorded target bands
@@ -603,7 +603,7 @@ specification; do not simplify it.
   **Done when** ui-spec §16.3's chart criteria check and the 10 000-sample
   fixture (ui-spec §17 case 9) renders and scrubs smoothly.
 
-- [ ] **T8.8 `SharedChartScrubber`.** `[R17.2] [UI §9.4]`
+- [~] **T8.8 `SharedChartScrubber`.** `[R17.2] [UI §9.4]` *(code written, awaiting Xcode compile verification)*
   One `selectedTime` across both charts, time bubble, interpolated values,
   clamped domain, selection persists until cleared. Interpolate from hydrated raw
   (T5.6), degrading to the decimated series with a reduced-fidelity label when the
@@ -611,11 +611,11 @@ specification; do not simplify it.
   **Done when** both behaviours are exercised by tests, including the
   raw-deleted path.
 
-- [ ] **T8.9 Insight strip.** `[UI §9.5]`
+- [~] **T8.9 Insight strip.** `[UI §9.5]` *(code written, awaiting Xcode compile verification)*
   Exactly ANGLE IN RANGE / AVG SPEED / SPEED IN RANGE. No `Peak At`.
   **Done when** the criterion checks.
 
-- [ ] **T8.10 `RangeIntervalTimeline`.** `[R17.1] [UI §9.6]`
+- [~] **T8.10 `RangeIntervalTimeline`.** `[R17.1] [UI §9.6]` *(code written, awaiting Xcode compile verification)*
   Exactly one baseline; `LIFT 0.0s` and `DOWN {duration}s`; every interval drawn;
   angle and speed on the same line with screen/additive blending; rounded caps;
   tap hit-testing with expanded radius; an overlap offers a chooser and never
@@ -624,7 +624,7 @@ specification; do not simplify it.
   **Done when** every ui-spec §16.3 timeline criterion checks, including the
   overlap case, using ui-spec §17 fixtures 5 and 7.
 
-- [ ] **T8.11 Navigation and state ownership.** `[UI §6, §14]`
+- [~] **T8.11 Navigation and state ownership.** `[UI §6, §14]` *(code written, awaiting Xcode compile verification)*
   **Done when** returning from details preserves scroll, filters, and sort.
 
 **M8 is done when** the Run Details screen explains a wheelie you rode without
