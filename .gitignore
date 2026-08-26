@@ -1,0 +1,14 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Ride logs are large and are DATA, not source. Keep one small trimmed
+# fixture in Fixtures/ for tests; everything else stays out of git.
+Rides/
+*.ndjson
+!Fixtures/*.ndjson
+*.mov
+*.mp4
