@@ -109,7 +109,7 @@ public struct SessionRecovery {
         }
 
         // Count valid sample lines (first line is header)
-        let lineCount = samplesData.withUnsafeBytes { buffer -> Int {
+        let lineCount = samplesData.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Int in
             buffer.reduce(0) { count, byte in count + (byte == 0x0A ? 1 : 0) }
         }
         let sampleLines = max(0, lineCount - 1) // subtract header

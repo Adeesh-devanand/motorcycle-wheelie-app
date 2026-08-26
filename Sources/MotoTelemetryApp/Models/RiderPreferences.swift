@@ -1,13 +1,13 @@
 import Foundation
 import Observation
 
-enum SpeedUnit: String, Codable, Sendable {
+enum SpeedUnit: String, Codable, Sendable, Equatable {
     case kph
     case mph
 }
 
 @Observable
-final class RiderPreferences: Sendable {
+final class RiderPreferences {
     private static let storageKey = "RiderPreferences"
 
     var angleTarget: MetricRange {

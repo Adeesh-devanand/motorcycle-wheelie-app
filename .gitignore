@@ -12,3 +12,7 @@ Rides/
 !Fixtures/*.ndjson
 *.mov
 *.mp4
+
+# Xcode per-user state
+*.xcuserstate
+xcuserdata/

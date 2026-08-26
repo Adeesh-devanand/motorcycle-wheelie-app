@@ -116,7 +116,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             }
         }
 
-        log.info("MotionService started at \(config.nominalSampleRate) Hz")
+        log.info("MotionService started at \(self.config.nominalSampleRate) Hz")
     }
 
     public func stop() {

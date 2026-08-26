@@ -1,14 +1,24 @@
 import SwiftUI
 
 struct RootTabView: View {
+    @State private var calibrationService = CalibrationService()
+    @State private var preferences = RiderPreferences()
+    @State private var runRepository = RunRepository()
+
     var body: some View {
         TabView {
-            Tab("Live", systemImage: "gauge") {
-                Text("Live View")
+            LiveWheelieView(
+                calibrationService: calibrationService,
+                preferences: preferences
+            )
+            .tabItem {
+                Label("Live", systemImage: "gauge")
             }
-            Tab("Runs", systemImage: "list.bullet") {
-                Text("Runs List")
-            }
+
+            PastRunsView(repository: runRepository)
+                .tabItem {
+                    Label("Runs", systemImage: "list.bullet")
+                }
         }
         .preferredColorScheme(.dark)
     }

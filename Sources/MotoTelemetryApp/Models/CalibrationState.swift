@@ -1,6 +1,6 @@
 import Foundation
 
-enum CalibrationStaleReason: String, Codable, Sendable {
+enum CalibrationStaleReason: String, Codable, Sendable, Equatable {
     case timeout
     case thermalDrift
     case biasAgeExceeded

@@ -34,7 +34,7 @@ struct LiveWheelieView: View {
             if showCalibrationOverlay {
                 CalibrationOverlay(
                     state: viewModel.calibrationState,
-                    onDismiss: nil
+                    onDismiss: { viewModel.requestRecalibration() }
                 )
                 .transition(.opacity)
             }
@@ -136,7 +136,9 @@ struct LiveWheelieView: View {
 
     private var showCalibrationOverlay: Bool {
         switch viewModel.calibrationState {
-        case .calibrating, .unavailable:
+        case .calibrating, .unavailable, .failed:
+            // A failure must be shown, not hidden behind a pill: the message
+            // names what went wrong and is the only way to act on it.
             return true
         default:
             return false

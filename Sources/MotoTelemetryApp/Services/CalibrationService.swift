@@ -26,6 +26,9 @@ final class CalibrationService: @unchecked Sendable {
     private var gateOpenAccumulator: TimeInterval = 0
     private var lastGateOpenTime: TimeInterval?
     private var recalibrationRequested = false
+    /// True once calibration has been started automatically. Prevents an endless
+    /// failed → calibrating → failed loop, which would fire at the sample rate.
+    private var hasAutoStarted = false
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "CalibrationService")
 
@@ -98,8 +101,11 @@ final class CalibrationService: @unchecked Sendable {
     func feedIMU(_ sample: IMUSample, bikeProfileID: UUID) {
         let thermalState = ProcessInfo.processInfo.thermalState.rawValue
 
-        // Auto-start when recalibration requested
-        if estimator == nil && recalibrationRequested {
+        // Auto-start ONCE on the first sample, or whenever the user explicitly
+        // asks for a recalibration. Never auto-restart after a failure — the
+        // failure is the answer, and restarting at 100 Hz just thrashes the UI.
+        if estimator == nil && (!hasAutoStarted || recalibrationRequested) {
+            hasAutoStarted = true
             estimator = BiasEstimator(
                 config: config,
                 bikeProfileID: bikeProfileID,

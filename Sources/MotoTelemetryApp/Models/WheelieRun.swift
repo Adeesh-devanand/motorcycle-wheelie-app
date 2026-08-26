@@ -1,6 +1,6 @@
 import Foundation
 
-struct WheelieRun: Identifiable, Codable, Sendable {
+struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
     let id: UUID
     let startedAt: Date
     let endedAt: Date

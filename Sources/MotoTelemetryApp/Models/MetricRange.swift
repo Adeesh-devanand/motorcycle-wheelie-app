@@ -5,7 +5,7 @@ struct MetricRange: Codable, Equatable, Sendable {
     let upper: Double
 }
 
-struct RunConfigurationSnapshot: Codable, Sendable {
+struct RunConfigurationSnapshot: Codable, Sendable, Equatable {
     let angleTarget: MetricRange
     let speedTarget: MetricRange
     let speedGaugeMaximum: Double

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QuartzCore
 import os
 
 /// View model for the Live Wheelie screen. Decimates sensor data to 30 Hz
@@ -30,12 +31,15 @@ final class LiveWheelieViewModel {
 
     let preferences: RiderPreferences
     private let calibrationService: CalibrationService
+    private let motionService = MotionService()
+    private let bikeProfileID = UUID()
 
     // MARK: - Private
 
     private var displayLink: DisplayLinkProxy?
     private var recordingStartTime: Date?
     private var sessionTimer: Timer?
+    private var sensorTask: Task<Void, Never>?
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "LiveWheelieVM")
 
     // Raw values from sensor pipeline (updated at full rate)
@@ -54,6 +58,7 @@ final class LiveWheelieViewModel {
 
     func onAppear() {
         startDisplayDecimation()
+        startSensors()
         syncCalibrationState()
     }
 
@@ -61,6 +66,36 @@ final class LiveWheelieViewModel {
         displayLink?.stop()
         displayLink = nil
         sessionTimer?.invalidate()
+        sensorTask?.cancel()
+        sensorTask = nil
+        motionService.stop()
+    }
+
+    /// Starts the IMU stream. This is what triggers iOS's motion permission
+    /// prompt — the OS only asks once something actually requests updates.
+    private func startSensors() {
+        guard sensorTask == nil else { return }
+        motionService.start()
+        let stream = motionService.samples
+        let calibration = calibrationService
+        let profileID = bikeProfileID
+        sensorTask = Task { [weak self] in
+            var lastPublished: CalibrationState?
+            for await sample in stream {
+                guard let self else { return }
+                if case .imu(let imu) = sample {
+                    calibration.feedIMU(imu, bikeProfileID: profileID)
+                    // Publish only on a real transition. Republishing at the
+                    // 100 Hz sample rate makes the overlay flicker.
+                    let current = calibration.state
+                    if current != lastPublished {
+                        lastPublished = current
+                        await MainActor.run { self.calibrationState = current }
+                    }
+                }
+            }
+        }
+        log.info("Motion sensors started")
     }
 
     // MARK: - Sensor Input (called from pipeline at full rate)
@@ -159,7 +194,7 @@ private final class DisplayLinkProxy {
 
     func start() {
         displayLink = CADisplayLink(target: self, selector: #selector(tick))
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 30)
+        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 30, preferred: 30)
         displayLink?.add(to: .main, forMode: .common)
     }
 

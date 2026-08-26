@@ -1,0 +1,800 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A26AA8354F61D31677FDF24 /* RunRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F1E188D491D14F126393B41 /* RunRepository.swift */; };
+		0BFA6BF15391863F43BADE6C /* RunRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B64E2E8F632A902E50942C1 /* RunRecorder.swift */; };
+		0D0EE1ACF7C203D6BCFA6CAE /* ExportShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F66AED97E226F4BFDC42BFBA /* ExportShareView.swift */; };
+		15319773F596350D4F447BF5 /* IntegrityReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199BDF52DFFDFB9E4F7EF3DF /* IntegrityReportView.swift */; };
+		16E93EEDCA5F7969DD6FD019 /* TelemetrySample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05189703D2E55965A4FFAFCA /* TelemetrySample.swift */; };
+		1737023DB99C1FC0BA62AD9D /* AppSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9891B30483FE6C3270B64D2B /* AppSpacing.swift */; };
+		1DDCF77BFE34B730CC770246 /* CalibrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9843BE5D011EB29560B8819 /* CalibrationService.swift */; };
+		24FFB8FDC9C31EB1EC4D66EF /* VibrationRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D72F79925D74920A339DB7C5 /* VibrationRecorder.swift */; };
+		2F2C7898F24AEEF709FBDD5D /* WheelieRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C2F606FE0CEF07875FDAF5 /* WheelieRun.swift */; };
+		341CD2AD6B143FD39E5572DC /* RangeInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BD1C0F9B1A28303A09A56C /* RangeInterval.swift */; };
+		34B091E26ED4F9A1A5C661E8 /* WheelieTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5321C4596E1ED9D05AB014EA /* WheelieTrackerApp.swift */; };
+		393F3B62D94B50BD7C28653C /* CalibrationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AD62C6C8782A12897D1A787 /* CalibrationState.swift */; };
+		39BF460F8316B3C7F87FB713 /* CueAudioRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06033950F92346AA1AE9F229 /* CueAudioRenderer.swift */; };
+		40E676BCB907322AAEA0EA4E /* SharedChartScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632D6957D52C56365546DF91 /* SharedChartScrubber.swift */; };
+		43B4F05EF3BD8FE326E4B5CB /* SessionRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8632D2D017F0370536C69576 /* SessionRecovery.swift */; };
+		4D2EA853B264F54DA95455DB /* CalibrationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B9AF71DE6F77A478BFA125F /* CalibrationOverlay.swift */; };
+		5533FCC9E912C0276401749A /* RunFiltersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */; };
+		584BA9209CE4274BD5D7A77E /* RunDetailsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F01A8933247C8727399794 /* RunDetailsViewModel.swift */; };
+		62E9E071FB66022474F1A321 /* RunHistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */; };
+		6A85CD5B581EEF89C22CA672 /* MotionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1074D78E8227A2DB2F2310 /* MotionService.swift */; };
+		6FF47EE91FA923CE160A2D9E /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7849EC04C6F5594BE1A33D5B /* RootTabView.swift */; };
+		7A9AE63DE951533876F39681 /* TargetRangeEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B03EB185516B303E442C47C /* TargetRangeEditor.swift */; };
+		7FEA287F1840F5CE5D381934 /* RecordingControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74F656C1E92255003AEA74A /* RecordingControlsView.swift */; };
+		998E722D3F8720FB1F85088E /* RiderPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */; };
+		9CBE05E5C55B218C8033C650 /* RecordingModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ABAA0B38138350E1F4519E2 /* RecordingModeView.swift */; };
+		9D956BF7303F37E10071582A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D956BF6303F37E10071582A /* Assets.xcassets */; };
+		9D956BFA303F37E10071582A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D956BF9303F37E10071582A /* Preview Assets.xcassets */; };
+		9D956C09303F37E10071582A /* MotoTelemetryAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */; };
+		9D956C13303F37E10071582A /* MotoTelemetryAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */; };
+		9D956C15303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C14303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift */; };
+		9D956C23303F386E0071582A /* MotoTelemetryCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9D956C22303F386E0071582A /* MotoTelemetryCore */; };
+		9D956C25303F386E0071582A /* motolog in Frameworks */ = {isa = PBXBuildFile; productRef = 9D956C24303F386E0071582A /* motolog */; };
+		9E44A6FF105C10D4B1F30159 /* TelemetryChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43523B778E635A1FB725AB6 /* TelemetryChart.swift */; };
+		A21CBF14EC802ECD27AEE6AF /* PastRunsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D13738221370270E218612 /* PastRunsView.swift */; };
+		A40E79E6A693310C2325EB90 /* BikeProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91FA94F2186952A638FFA4D6 /* BikeProfileStore.swift */; };
+		A475F02C9DF3C8C478F7B5C3 /* SyncFlashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2243AC71F2FB7C7E57B1F0DA /* SyncFlashView.swift */; };
+		AE4269A0B20405DC6E0BD122 /* BikeProfileSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C8C35B1823BCE3F8798593 /* BikeProfileSetupView.swift */; };
+		C20D6E0B6BC419765A807449 /* SessionWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5DF6689206F49568941E9 /* SessionWriter.swift */; };
+		CD1399595F79C0C35BA00CD5 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D957BCAACA74EE0C875D4C6D /* StatusPill.swift */; };
+		DE05A5156F14A9B5AAED7BFD /* LiveWheelieViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF0A5B84B62088F87F76DFD /* LiveWheelieViewModel.swift */; };
+		E1A10DEA44F6F1379438156E /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 308F5348665941F9F428E1DD /* AppColors.swift */; };
+		E20921E4144AF909A6B725BA /* AppTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80DE1911D70D3E949201E7E /* AppTypography.swift */; };
+		EA20E0D67E996E54A9415DE9 /* RangeIntervalTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6C9AE8584E255A63B9A61B /* RangeIntervalTimeline.swift */; };
+		ED40DDA30AF6FEF1ED0B0AD9 /* TelemetryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */; };
+		EDFE448FF46C5A790D3B049D /* LiveWheelieView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36CD0DE818EEE6EB208F4D5E /* LiveWheelieView.swift */; };
+		EE771F07AE712759AC1B0D54 /* SpeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC627DDB75B086E398F821E /* SpeedService.swift */; };
+		F0CDCD7D52FC5A19F994AC4D /* MetricRange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */; };
+		F3BC3173131F861014ADC8A5 /* PastRunsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */; };
+		FDC86A23A1030C87A13C8175 /* VerticalTelemetryMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */; };
+		FDD0869E5B8DF7B723B05CFA /* RunDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A3F54540EEBFF633E593CC /* RunDetailsView.swift */; };
+		FE4D405429E7BD1F63972722 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307660157200E539C85ABCE7 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9D956C05303F37E10071582A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9D956BE7303F37DE0071582A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9D956BEE303F37DE0071582A;
+			remoteInfo = MotoTelemetryApp;
+		};
+		9D956C0F303F37E10071582A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9D956BE7303F37DE0071582A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9D956BEE303F37DE0071582A;
+			remoteInfo = MotoTelemetryApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		05189703D2E55965A4FFAFCA /* TelemetrySample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetrySample.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/TelemetrySample.swift"; sourceTree = SOURCE_ROOT; };
+		06033950F92346AA1AE9F229 /* CueAudioRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CueAudioRenderer.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/CueAudioRenderer.swift"; sourceTree = SOURCE_ROOT; };
+		0AD62C6C8782A12897D1A787 /* CalibrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationState.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/CalibrationState.swift"; sourceTree = SOURCE_ROOT; };
+		0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunHistoryRow.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunHistoryRow.swift"; sourceTree = SOURCE_ROOT; };
+		178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RiderPreferences.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/RiderPreferences.swift"; sourceTree = SOURCE_ROOT; };
+		199BDF52DFFDFB9E4F7EF3DF /* IntegrityReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IntegrityReportView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Setup/IntegrityReportView.swift"; sourceTree = SOURCE_ROOT; };
+		1F1E188D491D14F126393B41 /* RunRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRepository.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/RunRepository.swift"; sourceTree = SOURCE_ROOT; };
+		2243AC71F2FB7C7E57B1F0DA /* SyncFlashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SyncFlashView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Session/SyncFlashView.swift"; sourceTree = SOURCE_ROOT; };
+		2ABAA0B38138350E1F4519E2 /* RecordingModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecordingModeView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Session/RecordingModeView.swift"; sourceTree = SOURCE_ROOT; };
+		307660157200E539C85ABCE7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Setup/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		308F5348665941F9F428E1DD /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppColors.swift"; sourceTree = SOURCE_ROOT; };
+		36CD0DE818EEE6EB208F4D5E /* LiveWheelieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/LiveWheelieView.swift"; sourceTree = SOURCE_ROOT; };
+		3B64E2E8F632A902E50942C1 /* RunRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRecorder.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/RunRecorder.swift"; sourceTree = SOURCE_ROOT; };
+		5321C4596E1ED9D05AB014EA /* WheelieTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieTrackerApp.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/App/WheelieTrackerApp.swift"; sourceTree = SOURCE_ROOT; };
+		54C8C35B1823BCE3F8798593 /* BikeProfileSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BikeProfileSetupView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Setup/BikeProfileSetupView.swift"; sourceTree = SOURCE_ROOT; };
+		55F01A8933247C8727399794 /* RunDetailsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		5B03EB185516B303E442C47C /* TargetRangeEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TargetRangeEditor.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/TargetRangeEditor.swift"; sourceTree = SOURCE_ROOT; };
+		5B9AF71DE6F77A478BFA125F /* CalibrationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationOverlay.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/CalibrationOverlay.swift"; sourceTree = SOURCE_ROOT; };
+		5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/PastRunsViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		632D6957D52C56365546DF91 /* SharedChartScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedChartScrubber.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/SharedChartScrubber.swift"; sourceTree = SOURCE_ROOT; };
+		6BF0A5B84B62088F87F76DFD /* LiveWheelieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/LiveWheelieViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		6C1074D78E8227A2DB2F2310 /* MotionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MotionService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/MotionService.swift"; sourceTree = SOURCE_ROOT; };
+		7849EC04C6F5594BE1A33D5B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootTabView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/App/RootTabView.swift"; sourceTree = SOURCE_ROOT; };
+		8632D2D017F0370536C69576 /* SessionRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SessionRecovery.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/SessionRecovery.swift"; sourceTree = SOURCE_ROOT; };
+		86BD1C0F9B1A28303A09A56C /* RangeInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeInterval.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/RangeInterval.swift"; sourceTree = SOURCE_ROOT; };
+		8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetricRange.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/MetricRange.swift"; sourceTree = SOURCE_ROOT; };
+		91FA94F2186952A638FFA4D6 /* BikeProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BikeProfileStore.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/BikeProfileStore.swift"; sourceTree = SOURCE_ROOT; };
+		92A3F54540EEBFF633E593CC /* RunDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsView.swift"; sourceTree = SOURCE_ROOT; };
+		9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryCard.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/TelemetryCard.swift"; sourceTree = SOURCE_ROOT; };
+		972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunFiltersSheet.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunFiltersSheet.swift"; sourceTree = SOURCE_ROOT; };
+		9891B30483FE6C3270B64D2B /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppSpacing.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppSpacing.swift"; sourceTree = SOURCE_ROOT; };
+		9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MotoTelemetryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D956BF6303F37E10071582A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9D956BF9303F37E10071582A /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		9D956C04303F37E10071582A /* MotoTelemetryAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MotoTelemetryAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppTests.swift; sourceTree = "<group>"; };
+		9D956C0E303F37E10071582A /* MotoTelemetryAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MotoTelemetryAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppUITests.swift; sourceTree = "<group>"; };
+		9D956C14303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		9D956C26303F43D40071582A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VerticalTelemetryMeter.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/VerticalTelemetryMeter.swift"; sourceTree = SOURCE_ROOT; };
+		B80DE1911D70D3E949201E7E /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppTypography.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppTypography.swift"; sourceTree = SOURCE_ROOT; };
+		B9D13738221370270E218612 /* PastRunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/PastRunsView.swift"; sourceTree = SOURCE_ROOT; };
+		BEC627DDB75B086E398F821E /* SpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeedService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/SpeedService.swift"; sourceTree = SOURCE_ROOT; };
+		CF6C9AE8584E255A63B9A61B /* RangeIntervalTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeIntervalTimeline.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RangeIntervalTimeline.swift"; sourceTree = SOURCE_ROOT; };
+		D72F79925D74920A339DB7C5 /* VibrationRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VibrationRecorder.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/VibrationRecorder.swift"; sourceTree = SOURCE_ROOT; };
+		D74F656C1E92255003AEA74A /* RecordingControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecordingControlsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Session/RecordingControlsView.swift"; sourceTree = SOURCE_ROOT; };
+		D7C2F606FE0CEF07875FDAF5 /* WheelieRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieRun.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/WheelieRun.swift"; sourceTree = SOURCE_ROOT; };
+		D957BCAACA74EE0C875D4C6D /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusPill.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/StatusPill.swift"; sourceTree = SOURCE_ROOT; };
+		D9843BE5D011EB29560B8819 /* CalibrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/CalibrationService.swift"; sourceTree = SOURCE_ROOT; };
+		E43523B778E635A1FB725AB6 /* TelemetryChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryChart.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/TelemetryChart.swift"; sourceTree = SOURCE_ROOT; };
+		F4A5DF6689206F49568941E9 /* SessionWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SessionWriter.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/SessionWriter.swift"; sourceTree = SOURCE_ROOT; };
+		F66AED97E226F4BFDC42BFBA /* ExportShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExportShareView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Session/ExportShareView.swift"; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9D956BEC303F37DE0071582A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D956C25303F386E0071582A /* motolog in Frameworks */,
+				9D956C23303F386E0071582A /* MotoTelemetryCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C01303F37E10071582A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C0B303F37E10071582A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9D956BE6303F37DE0071582A = {
+			isa = PBXGroup;
+			children = (
+				9D956BF1303F37DE0071582A /* MotoTelemetryApp */,
+				9D956C07303F37E10071582A /* MotoTelemetryAppTests */,
+				9D956C11303F37E10071582A /* MotoTelemetryAppUITests */,
+				9D956BF0303F37DE0071582A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9D956BF0303F37DE0071582A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */,
+				9D956C04303F37E10071582A /* MotoTelemetryAppTests.xctest */,
+				9D956C0E303F37E10071582A /* MotoTelemetryAppUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9D956BF1303F37DE0071582A /* MotoTelemetryApp */ = {
+			isa = PBXGroup;
+			children = (
+				9D956C26303F43D40071582A /* Info.plist */,
+				9D956BF6303F37E10071582A /* Assets.xcassets */,
+				308F5348665941F9F428E1DD /* AppColors.swift */,
+				9891B30483FE6C3270B64D2B /* AppSpacing.swift */,
+				B80DE1911D70D3E949201E7E /* AppTypography.swift */,
+				D957BCAACA74EE0C875D4C6D /* StatusPill.swift */,
+				9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */,
+				7849EC04C6F5594BE1A33D5B /* RootTabView.swift */,
+				5321C4596E1ED9D05AB014EA /* WheelieTrackerApp.swift */,
+				CF6C9AE8584E255A63B9A61B /* RangeIntervalTimeline.swift */,
+				92A3F54540EEBFF633E593CC /* RunDetailsView.swift */,
+				55F01A8933247C8727399794 /* RunDetailsViewModel.swift */,
+				632D6957D52C56365546DF91 /* SharedChartScrubber.swift */,
+				E43523B778E635A1FB725AB6 /* TelemetryChart.swift */,
+				54C8C35B1823BCE3F8798593 /* BikeProfileSetupView.swift */,
+				199BDF52DFFDFB9E4F7EF3DF /* IntegrityReportView.swift */,
+				307660157200E539C85ABCE7 /* SettingsView.swift */,
+				5B9AF71DE6F77A478BFA125F /* CalibrationOverlay.swift */,
+				36CD0DE818EEE6EB208F4D5E /* LiveWheelieView.swift */,
+				6BF0A5B84B62088F87F76DFD /* LiveWheelieViewModel.swift */,
+				5B03EB185516B303E442C47C /* TargetRangeEditor.swift */,
+				A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */,
+				B9D13738221370270E218612 /* PastRunsView.swift */,
+				5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */,
+				972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */,
+				0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */,
+				F66AED97E226F4BFDC42BFBA /* ExportShareView.swift */,
+				D74F656C1E92255003AEA74A /* RecordingControlsView.swift */,
+				2ABAA0B38138350E1F4519E2 /* RecordingModeView.swift */,
+				2243AC71F2FB7C7E57B1F0DA /* SyncFlashView.swift */,
+				0AD62C6C8782A12897D1A787 /* CalibrationState.swift */,
+				8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */,
+				86BD1C0F9B1A28303A09A56C /* RangeInterval.swift */,
+				178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */,
+				05189703D2E55965A4FFAFCA /* TelemetrySample.swift */,
+				D7C2F606FE0CEF07875FDAF5 /* WheelieRun.swift */,
+				91FA94F2186952A638FFA4D6 /* BikeProfileStore.swift */,
+				D9843BE5D011EB29560B8819 /* CalibrationService.swift */,
+				06033950F92346AA1AE9F229 /* CueAudioRenderer.swift */,
+				6C1074D78E8227A2DB2F2310 /* MotionService.swift */,
+				3B64E2E8F632A902E50942C1 /* RunRecorder.swift */,
+				1F1E188D491D14F126393B41 /* RunRepository.swift */,
+				8632D2D017F0370536C69576 /* SessionRecovery.swift */,
+				F4A5DF6689206F49568941E9 /* SessionWriter.swift */,
+				BEC627DDB75B086E398F821E /* SpeedService.swift */,
+				D72F79925D74920A339DB7C5 /* VibrationRecorder.swift */,
+				9D956BF8303F37E10071582A /* Preview Content */,
+			);
+			path = MotoTelemetryApp;
+			sourceTree = "<group>";
+		};
+		9D956BF8303F37E10071582A /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				9D956BF9303F37E10071582A /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		9D956C07303F37E10071582A /* MotoTelemetryAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */,
+			);
+			path = MotoTelemetryAppTests;
+			sourceTree = "<group>";
+		};
+		9D956C11303F37E10071582A /* MotoTelemetryAppUITests */ = {
+			isa = PBXGroup;
+			children = (
+				9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */,
+				9D956C14303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift */,
+			);
+			path = MotoTelemetryAppUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9D956BEE303F37DE0071582A /* MotoTelemetryApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9D956C18303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryApp" */;
+			buildPhases = (
+				9D956BEB303F37DE0071582A /* Sources */,
+				9D956BEC303F37DE0071582A /* Frameworks */,
+				9D956BED303F37DE0071582A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MotoTelemetryApp;
+			packageProductDependencies = (
+				9D956C22303F386E0071582A /* MotoTelemetryCore */,
+				9D956C24303F386E0071582A /* motolog */,
+			);
+			productName = MotoTelemetryApp;
+			productReference = 9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9D956C03303F37E10071582A /* MotoTelemetryAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9D956C1B303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryAppTests" */;
+			buildPhases = (
+				9D956C00303F37E10071582A /* Sources */,
+				9D956C01303F37E10071582A /* Frameworks */,
+				9D956C02303F37E10071582A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9D956C06303F37E10071582A /* PBXTargetDependency */,
+			);
+			name = MotoTelemetryAppTests;
+			productName = MotoTelemetryAppTests;
+			productReference = 9D956C04303F37E10071582A /* MotoTelemetryAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		9D956C0D303F37E10071582A /* MotoTelemetryAppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9D956C1E303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryAppUITests" */;
+			buildPhases = (
+				9D956C0A303F37E10071582A /* Sources */,
+				9D956C0B303F37E10071582A /* Frameworks */,
+				9D956C0C303F37E10071582A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9D956C10303F37E10071582A /* PBXTargetDependency */,
+			);
+			name = MotoTelemetryAppUITests;
+			productName = MotoTelemetryAppUITests;
+			productReference = 9D956C0E303F37E10071582A /* MotoTelemetryAppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9D956BE7303F37DE0071582A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1520;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					9D956BEE303F37DE0071582A = {
+						CreatedOnToolsVersion = 15.2;
+					};
+					9D956C03303F37E10071582A = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = 9D956BEE303F37DE0071582A;
+					};
+					9D956C0D303F37E10071582A = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = 9D956BEE303F37DE0071582A;
+					};
+				};
+			};
+			buildConfigurationList = 9D956BEA303F37DE0071582A /* Build configuration list for PBXProject "MotoTelemetryApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9D956BE6303F37DE0071582A;
+			packageReferences = (
+				9D956C21303F386E0071582A /* XCLocalSwiftPackageReference "../.." */,
+			);
+			productRefGroup = 9D956BF0303F37DE0071582A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9D956BEE303F37DE0071582A /* MotoTelemetryApp */,
+				9D956C03303F37E10071582A /* MotoTelemetryAppTests */,
+				9D956C0D303F37E10071582A /* MotoTelemetryAppUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9D956BED303F37DE0071582A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D956BFA303F37E10071582A /* Preview Assets.xcassets in Resources */,
+				9D956BF7303F37E10071582A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C02303F37E10071582A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C0C303F37E10071582A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9D956BEB303F37DE0071582A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1A10DEA44F6F1379438156E /* AppColors.swift in Sources */,
+				1737023DB99C1FC0BA62AD9D /* AppSpacing.swift in Sources */,
+				E20921E4144AF909A6B725BA /* AppTypography.swift in Sources */,
+				CD1399595F79C0C35BA00CD5 /* StatusPill.swift in Sources */,
+				ED40DDA30AF6FEF1ED0B0AD9 /* TelemetryCard.swift in Sources */,
+				6FF47EE91FA923CE160A2D9E /* RootTabView.swift in Sources */,
+				34B091E26ED4F9A1A5C661E8 /* WheelieTrackerApp.swift in Sources */,
+				EA20E0D67E996E54A9415DE9 /* RangeIntervalTimeline.swift in Sources */,
+				FDD0869E5B8DF7B723B05CFA /* RunDetailsView.swift in Sources */,
+				584BA9209CE4274BD5D7A77E /* RunDetailsViewModel.swift in Sources */,
+				40E676BCB907322AAEA0EA4E /* SharedChartScrubber.swift in Sources */,
+				9E44A6FF105C10D4B1F30159 /* TelemetryChart.swift in Sources */,
+				AE4269A0B20405DC6E0BD122 /* BikeProfileSetupView.swift in Sources */,
+				15319773F596350D4F447BF5 /* IntegrityReportView.swift in Sources */,
+				FE4D405429E7BD1F63972722 /* SettingsView.swift in Sources */,
+				4D2EA853B264F54DA95455DB /* CalibrationOverlay.swift in Sources */,
+				EDFE448FF46C5A790D3B049D /* LiveWheelieView.swift in Sources */,
+				DE05A5156F14A9B5AAED7BFD /* LiveWheelieViewModel.swift in Sources */,
+				7A9AE63DE951533876F39681 /* TargetRangeEditor.swift in Sources */,
+				FDC86A23A1030C87A13C8175 /* VerticalTelemetryMeter.swift in Sources */,
+				A21CBF14EC802ECD27AEE6AF /* PastRunsView.swift in Sources */,
+				F3BC3173131F861014ADC8A5 /* PastRunsViewModel.swift in Sources */,
+				5533FCC9E912C0276401749A /* RunFiltersSheet.swift in Sources */,
+				62E9E071FB66022474F1A321 /* RunHistoryRow.swift in Sources */,
+				0D0EE1ACF7C203D6BCFA6CAE /* ExportShareView.swift in Sources */,
+				7FEA287F1840F5CE5D381934 /* RecordingControlsView.swift in Sources */,
+				9CBE05E5C55B218C8033C650 /* RecordingModeView.swift in Sources */,
+				A475F02C9DF3C8C478F7B5C3 /* SyncFlashView.swift in Sources */,
+				393F3B62D94B50BD7C28653C /* CalibrationState.swift in Sources */,
+				F0CDCD7D52FC5A19F994AC4D /* MetricRange.swift in Sources */,
+				341CD2AD6B143FD39E5572DC /* RangeInterval.swift in Sources */,
+				998E722D3F8720FB1F85088E /* RiderPreferences.swift in Sources */,
+				16E93EEDCA5F7969DD6FD019 /* TelemetrySample.swift in Sources */,
+				2F2C7898F24AEEF709FBDD5D /* WheelieRun.swift in Sources */,
+				A40E79E6A693310C2325EB90 /* BikeProfileStore.swift in Sources */,
+				1DDCF77BFE34B730CC770246 /* CalibrationService.swift in Sources */,
+				39BF460F8316B3C7F87FB713 /* CueAudioRenderer.swift in Sources */,
+				6A85CD5B581EEF89C22CA672 /* MotionService.swift in Sources */,
+				0BFA6BF15391863F43BADE6C /* RunRecorder.swift in Sources */,
+				0A26AA8354F61D31677FDF24 /* RunRepository.swift in Sources */,
+				43B4F05EF3BD8FE326E4B5CB /* SessionRecovery.swift in Sources */,
+				C20D6E0B6BC419765A807449 /* SessionWriter.swift in Sources */,
+				EE771F07AE712759AC1B0D54 /* SpeedService.swift in Sources */,
+				24FFB8FDC9C31EB1EC4D66EF /* VibrationRecorder.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C00303F37E10071582A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D956C09303F37E10071582A /* MotoTelemetryAppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D956C0A303F37E10071582A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D956C13303F37E10071582A /* MotoTelemetryAppUITests.swift in Sources */,
+				9D956C15303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9D956C06303F37E10071582A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9D956BEE303F37DE0071582A /* MotoTelemetryApp */;
+			targetProxy = 9D956C05303F37E10071582A /* PBXContainerItemProxy */;
+		};
+		9D956C10303F37E10071582A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9D956BEE303F37DE0071582A /* MotoTelemetryApp */;
+			targetProxy = 9D956C0F303F37E10071582A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		9D956C16303F37E10071582A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		9D956C17303F37E10071582A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9D956C19303F37E10071582A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"MotoTelemetryApp/Preview Content\"";
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MotoTelemetryApp/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speed from GPS for distance and GNSS aiding";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Measures motorcycle pitch angle during wheelies";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "audio location";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9D956C1A303F37E10071582A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"MotoTelemetryApp/Preview Content\"";
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MotoTelemetryApp/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speed from GPS for distance and GNSS aiding";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Measures motorcycle pitch angle during wheelies";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "audio location";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9D956C1C303F37E10071582A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MotoTelemetryApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MotoTelemetryApp";
+			};
+			name = Debug;
+		};
+		9D956C1D303F37E10071582A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MotoTelemetryApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MotoTelemetryApp";
+			};
+			name = Release;
+		};
+		9D956C1F303F37E10071582A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryAppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MotoTelemetryApp;
+			};
+			name = Debug;
+		};
+		9D956C20303F37E10071582A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9KZ4CCANYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryAppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MotoTelemetryApp;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9D956BEA303F37DE0071582A /* Build configuration list for PBXProject "MotoTelemetryApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9D956C16303F37E10071582A /* Debug */,
+				9D956C17303F37E10071582A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9D956C18303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9D956C19303F37E10071582A /* Debug */,
+				9D956C1A303F37E10071582A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9D956C1B303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9D956C1C303F37E10071582A /* Debug */,
+				9D956C1D303F37E10071582A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9D956C1E303F37E10071582A /* Build configuration list for PBXNativeTarget "MotoTelemetryAppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9D956C1F303F37E10071582A /* Debug */,
+				9D956C20303F37E10071582A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		9D956C21303F386E0071582A /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9D956C22303F386E0071582A /* MotoTelemetryCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MotoTelemetryCore;
+		};
+		9D956C24303F386E0071582A /* motolog */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = motolog;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 9D956BE7303F37DE0071582A /* Project object */;
+}

@@ -119,7 +119,10 @@ final class CueAudioRenderer: @unchecked Sendable {
     private func renderCallback(frameCount: AVAudioFrameCount,
                                 bufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
         let state = cueState.withLock { $0 }
-        let buffer = UnsafeMutableBufferPointer<Float>(bufferList.pointee.mBuffers)
+        let buffer = UnsafeMutableBufferPointer<Float>(
+            start: bufferList.pointee.mBuffers.mData?.assumingMemoryBound(to: Float.self),
+            count: Int(frameCount)
+        )
 
         let targetEnvelope: Float
         let frequency: Double
