@@ -309,7 +309,14 @@ hold is accurate to under a degree instead of five.
    `failed(message:)` (σ threshold breached, gate never opened within the
    attempt window, or saturation during collection).
 9. Saturated samples never enter a bias estimate.
-10. **`docs/ui-spec.md` §7.4 is amended.** The calibrating-overlay instruction
+10. **Manual recalibration.** Tapping the `CALIBRATED` status pill in the Live
+    screen header forces an immediate transition to `calibrating` state,
+    displaying the calibrating overlay with the "Hold the bike still with the
+    engine idling" instruction. The validity gate resolves it normally. If
+    tapped while moving (gate cannot open), the overlay remains until the rider
+    stops — this blocks live data intentionally, preventing use of stale bias
+    while the rider believes they have recalibrated.
+11. **`docs/ui-spec.md` §7.4 is amended.** The calibrating-overlay instruction
     line changes from `Ride in a straight line at a constant speed` to
     `Hold the bike still with the engine idling`, and the same substitution is
     made in the §7.2 state matrix row for `Calibrating` and in the §7.7

@@ -235,7 +235,7 @@ Show current pitch angle, current speed, live wheelie duration, and current-atte
 | State | Header | Content | Interaction |
 |---|---|---|---|
 | Calibrating | No small duplicate status spinner | Entire screen dimmed; one prominent centered spinner and instruction | Settings may remain available only if safe; live values unavailable |
-| Calibrated, idle | Green dot + `CALIBRATED` | Meters active at current baseline; time `0.0s` | Target/settings controls enabled |
+| Calibrated, idle | Green dot + `CALIBRATED` | Meters active at current baseline; time `0.0s` | Target/settings controls enabled; tapping the status pill forces recalibration (shows overlay immediately) |
 | Calibrated, wheelie active | Green dot + `CALIBRATED` | Meters and time update live | Configuration controls disabled |
 | Calibration stale/lost | Transition to calibrating overlay | Freeze or blank live values | Require recalibration |
 | Sensor failure | Error message with retry | No live values | Retry and settings available |
@@ -245,6 +245,7 @@ Show current pitch angle, current speed, live wheelie duration, and current-atte
 #### Header
 
 - A centered rounded status surface containing one steady green dot followed by `CALIBRATED`.
+- The status pill is tappable: tapping it forces a transition to `calibrating` state, immediately showing the calibrating overlay. If the rider is moving when they tap, the overlay remains until the validity gate opens (i.e., until they stop). This prevents riding against stale bias while believing recalibration occurred.
 - One settings gear at the top-right.
 - Do not show session duration or attempt number.
 
