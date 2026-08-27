@@ -77,7 +77,10 @@ public struct PipelineOutput: Codable, Sendable, Equatable {
 /// already in the past.
 public struct Pipeline {
     private let config: Config
-    private let alignment: MountAlignment
+    /// Bike axes in device axes. Read through to the filter rather than stored:
+    /// the filter DERIVES this from measured gravity when no alignment was
+    /// supplied, and a stored copy here would silently keep the stale guess.
+    private var alignment: MountAlignment { filter.alignment }
 
     private var filter: AttitudeESKF
     private var gate: ValidityGate
@@ -106,7 +109,6 @@ public struct Pipeline {
                 initialBias: BiasEstimate?,
                 gravityAnchor: Vector3? = nil) {
         self.config = config
-        self.alignment = alignment
         self.filter = AttitudeESKF(config: config,
                                    alignment: alignment,
                                    initialBias: initialBias,
@@ -163,8 +165,19 @@ public struct Pipeline {
                                        gateReason: verdict.reason))
 
         let rawPitch = filter.pitch
+        // The baseline exists to remove sustained ROAD GRADE (design §8.6, R8.8), and
+        // must never absorb the rider's own sustained pitch. Freezing on gate closure
+        // alone is not enough: a phone held steady at a large tilt is quasi-static, so
+        // the gate stays OPEN and the 25 s baseline chases the held angle — a held
+        // 20 deg decays as 20·e^(-t/25), reading 13 deg after 10 s and under 3 deg
+        // after 50 s. Adapt only while genuinely near level and outside an attempt. A
+        // real road grade is a few degrees, well inside the band, so R8.8's +/-4 deg
+        // absorption is unaffected; this also stops a first gate-open sample taken
+        // while already tilted from seeding that tilt as the new zero.
+        let nearLevel = abs(rawPitch) < config.eventEntryPitch
+        let baselineMayAdapt = verdict.isOpen && !eventActive && nearLevel
         let corrected = baseline.process(GradeBaseline.Input(pitch: rawPitch,
-                                                            gateOpen: verdict.isOpen,
+                                                            gateOpen: baselineMayAdapt,
                                                             time: imu.time)) ?? rawPitch
 
         return PipelineOutput(time: imu.time,

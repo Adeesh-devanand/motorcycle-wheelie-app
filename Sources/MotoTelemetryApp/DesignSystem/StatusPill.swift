@@ -2,111 +2,68 @@ import SwiftUI
 
 // MARK: - StatusPill
 
-/// Capsule-shaped pill displaying the current CalibrationState.
-/// Tapping when `.calibrated` triggers forced recalibration.
+/// Wide rounded-rectangle status surface displaying the current CalibrationState.
+/// Tapping calls `onTapRecalibrate`.
 struct StatusPill: View {
     let state: CalibrationState
     let onTapRecalibrate: () -> Void
 
     var body: some View {
-        Button(action: handleTap) {
-            HStack(spacing: AppSpacing.xs) {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 6, height: 6)
-                    .modifier(PulseModifier(isPulsing: isPulsing))
-
+        Button(action: { onTapRecalibrate() }) {
+            HStack(spacing: AppSpacing.sm) {
+                statusIndicator
                 Text(label)
-                    .font(AppTypography.chipLabel)
-                    .textCase(.uppercase)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .tracking(1)
+                    .foregroundStyle(labelColor)
             }
-            .padding(.horizontal, AppSpacing.sm)
-            .padding(.vertical, AppSpacing.xs + 2)
+            .frame(height: 52)
+            .padding(.horizontal, AppSpacing.xl)
             .background(AppColors.surfaceCard)
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Calibration status: \(accessibilityLabel)")
-        .accessibilityHint(isTappable ? "Double tap to recalibrate" : "")
+        .accessibilityLabel("Calibration status: \(label.lowercased())")
+        .accessibilityHint("Double tap to recalibrate")
+    }
+
+    // MARK: - Status Indicator
+
+    @ViewBuilder
+    private var statusIndicator: some View {
+        switch state {
+        case .calibrated:
+            Circle()
+                .fill(AppColors.success)
+                .frame(width: 8, height: 8)
+        case .calibrating:
+            ProgressView()
+                .controlSize(.small)
+                .tint(AppColors.accent)
+        case .unavailable, .stale, .failed:
+            EmptyView()
+        }
     }
 
     // MARK: - Computed Properties
 
     private var label: String {
         switch state {
-        case .unavailable: "UNAVAILABLE"
-        case .calibrating: "CALIBRATING"
-        case .calibrated: "CALIBRATED"
-        case .stale: "STALE"
-        case .failed: "FAILED"
+        case .unavailable: return "UNAVAILABLE"
+        case .calibrating: return "CALIBRATING"
+        case .calibrated: return "CALIBRATED"
+        case .stale: return "STALE"
+        case .failed: return "FAILED"
         }
     }
 
-    private var dotColor: Color {
+    private var labelColor: Color {
         switch state {
-        case .unavailable: AppColors.textSecondary
-        case .calibrating: AppColors.accent
-        case .calibrated: AppColors.success
-        case .stale: AppColors.warning
-        case .failed: AppColors.danger
+        case .calibrated: return AppColors.success
+        case .calibrating: return AppColors.accent
+        case .stale: return AppColors.accent
+        case .failed: return AppColors.danger
+        case .unavailable: return AppColors.textSecondary
         }
     }
-
-    private var isPulsing: Bool {
-        if case .calibrating = state { return true }
-        return false
-    }
-
-    private var isTappable: Bool {
-        if case .calibrated = state { return true }
-        return false
-    }
-
-    private var accessibilityLabel: String {
-        label.lowercased()
-    }
-
-    private func handleTap() {
-        if case .calibrated = state {
-            onTapRecalibrate()
-        }
-    }
-}
-
-// MARK: - Pulse Animation Modifier
-
-private struct PulseModifier: ViewModifier {
-    let isPulsing: Bool
-    @State private var isAnimating = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isPulsing ? (isAnimating ? 0.3 : 1.0) : 1.0)
-            .animation(
-                isPulsing
-                    ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                    : .default,
-                value: isAnimating
-            )
-            .onAppear {
-                if isPulsing { isAnimating = true }
-            }
-            .onChange(of: isPulsing) { _, newValue in
-                isAnimating = newValue
-            }
-    }
-}
-
-// MARK: - Preview
-
-#Preview {
-    VStack(spacing: 12) {
-        StatusPill(state: .calibrated(referenceID: UUID(), calibratedAt: .now)) {}
-        StatusPill(state: .calibrating(progress: 0.5)) {}
-        StatusPill(state: .stale(reason: .timeout)) {}
-        StatusPill(state: .failed(message: "Sensor error")) {}
-    }
-    .padding()
-    .background(AppColors.background)
 }

@@ -1,10 +1,21 @@
 import Foundation
+import MotoTelemetryCore
 import Observation
 import QuartzCore
 import os
 
-/// View model for the Live Wheelie screen. Decimates sensor data to 30 Hz
-/// for display and tracks recording state.
+/// View model for the Live Wheelie screen.
+///
+/// Reads live telemetry from `RunRecorder`, which owns the pipeline and is the
+/// single source of estimator output. This view model adds only display concerns:
+/// 30 Hz decimation and display-only smoothing, which per ui-spec §7.3 must never
+/// reach the stored run.
+///
+/// There is no manual record control. Per ui-spec §7.6 an attempt begins when the
+/// calibrated angle holds above 8° for 150 ms and ends when it holds below 5° for
+/// 250 ms, and the completed run is persisted atomically when it ends. The session
+/// therefore starts as soon as calibration succeeds and runs until the screen goes
+/// away — the rider never presses anything.
 @Observable
 final class LiveWheelieViewModel {
 
@@ -14,8 +25,20 @@ final class LiveWheelieViewModel {
     private(set) var currentSpeed: Double = 0       // km/h (or mph per prefs)
     private(set) var pitchRate: Double = 0          // deg/s
     private(set) var calibrationState: CalibrationState = .unavailable
-    private(set) var isRecording: Bool = false
-    private(set) var sessionElapsed: TimeInterval = 0
+
+    /// R6.2: which gate condition is blocking calibration, phrased for the rider.
+    private(set) var blockingReason: String?
+
+    /// Maxima for the CURRENT attempt only. Per ui-spec §7.6 these reset when a
+    /// new attempt begins, and per §7.3 no lifetime statistics are shown here.
+    private(set) var attemptMaxAngle: Double = 0
+    private(set) var attemptMaxSpeed: Double = 0
+
+    /// True while a wheelie is in progress. Drives the §7.2 "wheelie active" row:
+    /// configuration controls are disabled for its duration.
+    private(set) var eventActive: Bool = false
+    /// Live duration of the attempt in progress, seconds. Reads `0.0` when idle.
+    private(set) var wheelieTime: TimeInterval = 0
 
     // MARK: - Range Status
 
@@ -27,109 +50,81 @@ final class LiveWheelieViewModel {
         rangeStatus(value: currentSpeed, target: preferences.speedTarget, nearThreshold: 5)
     }
 
+    /// Live values are only trustworthy once calibrated. §7.2 requires them frozen
+    /// or blank otherwise.
+    var isCalibrated: Bool {
+        if case .calibrated = calibrationState { return true }
+        return false
+    }
+
     // MARK: - Dependencies
 
     let preferences: RiderPreferences
     private let calibrationService: CalibrationService
-    private let motionService = MotionService()
-    private let bikeProfileID = UUID()
+    private let recorder: RunRecorder
+    private let bikeProfileID: UUID
 
     // MARK: - Private
 
     private var displayLink: DisplayLinkProxy?
-    private var recordingStartTime: Date?
-    private var sessionTimer: Timer?
     private var sensorTask: Task<Void, Never>?
+    private var sessionStarted = false
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "LiveWheelieVM")
-
-    // Raw values from sensor pipeline (updated at full rate)
-    private var rawAngle: Double = 0
-    private var rawSpeed: Double = 0
-    private var rawPitchRate: Double = 0
 
     // MARK: - Init
 
-    init(calibrationService: CalibrationService, preferences: RiderPreferences) {
+    init(calibrationService: CalibrationService,
+         preferences: RiderPreferences,
+         recorder: RunRecorder,
+         bikeProfileID: UUID = UUID()) {
         self.calibrationService = calibrationService
         self.preferences = preferences
+        self.recorder = recorder
+        self.bikeProfileID = bikeProfileID
     }
 
     // MARK: - Lifecycle
 
     func onAppear() {
         startDisplayDecimation()
-        startSensors()
-        syncCalibrationState()
+        startSession()
     }
 
     func onDisappear() {
         displayLink?.stop()
         displayLink = nil
-        sessionTimer?.invalidate()
-        sensorTask?.cancel()
-        sensorTask = nil
-        motionService.stop()
+        recorder.stopSession()
+        sessionStarted = false
     }
 
-    /// Starts the IMU stream. This is what triggers iOS's motion permission
-    /// prompt — the OS only asks once something actually requests updates.
-    private func startSensors() {
-        guard sensorTask == nil else { return }
-        motionService.start()
-        let stream = motionService.samples
-        let calibration = calibrationService
-        let profileID = bikeProfileID
-        sensorTask = Task { [weak self] in
-            var lastPublished: CalibrationState?
-            for await sample in stream {
-                guard let self else { return }
-                if case .imu(let imu) = sample {
-                    calibration.feedIMU(imu, bikeProfileID: profileID)
-                    // Publish only on a real transition. Republishing at the
-                    // 100 Hz sample rate makes the overlay flicker.
-                    let current = calibration.state
-                    if current != lastPublished {
-                        lastPublished = current
-                        await MainActor.run { self.calibrationState = current }
-                    }
-                }
-            }
-        }
-        log.info("Motion sensors started")
-    }
-
-    // MARK: - Sensor Input (called from pipeline at full rate)
-
-    func updateTelemetry(angle: Double, speed: Double, pitchRate: Double) {
-        rawAngle = angle
-        rawSpeed = speed
-        rawPitchRate = pitchRate
-    }
-
-    func updateCalibration(_ state: CalibrationState) {
-        calibrationState = state
+    /// Starts the recording session. This is what asks CoreMotion for updates,
+    /// which is what triggers iOS's motion permission prompt, and it is also what
+    /// starts calibration — `RunRecorder` feeds every raw IMU sample to
+    /// `CalibrationService` as it runs the pipeline.
+    private func startSession() {
+        guard !sessionStarted else { return }
+        sessionStarted = true
+        recorder.startSession(
+            bikeProfileID: bikeProfileID,
+            // NOT `.identity`. Identity asserts bike-forward is device +X, which in
+            // a portrait mount is the LATERAL axis, so `AxisElevation.pitch` returned
+            // the elevation of the bike's lateral axis — lean, on the horizontal
+            // axis, swinging negative either way. The portrait preset puts the angle
+            // back on the pitch axis.
+            //
+            // This is a provisional default: a real per-bike alignment comes from the
+            // two-gesture solve (R7.1) captured in bike-profile setup, and once that
+            // is wired this should read the active profile's stored alignment and
+            // fall back to this preset only when none exists.
+            mountAlignment: .portraitMount(bikeProfileID: bikeProfileID),
+            angleTarget: preferences.angleTarget
+        )
+        log.info("Live session started")
     }
 
     // MARK: - User Actions
 
-    func startRecording() {
-        guard !isRecording else { return }
-        isRecording = true
-        recordingStartTime = .now
-        sessionElapsed = 0
-        startSessionTimer()
-        log.info("Recording started")
-    }
-
-    func stopRecording() {
-        guard isRecording else { return }
-        isRecording = false
-        sessionTimer?.invalidate()
-        sessionTimer = nil
-        recordingStartTime = nil
-        log.info("Recording stopped at \(self.sessionElapsed, format: .fixed(precision: 1))s")
-    }
-
+    /// Tapping the status pill (§7.3) or the failure overlay forces a re-zero.
     func requestRecalibration() {
         calibrationService.requestRecalibration()
     }
@@ -143,23 +138,33 @@ final class LiveWheelieViewModel {
         displayLink?.start()
     }
 
-    /// Called at display refresh rate (capped to 30 Hz by DisplayLinkProxy).
-    /// Applies display-only smoothing — never stored.
+    /// Called at 30 Hz. Pulls the latest estimator output from the recorder and
+    /// applies display-only smoothing — ui-spec §7.3's α ≈ 0.20–0.35. The stored
+    /// run uses estimator output, never these interpolated values.
     private func decimateToDisplay() {
-        let alpha = 0.3 // EMA smoothing factor
-        currentAngle = currentAngle + alpha * (rawAngle - currentAngle)
-        currentSpeed = currentSpeed + alpha * (rawSpeed - currentSpeed)
-        pitchRate = rawPitchRate
-    }
-
-    private func syncCalibrationState() {
+        let alpha = 0.3
         calibrationState = calibrationService.state
-    }
+        blockingReason = calibrationService.blockingReasonText
 
-    private func startSessionTimer() {
-        sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self, let start = self.recordingStartTime else { return }
-            self.sessionElapsed = Date.now.timeIntervalSince(start)
+        // §7.2: freeze live values unless calibrated.
+        guard isCalibrated else { return }
+
+        currentAngle += alpha * (recorder.livePitch - currentAngle)
+        currentSpeed += alpha * (recorder.liveSpeed - currentSpeed)
+        pitchRate = recorder.livePitchRate
+
+        let wasActive = eventActive
+        eventActive = recorder.eventActive
+        wheelieTime = recorder.eventActive ? recorder.currentEventDuration : 0
+
+        // §7.6: reset current-attempt maxima only when a NEW attempt begins.
+        if eventActive && !wasActive {
+            attemptMaxAngle = 0
+            attemptMaxSpeed = 0
+        }
+        if eventActive {
+            attemptMaxAngle = max(attemptMaxAngle, recorder.livePitch)
+            attemptMaxSpeed = max(attemptMaxSpeed, recorder.liveSpeed)
         }
     }
 

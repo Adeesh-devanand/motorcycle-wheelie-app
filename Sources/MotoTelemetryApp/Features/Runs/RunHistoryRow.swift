@@ -1,76 +1,153 @@
 import MotoTelemetryCore
 import SwiftUI
 
-/// §8.3 — Compact TelemetryCard row showing date, duration, max angle, event count.
-/// Color chips use RelativeMetricColorScale for per-field normalisation.
+/// §8.3 — Row card: time column, three ranked metric columns with mini bars, trailing chevron.
 struct RunHistoryRow: View {
     let run: WheelieRun
     let colorScale: RelativeMetricColorScale
     let fieldAnchors: PastRunsViewModel.FieldAnchors
+    var isLatest: Bool = false
+    var isLongest: Bool = false
 
     var body: some View {
-        TelemetryCard {
-            HStack(spacing: AppSpacing.md) {
-                // Timestamp column
-                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                    Text(run.startedAt, style: .time)
-                        .font(.system(.subheadline, design: .default, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(AppColors.textPrimary)
+        HStack(spacing: 0) {
+            // TIME column
+            timeColumn
+                .frame(width: 96, alignment: .leading)
 
-                    Text(run.startedAt, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-                .frame(minWidth: 60, alignment: .leading)
+            // Three metric columns
+            HStack(spacing: 0) {
+                metricColumn(
+                    value: run.duration,
+                    format: "%.1f",
+                    unit: "s",
+                    normalised: normalise(value: run.duration, min: fieldAnchors.durationMin, max: fieldAnchors.durationMax),
+                    color: durationColor
+                )
+                .frame(maxWidth: .infinity)
 
-                Spacer()
+                metricColumn(
+                    value: run.maxAngle,
+                    format: "%.0f",
+                    unit: "°",
+                    normalised: normalise(value: run.maxAngle, min: fieldAnchors.angleMin, max: fieldAnchors.angleMax),
+                    color: angleColor
+                )
+                .frame(maxWidth: .infinity)
 
-                // Metrics
-                HStack(spacing: AppSpacing.lg) {
-                    metricCell(
-                        value: String(format: "%.1fs", run.duration),
-                        color: durationColor,
-                        accessibilityValue: "\(String(format: "%.1f", run.duration)) seconds"
-                    )
-
-                    metricCell(
-                        value: String(format: "%.0f°", run.maxAngle),
-                        color: angleColor,
-                        accessibilityValue: "\(String(format: "%.0f", run.maxAngle)) degrees"
-                    )
-
-                    metricCell(
-                        value: String(format: "%.0f", run.maxSpeed),
-                        color: speedColor,
-                        accessibilityValue: "\(String(format: "%.0f", run.maxSpeed)) km/h"
-                    )
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textSecondary)
+                metricColumn(
+                    value: run.maxSpeed,
+                    format: "%.0f",
+                    unit: "km/h",
+                    normalised: normalise(value: run.maxSpeed, min: fieldAnchors.speedMin, max: fieldAnchors.speedMax),
+                    color: speedColor
+                )
+                .frame(maxWidth: .infinity)
             }
+
+            // Trailing chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppColors.textTertiary)
+                .frame(width: 20)
         }
+        .padding(.vertical, AppSpacing.lg)
+        .padding(.horizontal, AppSpacing.cardPadding)
+        .frame(minHeight: 76, maxHeight: 84)
+        .background(AppColors.surfaceCard)
+        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card)
+                .strokeBorder(AppColors.cardBorder, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
 
-    // MARK: - Metric Cell
+    // MARK: - Time Column
 
-    private func metricCell(value: String, color: Color, accessibilityValue: String) -> some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Text(value)
-                .font(.system(.body, design: .monospaced, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(color)
+    private var timeColumn: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            // Clock time — e.g. "9:41 AM"
+            timeLabel
 
-            // Tiny colour intensity bar
-            RoundedRectangle(cornerRadius: 2)
-                .fill(color)
-                .frame(width: 28, height: 3)
+            // Relative time — e.g. "3 min ago"
+            Text(run.startedAt, style: .relative)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(AppColors.textSecondary)
+                .lineLimit(1)
+
+            // Badge (if applicable)
+            if isLatest {
+                badgePill(text: "LATEST")
+            } else if isLongest {
+                badgePill(text: "LONGEST")
+            }
         }
-        .accessibilityValue(accessibilityValue)
+    }
+
+    private var timeLabel: some View {
+        Text(run.startedAt.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute()))
+            .font(.system(size: 17, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(AppColors.textPrimary)
+            .lineLimit(1)
+    }
+
+    private func badgePill(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(AppColors.badgeText)
+            .padding(.horizontal, AppSpacing.xs)
+            .padding(.vertical, AppSpacing.xxs)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppColors.badgeFill)
+            )
+    }
+
+    // MARK: - Metric Column
+
+    private func metricColumn(value: Double, format: String, unit: String, normalised: Double, color: Color) -> some View {
+        VStack(spacing: AppSpacing.xs) {
+            // Value + unit
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(String(format: format, value))
+                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Text(unit)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(color.opacity(0.7))
+            }
+
+            // Mini bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Track
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: 4)
+
+                    // Fill
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(geo.size.width * normalised, 4), height: 4)
+                }
+            }
+            .frame(height: 4)
+        }
+    }
+
+    // MARK: - Normalisation
+
+    private func normalise(value: Double, min: Double, max: Double) -> Double {
+        guard max > min else { return 0.5 }
+        return Swift.max(0, Swift.min(1, (value - min) / (max - min)))
     }
 
     // MARK: - Colors
@@ -109,13 +186,10 @@ struct RunHistoryRow: View {
 
     private var accessibilityDescription: String {
         let time = run.startedAt.formatted(date: .omitted, time: .shortened)
-        let best = isBestForAnyField ? ", personal best" : ""
-        return "\(time), \(String(format: "%.1f", run.duration)) seconds, \(String(format: "%.0f", run.maxAngle)) degrees, \(String(format: "%.0f", run.maxSpeed)) km/h\(best)"
-    }
-
-    private var isBestForAnyField: Bool {
-        run.duration >= fieldAnchors.durationMax ||
-        run.maxAngle >= fieldAnchors.angleMax ||
-        run.maxSpeed >= fieldAnchors.speedMax
+        let badge: String
+        if isLatest { badge = ", latest" }
+        else if isLongest { badge = ", longest" }
+        else { badge = "" }
+        return "\(time), \(String(format: "%.1f", run.duration)) seconds, \(String(format: "%.0f", run.maxAngle)) degrees, \(String(format: "%.0f", run.maxSpeed)) km/h\(badge)"
     }
 }

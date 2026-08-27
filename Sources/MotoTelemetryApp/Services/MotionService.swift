@@ -25,7 +25,13 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
 
     // MARK: - Public
 
-    public let samples: AsyncStream<Sample>
+    /// Recreated by `start()`. It cannot be a `let`: cancelling the consuming Task
+    /// (which `RunRecorder.stopSession` does) puts an `AsyncStream` into a TERMINAL
+    /// state, after which every `yield` is silently discarded forever. Not calling
+    /// `continuation.finish()` in `stop()` is therefore not enough — a restarted
+    /// session must be handed a brand-new stream or it receives nothing at all, which
+    /// showed up as a frozen angle after leaving the Live tab and returning.
+    public private(set) var samples: AsyncStream<Sample>
 
     // MARK: - Diagnostics
 
@@ -33,7 +39,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
 
     // MARK: - Private
 
-    private let continuation: AsyncStream<Sample>.Continuation
+    private var continuation: AsyncStream<Sample>.Continuation
     private let manager = CMMotionManager()
     private let queue = OperationQueue()
     private let config: Config
@@ -67,6 +73,14 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
     // MARK: - Lifecycle
 
     public func start() {
+        // Hand this session a fresh stream. The previous one is terminal once its
+        // consumer Task was cancelled, so reusing it would deliver nothing. Safe to do
+        // here because `RunRecorder.startSession` calls `start()` BEFORE it subscribes.
+        continuation.finish()
+        var cont: AsyncStream<Sample>.Continuation!
+        samples = AsyncStream { cont = $0 }
+        continuation = cont
+
         let interval = 1.0 / config.nominalSampleRate
 
         // Gyroscope
@@ -123,8 +137,19 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         manager.stopGyroUpdates()
         manager.stopAccelerometerUpdates()
         manager.stopDeviceMotionUpdates()
-        continuation.finish()
+        // Deliberately NOT calling `continuation.finish()`. The stream and its
+        // continuation are created once in `init`, so finishing here would end it
+        // permanently: a later `start()` would restart CoreMotion but every
+        // `for await sample in samples` would return immediately, no sample would
+        // ever arrive, and RunRecorder's 2.5 s watchdog would report the sensors
+        // as unavailable with no way back. Leaving Live and returning is enough to
+        // trigger it. The service is long-lived and restartable; the continuation
+        // is finished only when it is torn down.
         log.info("MotionService stopped. Unpaired samples: \(self.unpairedCount)")
+    }
+
+    deinit {
+        continuation.finish()
     }
 
     // MARK: - Pairing
@@ -138,14 +163,21 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             lock.unlock()
             emit(time: time, rate: rate, force: accel.force, attitude: attitude)
         } else {
-            // Stash; if there was already a pending gyro, flush it zero-filled
-            if let stale = pendingGyro {
-                let attitude = latestAttitude
-                lock.unlock()
+            // Stash; if there was already a pending gyro, count it and DROP it.
+            //
+            // Design §16.2 says to emit the unpaired sample with the missing channel
+            // zero-filled, but a fabricated channel poisons every consumer. A zero
+            // `specificForce` has magnitude 0, outside the gate's
+            // [gateSpecificForceLow, gateSpecificForceHigh] band, so it closes the
+            // gate and clears the dwell. Marking it `saturated` instead is worse:
+            // `BiasEstimator.process` calls `resetAccumulation()` on a saturated
+            // sample, wiping all 8 seconds of collected progress, and the sample is
+            // fed to the vibration detector before the gate, where a 0 among ~9.8
+            // readings inflates the spread into a spurious "too much vibration".
+            // A half-measured sample is evidence of nothing, so it is counted and
+            // dropped rather than invented.
+            if pendingGyro != nil {
                 unpairedCount += 1
-                emit(time: stale.time, rate: stale.rate,
-                     force: .zero, attitude: attitude)
-                lock.lock()
             }
             pendingGyro = (time, rate)
             lock.unlock()
@@ -160,13 +192,9 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             lock.unlock()
             emit(time: time, rate: gyro.rate, force: force, attitude: attitude)
         } else {
-            if let stale = pendingAccel {
-                let attitude = latestAttitude
-                lock.unlock()
+            // Counted and dropped, not zero-filled — see `receive(gyro:at:)`.
+            if pendingAccel != nil {
                 unpairedCount += 1
-                emit(time: stale.time, rate: .zero,
-                     force: stale.force, attitude: attitude)
-                lock.lock()
             }
             pendingAccel = (time, force)
             lock.unlock()

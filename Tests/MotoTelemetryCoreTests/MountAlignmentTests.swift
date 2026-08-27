@@ -260,4 +260,89 @@ final class MountAlignmentTests: XCTestCase {
                           "a level pull should be essentially perpendicular")
         XCTAssertGreaterThan(clean.peakPullAcceleration, 0.25 * Conventions.g)
     }
+
+    // MARK: - Gravity-derived alignment
+
+    /// A phone lying FLAT, screen up, reads `(0, 0, -g)`: device +Z is world up.
+    /// Bike forward must come out as device +Y (the top edge of the phone), NOT
+    /// device -Z as the portrait preset assumes. Getting this wrong is what made a
+    /// flat-mounted phone report every tilt as a wheelie.
+    func testFlatMountDerivesForwardAlongTheTopEdge() {
+        let a = MountAlignment.fromMeasuredGravity(specificForce: Vector3(0, 0, -Conventions.g),
+                                                   bikeProfileID: bike)
+
+        XCTAssertEqual(a.upInBody.z, 1, accuracy: 1e-9)
+        XCTAssertEqual(a.forwardInBody.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(a.leftInBody.x, -1, accuracy: 1e-9)
+
+        // Conventions: forward x left == up.
+        let cross = a.forwardInBody.cross(a.leftInBody)
+        XCTAssertEqual(cross.z, 1, accuracy: 1e-9)
+    }
+
+    /// A phone PORTRAIT-UPRIGHT with the screen facing the rider reads `(0, -g, 0)`:
+    /// device +Y is world up. Forward must come out as device -Z, reproducing the
+    /// portrait preset — the same algorithm must cover both mounts.
+    func testPortraitMountDerivesForwardOutOfTheBack() {
+        let a = MountAlignment.fromMeasuredGravity(specificForce: Vector3(0, -Conventions.g, 0),
+                                                   bikeProfileID: bike)
+
+        XCTAssertEqual(a.upInBody.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(a.forwardInBody.z, -1, accuracy: 1e-9)
+        XCTAssertEqual(a.leftInBody.x, -1, accuracy: 1e-9)
+    }
+
+    /// THE regression guard: a lean must not be reported as a wheelie.
+    ///
+    /// A lean is a rotation about the bike's forward axis, and rotating a vector
+    /// about itself is the identity, so axis elevation is invariant. A rotation
+    /// about the LEFT axis is a real wheelie and must move. Checked for both mounts,
+    /// because a fixed preset satisfies this for one and fails it for the other.
+    func testLeanIsNotReportedAsPitchForEitherMount() {
+        let mounts = [("flat", Vector3(0, 0, -Conventions.g)),
+                      ("portrait", Vector3(0, -Conventions.g, 0))]
+
+        for (name, restForce) in mounts {
+            let a = MountAlignment.fromMeasuredGravity(specificForce: restForce,
+                                                       bikeProfileID: bike)
+            let level = Quaternion.rotation(from: restForce, to: Conventions.worldGravity)
+            let levelPitch = AxisElevation.pitch(attitude: level,
+                                                 forwardInBody: a.forwardInBody)
+
+            for degrees in [-40.0, -15.0, 15.0, 40.0] {
+                let radians = degrees * .pi / 180
+
+                // Lean: rotate about the bike's forward axis.
+                let leaned = (level * Quaternion.exp(
+                    rotationVector: a.forwardInBody.normalized * radians)).normalized
+                let leanedPitch = AxisElevation.pitch(attitude: leaned,
+                                                      forwardInBody: a.forwardInBody)
+                XCTAssertEqual(leanedPitch, levelPitch, accuracy: 1e-9,
+                               "\(name) mount: a \(degrees) deg lean must not change pitch")
+
+                // Wheelie: rotate about the bike's left axis. Nose-up is negative
+                // about left, per Conventions.
+                let pitched = (level * Quaternion.exp(
+                    rotationVector: a.leftInBody.normalized * -radians)).normalized
+                let pitchedPitch = AxisElevation.pitch(attitude: pitched,
+                                                       forwardInBody: a.forwardInBody)
+                XCTAssertEqual(pitchedPitch * 180 / .pi, degrees, accuracy: 1e-6,
+                               "\(name) mount: a \(degrees) deg pitch must be reported")
+            }
+        }
+    }
+
+    /// A phone mounted on its side puts device -X along gravity, where the
+    /// Gram-Schmidt projection collapses. The fallback axis must keep the result
+    /// finite and orthonormal rather than producing NaN.
+    func testSideMountFallsBackInsteadOfProducingNaN() {
+        let a = MountAlignment.fromMeasuredGravity(specificForce: Vector3(-Conventions.g, 0, 0),
+                                                   bikeProfileID: bike)
+
+        XCTAssertTrue(a.forwardInBody.magnitude.isFinite)
+        XCTAssertEqual(a.forwardInBody.magnitude, 1, accuracy: 1e-9)
+        XCTAssertEqual(a.leftInBody.magnitude, 1, accuracy: 1e-9)
+        XCTAssertEqual(a.forwardInBody.dot(a.upInBody), 0, accuracy: 1e-9)
+        XCTAssertEqual(a.leftInBody.dot(a.upInBody), 0, accuracy: 1e-9)
+    }
 }

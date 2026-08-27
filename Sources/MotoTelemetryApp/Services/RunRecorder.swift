@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import MotoTelemetryCore
 import Observation
 import os
@@ -22,6 +23,10 @@ final class RunRecorder: @unchecked Sendable {
     private(set) var livePitchRate: Double = 0       // deg/s
     private(set) var liveRoll: Double = 0            // degrees
     private(set) var liveSpeed: Double = 0           // km/h
+    /// False when no GNSS fix has produced a valid speed yet. R15.3 forbids
+    /// fabricating 0: a stationary bike and an absent fix must not look identical.
+    /// `liveSpeed` stays 0 for compatibility; consult this before displaying it.
+    private(set) var liveSpeedAvailable: Bool = false
     private(set) var liveVibration: Double = 0       // m/s²
     private(set) var liveGateOpen: Bool = false
     private(set) var liveCueState: CueState = CueState()
@@ -45,6 +50,12 @@ final class RunRecorder: @unchecked Sendable {
     private var segmenter: EventSegmenter?
     private var scorer: RunScorer?
 
+    /// Interpolated onset time of the attempt in progress. The live timer is
+    /// `output.time - eventOnsetTime`; using `sessionStartMonotonic` instead made
+    /// the timer jump straight to the session's elapsed time the moment an attempt
+    /// began (a wheelie 85 s into a session displayed 85 s).
+    private var eventOnsetTime: TimeInterval?
+
     private var collectedSamples: [TelemetrySample] = []
     private var sessionStartDate: Date?
     private var sessionStartMonotonic: TimeInterval?
@@ -53,6 +64,11 @@ final class RunRecorder: @unchecked Sendable {
 
     private var motionTask: Task<Void, Never>?
     private var speedTask: Task<Void, Never>?
+
+    /// Serialises `processSample` across the motion and speed tasks. The class is
+    /// `@unchecked Sendable` and `@Observable`, neither of which provides any
+    /// mutual exclusion.
+    private let processLock = NSLock()
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "RunRecorder")
 
@@ -109,22 +125,59 @@ final class RunRecorder: @unchecked Sendable {
         speedService.start()
         cueRenderer?.start()
 
+        // Both sensor streams funnel through `processSample`, which mutates the
+        // value-type `EventSegmenter` with a read-modify-write. These are two
+        // independent Tasks on the cooperative pool, so without serialisation two
+        // resumptions can each read the SAME pre-write segmenter state, both
+        // satisfy the `.arming` guard, and both emit `.onset` — which is the
+        // "multiple wheelies start at the same time" symptom. The lock makes the
+        // read-modify-write atomic; the critical section is ~200 µs against a
+        // 10 ms sample budget.
         motionTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.motionService.samples {
+                self.processLock.lock()
                 self.processSample(sample)
+                self.processLock.unlock()
             }
         }
 
         speedTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.speedService.fixes {
+                self.processLock.lock()
                 self.processSample(sample)
+                self.processLock.unlock()
             }
         }
 
         recordingState = .running
         log.info("Recording session started for bike \(bikeProfileID)")
+
+        // Watchdog: if no sample has arrived shortly after starting, the sensor
+        // path is genuinely broken — denied permission, missing hardware, or a
+        // dead stream. Only then may we claim the sensors are unavailable.
+        // Measuring the absence of data beats trusting `isGyroAvailable`, which
+        // reports hardware presence and says nothing about delivery.
+        Task { [weak self] in
+            // Two chances, five seconds total. CoreMotion delivery can be slow to
+            // spin up after a restart, and a single 2.5 s miss was enough to strand
+            // the UI on "Motion sensors unavailable / Check device permissions" —
+            // a screen with no way out. Never contradict evidence either: if an IMU
+            // sample has EVER arrived in this process the sensors demonstrably
+            // exist, so claiming otherwise is a false negative, not a diagnosis.
+            for _ in 0..<2 {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                guard let self, self.recordingState == .running else { return }
+                if self.sampleCount > 0 { return }
+            }
+            guard let self,
+                  self.recordingState == .running,
+                  self.sampleCount == 0,
+                  !self.calibrationService.hasSeenSample else { return }
+            self.calibrationService.reportSensorsUnavailable(
+                reason: "no IMU samples 5 s after starting motion updates")
+        }
     }
 
     func stopSession() {
@@ -175,6 +228,7 @@ final class RunRecorder: @unchecked Sendable {
         livePitch = output.pitch * 180 / .pi
         livePitchRate = output.pitchRate * 180 / .pi
         liveRoll = output.roll * 180 / .pi
+        liveSpeedAvailable = output.speed != nil
         liveSpeed = (output.speed ?? 0) * 3.6
         liveVibration = output.vibration
         liveGateOpen = output.gateOpen
@@ -214,8 +268,8 @@ final class RunRecorder: @unchecked Sendable {
         }
 
         // Track event duration
-        if eventActive, let start = sessionStartMonotonic {
-            currentEventDuration = output.time - start
+        if eventActive, let onset = eventOnsetTime {
+            currentEventDuration = output.time - onset
         }
 
         // Feed scorer during active events
@@ -240,6 +294,8 @@ final class RunRecorder: @unchecked Sendable {
         case .onset(let onsetTime):
             log.info("Event onset at \(onsetTime, format: .fixed(precision: 3))s")
             scorer?.beginEvent(onset: onsetTime, entrySpeed: speed)
+            eventOnsetTime = onsetTime
+            currentEventDuration = 0
             eventActive = true
 
         case .end(let endTime):
@@ -247,11 +303,13 @@ final class RunRecorder: @unchecked Sendable {
             pipeline?.lastEventEndTime = endTime
             finalizeCurrentEvent(at: endTime)
             eventActive = false
+            eventOnsetTime = nil
             currentEventDuration = 0
 
         case .discarded(let duration):
             log.info("Event discarded (duration: \(duration, format: .fixed(precision: 3))s)")
             eventActive = false
+            eventOnsetTime = nil
             currentEventDuration = 0
             scorer = RunScorer(config: config)
         }
@@ -259,6 +317,8 @@ final class RunRecorder: @unchecked Sendable {
 
     private func finalizeCurrentEvent(at endTime: TimeInterval) {
         guard let startDate = sessionStartDate,
+              let sessionStart = sessionStartMonotonic,
+              let onset = eventOnsetTime,
               let angleTarget = angleTarget,
               let bikeID = bikeProfileID,
               let calibID = calibrationService.currentEstimate?.id else {
@@ -266,13 +326,35 @@ final class RunRecorder: @unchecked Sendable {
             return
         }
 
-        let endDate = startDate.addingTimeInterval(endTime - (sessionStartMonotonic ?? 0))
+        // `collectedSamples` holds SESSION-relative elapsed values and spans the whole
+        // session, but R19.4's display series is RUN-relative and covers the attempt.
+        // Stored as-is, an attempt that began 85 s into a session plotted at x = 85 on
+        // a 0...duration axis, leaving the left of the chart empty. Window to the
+        // attempt and re-base to its onset.
+        let onsetElapsed = onset - sessionStart
+        let endElapsed = endTime - sessionStart
+
+        let windowed = collectedSamples
+            .filter { $0.elapsed >= onsetElapsed && $0.elapsed <= endElapsed }
+            .map { sample in
+                TelemetrySample(id: sample.id,
+                                elapsed: sample.elapsed - onsetElapsed,
+                                angleDegrees: sample.angleDegrees,
+                                speedKPH: sample.speedKPH)
+            }
+
+        // Both dates now share the onset origin, so `WheelieRun.duration` is the
+        // ATTEMPT length. Previously `startedAt` was the session start while `endedAt`
+        // was the attempt end, making duration "session start to attempt end" — which
+        // is what inflated the chart's x-domain.
+        let attemptStart = startDate.addingTimeInterval(onsetElapsed)
+        let attemptEnd = startDate.addingTimeInterval(endElapsed)
 
         let run = WheelieRun(
             id: UUID(),
-            startedAt: startDate,
-            endedAt: endDate,
-            samples: collectedSamples,
+            startedAt: attemptStart,
+            endedAt: attemptEnd,
+            samples: windowed,
             configuration: RunConfigurationSnapshot(
                 angleTarget: angleTarget,
                 speedTarget: MetricRange(lower: 0, upper: 100),

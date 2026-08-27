@@ -536,3 +536,53 @@ final class GradeBaselineTests: XCTestCase {
         XCTAssertEqual(converge(rate: 100), converge(rate: 25), accuracy: 1e-6)
     }
 }
+
+/// The grade baseline seen through the whole `Pipeline`, which is where the reported
+/// angle is actually produced. `GradeBaselineTests` above drives the baseline in
+/// isolation with an explicit `gateOpen`; these drive the real gating decision.
+final class GradeBaselinePipelineTests: XCTestCase {
+
+    /// Reported (baseline-corrected) pitch in degrees after holding a STATIONARY
+    /// bike at `degrees` for `seconds`. Stationary and tilted is the case that
+    /// matters: specific force is pure gravity, so the validity gate stays OPEN.
+    private func reportedPitch(heldAt degrees: Double,
+                               seconds: Double,
+                               config: Config = Config()) -> Double {
+        let radians = degrees * .pi / 180
+        let force = Conventions.specificForce(pitch: radians)
+        var pipeline = Pipeline(config: config,
+                                alignment: .identity(),
+                                initialBias: nil,
+                                gravityAnchor: force)
+        let dt = 1.0 / config.nominalSampleRate
+        var reported = 0.0
+        var t = 0.0
+        while t < seconds {
+            let sample = IMUSample(time: t, rotationRate: .zero, specificForce: force)
+            if let output = pipeline.process(.imu(sample)) {
+                reported = output.pitch * 180 / .pi
+            }
+            t += dt
+        }
+        return reported
+    }
+
+    /// R8.8: a few degrees of constant ROAD GRADE must still be absorbed, so a bike
+    /// merely sitting on an incline never reads as a permanent wheelie.
+    func testConstantRoadGradeIsStillAbsorbed() {
+        XCTAssertEqual(reportedPitch(heldAt: 4, seconds: 90), 0, accuracy: 1.0,
+                       "a constant 4 deg grade must be absorbed by the baseline")
+    }
+
+    /// The reported bug: a sustained tilt above the event threshold must NOT be
+    /// absorbed. The baseline froze only on gate CLOSURE, but a held tilt is
+    /// quasi-static so the gate stays open — the 25 s baseline chased the held angle
+    /// and it decayed as 20*e^(-t/25): about 13 deg after 10 s, under 3 deg after 50 s.
+    func testHeldTiltIsNotAbsorbedAsGrade() {
+        for seconds in [10.0, 50.0, 90.0] {
+            let reported = reportedPitch(heldAt: 20, seconds: seconds)
+            XCTAssertEqual(reported, 20, accuracy: 1.0,
+                           "a held 20 deg tilt must survive \(seconds) s, got \(reported)")
+        }
+    }
+}

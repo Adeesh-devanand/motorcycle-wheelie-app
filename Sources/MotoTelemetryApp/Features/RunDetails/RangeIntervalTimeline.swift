@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// §9.6 — Single horizontal bar showing in-range intervals for both metrics.
-/// Teal=angle, blue=speed, additive blending for overlap.
-/// Tap scrolls charts to that time via the selectedTime binding.
+/// §9.6 — Single horizontal baseline with in-range intervals for both metrics.
+/// Teal=angle, blue=speed, screen blending for overlap.
+/// Tap a segment for callout details; tap sets selectedTime for chart scrubber sync.
 struct RangeIntervalTimeline: View {
     let angleIntervals: [RangeInterval]
     let speedIntervals: [RangeInterval]
@@ -12,9 +12,14 @@ struct RangeIntervalTimeline: View {
     let totalSpeedInRange: TimeInterval
 
     @State private var selectedInterval: SelectedInterval?
+    @State private var showOverlapChooser = false
+    @State private var overlapAngleHit: RangeInterval?
+    @State private var overlapSpeedHit: RangeInterval?
+    @State private var timelineWidth: CGFloat = 0
 
     private let trackHeight: CGFloat = 12
-    private let segmentRadius: CGFloat = 3
+    private let segmentRadius: CGFloat = 6
+    private let markerSize: CGFloat = 8
 
     private struct SelectedInterval: Equatable {
         let interval: RangeInterval
@@ -23,86 +28,193 @@ struct RangeIntervalTimeline: View {
     }
 
     var body: some View {
-        VStack(spacing: AppSpacing.sm) {
-            // Summary
-            HStack {
-                summaryPill(label: "ANGLE", duration: totalAngleInRange, color: Color(hex: 0x10B9B7))
-                Spacer()
-                summaryPill(label: "SPEED", duration: totalSpeedInRange, color: Color(hex: 0x238CD8))
-            }
-
-            // Timeline canvas
+        VStack(spacing: AppSpacing.md) {
+            // Timeline
             GeometryReader { geo in
                 let width = geo.size.width
-                ZStack(alignment: .leading) {
-                    // Baseline track
-                    RoundedRectangle(cornerRadius: segmentRadius)
-                        .fill(Color(hex: 0x8191A0, opacity: 0.22))
-                        .frame(height: trackHeight)
+                ZStack(alignment: .center) {
+                    // Baseline
+                    Rectangle()
+                        .fill(AppColors.gridLine)
+                        .frame(height: 2)
 
-                    // Interval segments (screen blending)
+                    // Endpoint circles
+                    HStack {
+                        Circle()
+                            .fill(AppColors.textTertiary)
+                            .frame(width: markerSize, height: markerSize)
+                        Spacer()
+                        Circle()
+                            .fill(AppColors.textTertiary)
+                            .frame(width: markerSize, height: markerSize)
+                    }
+
+                    // Interval segments rendered with Canvas for blending
                     Canvas { context, size in
                         context.blendMode = .screen
 
-                        // Speed intervals (blue)
+                        // Speed intervals
                         for interval in speedIntervals {
                             let rect = segmentRect(for: interval, in: size)
                             let path = RoundedRectangle(cornerRadius: segmentRadius)
                                 .path(in: rect)
-                            context.fill(path, with: .color(Color(hex: 0x238CD8, opacity: 0.62)))
+                            context.fill(path, with: .color(AppColors.speedMetric.opacity(0.65)))
+
+                            // Endpoint markers
+                            let leftCircle = CGRect(
+                                x: rect.minX - 3, y: size.height / 2 - 3,
+                                width: 6, height: 6
+                            )
+                            let rightCircle = CGRect(
+                                x: rect.maxX - 3, y: size.height / 2 - 3,
+                                width: 6, height: 6
+                            )
+                            context.fill(Circle().path(in: leftCircle), with: .color(AppColors.speedMetric))
+                            context.fill(Circle().path(in: rightCircle), with: .color(AppColors.speedMetric))
                         }
 
-                        // Angle intervals (teal)
+                        // Angle intervals
                         for interval in angleIntervals {
                             let rect = segmentRect(for: interval, in: size)
                             let path = RoundedRectangle(cornerRadius: segmentRadius)
                                 .path(in: rect)
-                            context.fill(path, with: .color(Color(hex: 0x10B9B7, opacity: 0.62)))
+                            context.fill(path, with: .color(AppColors.angleMetric.opacity(0.65)))
+
+                            // Endpoint markers
+                            let leftCircle = CGRect(
+                                x: rect.minX - 3, y: size.height / 2 - 3,
+                                width: 6, height: 6
+                            )
+                            let rightCircle = CGRect(
+                                x: rect.maxX - 3, y: size.height / 2 - 3,
+                                width: 6, height: 6
+                            )
+                            context.fill(Circle().path(in: leftCircle), with: .color(AppColors.angleMetric))
+                            context.fill(Circle().path(in: rightCircle), with: .color(AppColors.angleMetric))
                         }
 
-                        // Selected highlight
+                        // Selected segment highlight
                         if let sel = selectedInterval {
                             let rect = segmentRect(for: sel.interval, in: size)
                             let path = RoundedRectangle(cornerRadius: segmentRadius)
                                 .path(in: rect)
-                            context.stroke(path, with: .color(.white.opacity(0.6)), lineWidth: 1.5)
+                            context.stroke(path, with: .color(.white.opacity(0.75)), lineWidth: 2)
                         }
                     }
                     .frame(height: trackHeight)
 
-                    // Tap gesture overlay
+                    // Tap gesture overlay (44pt tall for hit radius)
                     Color.clear
                         .contentShape(Rectangle())
-                        .frame(height: max(trackHeight, 44))
+                        .frame(height: 44)
                         .onTapGesture { location in
                             handleTap(at: location.x, in: width)
                         }
                 }
                 .frame(height: trackHeight)
+                .onAppear { timelineWidth = width }
+                .onChange(of: geo.size.width) { _, newW in timelineWidth = newW }
             }
-            .frame(height: trackHeight)
+            .frame(height: 44) // Account for 44pt tap target
 
             // Endpoint labels
-            HStack {
-                Text("LIFT 0.0s")
-                    .font(.system(.caption2, design: .monospaced, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
+            HStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    Text("LIFT")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AppColors.textTertiary)
+                    Text("0.0s")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
                 Spacer()
-                Text("DOWN \(String(format: "%.1f", duration))s")
-                    .font(.system(.caption2, design: .monospaced, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
+                VStack(spacing: 0) {
+                    Text("DOWN")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AppColors.textTertiary)
+                    Text(String(format: "%.1fs", duration))
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
             }
 
-            // Detail bubble
+            // Boundary times
+            boundaryTimesRow
+
+            // Overlap chooser
+            if showOverlapChooser {
+                overlapChooserView
+            }
+
+            // Detail callout card
             if let sel = selectedInterval {
-                intervalDetail(sel)
-                    .transition(.opacity)
+                intervalCallout(sel)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.vertical, AppSpacing.sm)
+        .animation(.easeInOut(duration: 0.2), value: selectedInterval?.interval.id)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Range interval timeline, \(angleIntervals.count) angle intervals, \(speedIntervals.count) speed intervals")
         .accessibilityHint("Tap a segment for details")
+    }
+
+    // MARK: - Boundary Times Row
+
+    private var boundaryTimesRow: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let allTimes = collectBoundaryTimes()
+            let filtered = filterCollisions(times: allTimes, width: width)
+
+            ZStack(alignment: .leading) {
+                ForEach(filtered, id: \.self) { time in
+                    let x = xPosition(for: time, in: width)
+                    Text(String(format: "%.1fs", time))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(AppColors.textTertiary)
+                        .position(x: x, y: 6)
+                }
+            }
+        }
+        .frame(height: 16)
+    }
+
+    private func collectBoundaryTimes() -> [Double] {
+        var times: Set<Double> = []
+        for interval in angleIntervals {
+            times.insert(interval.start)
+            times.insert(interval.end)
+        }
+        for interval in speedIntervals {
+            times.insert(interval.start)
+            times.insert(interval.end)
+        }
+        // Remove 0 and duration (shown by LIFT/DOWN)
+        times.remove(0)
+        if let dur = times.first(where: { abs($0 - duration) < 0.05 }) {
+            times.remove(dur)
+        }
+        return times.sorted()
+    }
+
+    private func filterCollisions(times: [Double], width: CGFloat) -> [Double] {
+        guard width > 0 else { return times }
+        var result: [Double] = []
+        var lastX: CGFloat = -40
+        for t in times {
+            let x = xPosition(for: t, in: width)
+            if x - lastX > 32 {
+                result.append(t)
+                lastX = x
+            }
+        }
+        return result
+    }
+
+    private func xPosition(for time: TimeInterval, in width: CGFloat) -> CGFloat {
+        guard duration > 0 else { return 0 }
+        return CGFloat(time / duration) * width
     }
 
     // MARK: - Segment Geometry
@@ -111,7 +223,8 @@ struct RangeIntervalTimeline: View {
         guard duration > 0 else { return .zero }
         let x = CGFloat(interval.start / duration) * size.width
         let w = CGFloat(interval.duration / duration) * size.width
-        return CGRect(x: x, y: 0, width: max(w, 2), height: size.height)
+        let yOffset = (size.height - trackHeight) / 2
+        return CGRect(x: x, y: yOffset, width: max(w, 2), height: trackHeight)
     }
 
     // MARK: - Tap Handling
@@ -119,30 +232,29 @@ struct RangeIntervalTimeline: View {
     private func handleTap(at x: CGFloat, in width: CGFloat) {
         guard width > 0, duration > 0 else { return }
         let tapTime = Double(x / width) * duration
-        let touchRadius = duration * 0.02 // Expanded hit zone
+        let touchRadius = duration * 0.025
 
-        // Hit-test intervals
+        showOverlapChooser = false
+        overlapAngleHit = nil
+        overlapSpeedHit = nil
+
         let angleHits = hitTest(tapTime, in: angleIntervals, radius: touchRadius)
         let speedHits = hitTest(tapTime, in: speedIntervals, radius: touchRadius)
 
         if let hit = angleHits.first, speedHits.isEmpty {
-            select(hit, metric: .angle, allIntervals: angleIntervals)
+            toggleSelect(hit, metric: .angle, allIntervals: angleIntervals)
         } else if let hit = speedHits.first, angleHits.isEmpty {
-            select(hit, metric: .speed, allIntervals: speedIntervals)
-        } else if let angleHit = angleHits.first, speedHits.first != nil {
-            // Overlap: prefer whichever centre is closer to tap
-            let angleMid = (angleHit.start + angleHit.end) / 2
-            let speedMid = (speedHits.first!.start + speedHits.first!.end) / 2
-            if abs(angleMid - tapTime) <= abs(speedMid - tapTime) {
-                select(angleHit, metric: .angle, allIntervals: angleIntervals)
-            } else {
-                select(speedHits.first!, metric: .speed, allIntervals: speedIntervals)
-            }
+            toggleSelect(hit, metric: .speed, allIntervals: speedIntervals)
+        } else if let angleHit = angleHits.first, let speedHit = speedHits.first {
+            // Overlap: show chooser
+            overlapAngleHit = angleHit
+            overlapSpeedHit = speedHit
+            showOverlapChooser = true
         } else {
+            // Tap on empty baseline — clear
             selectedInterval = nil
         }
 
-        // Scroll chart to tapped time
         selectedTime = tapTime
     }
 
@@ -152,7 +264,7 @@ struct RangeIntervalTimeline: View {
         }
     }
 
-    private func select(_ interval: RangeInterval, metric: MetricKind, allIntervals: [RangeInterval]) {
+    private func toggleSelect(_ interval: RangeInterval, metric: MetricKind, allIntervals: [RangeInterval]) {
         let sorted = allIntervals.sorted { $0.start < $1.start }
         let ordinal = (sorted.firstIndex { $0.id == interval.id } ?? 0) + 1
         if selectedInterval?.interval.id == interval.id {
@@ -162,34 +274,76 @@ struct RangeIntervalTimeline: View {
         }
     }
 
-    // MARK: - Detail Bubble
+    // MARK: - Overlap Chooser
 
-    private func intervalDetail(_ sel: SelectedInterval) -> some View {
-        let metricName = sel.interval.metric == .angle ? "ANGLE" : "SPEED"
-        return TelemetryCard {
-            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text("\(metricName) · RANGE \(sel.ordinal) OF \(sel.total)")
-                    .font(.system(.caption, design: .monospaced, weight: .semibold))
-                    .foregroundStyle(AppColors.textSecondary)
-                Text("\(String(format: "%.1f", sel.interval.start))s → \(String(format: "%.1f", sel.interval.end))s")
-                    .font(.system(.subheadline, design: .monospaced, weight: .medium))
-                    .foregroundStyle(AppColors.textPrimary)
-                Text("\(String(format: "%.1f", sel.interval.duration))s in range")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textSecondary)
+    private var overlapChooserView: some View {
+        HStack(spacing: AppSpacing.sm) {
+            Button {
+                if let hit = overlapAngleHit {
+                    toggleSelect(hit, metric: .angle, allIntervals: angleIntervals)
+                }
+                showOverlapChooser = false
+            } label: {
+                HStack(spacing: AppSpacing.xs) {
+                    Circle().fill(AppColors.angleMetric).frame(width: 6, height: 6)
+                    Text("ANGLE")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppColors.angleMetric)
+                }
+                .padding(.horizontal, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.xs)
+                .background(AppColors.surfaceButton)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            Button {
+                if let hit = overlapSpeedHit {
+                    toggleSelect(hit, metric: .speed, allIntervals: speedIntervals)
+                }
+                showOverlapChooser = false
+            } label: {
+                HStack(spacing: AppSpacing.xs) {
+                    Circle().fill(AppColors.speedMetric).frame(width: 6, height: 6)
+                    Text("SPEED")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppColors.speedMetric)
+                }
+                .padding(.horizontal, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.xs)
+                .background(AppColors.surfaceButton)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
-        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Summary Pill
+    // MARK: - Callout Card
 
-    private func summaryPill(label: String, duration: TimeInterval, color: Color) -> some View {
-        HStack(spacing: AppSpacing.xs) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text("\(label) \(String(format: "%.1f", duration))s")
-                .font(.system(.caption, design: .monospaced, weight: .medium))
+    private func intervalCallout(_ sel: SelectedInterval) -> some View {
+        let metricColor = sel.interval.metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
+        let metricName = sel.interval.metric == .angle ? "ANGLE" : "SPEED"
+
+        return VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text("\(metricName) · RANGE \(sel.ordinal) OF \(sel.total)")
+                .font(.system(size: 12, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(metricColor)
+
+            Text("\(String(format: "%.1f", sel.interval.start))s → \(String(format: "%.1f", sel.interval.end))s")
+                .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                .foregroundStyle(metricColor)
+
+            Text("\(String(format: "%.1f", sel.interval.duration))s in range")
+                .font(.system(size: 13))
                 .foregroundStyle(AppColors.textSecondary)
         }
+        .padding(AppSpacing.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.surfaceCard)
+        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card)
+                .strokeBorder(AppColors.cardBorder, lineWidth: 1)
+        )
     }
 }

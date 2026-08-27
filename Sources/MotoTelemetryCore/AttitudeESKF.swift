@@ -50,7 +50,18 @@ public struct AttitudeESKF {
     public private(set) var time: TimeInterval?
 
     private let config: Config
-    private let alignment: MountAlignment
+    /// Bike axes in device axes. Mutable because it is DERIVED from measured
+    /// gravity at the anchor moment when the caller supplied no real alignment;
+    /// `Pipeline` reads it back so the two can never disagree.
+    public private(set) var alignment: MountAlignment
+
+    /// False until the attitude has been tied to MEASURED gravity. While false the
+    /// filter's world frame is just the initial device frame, so "up" is wherever
+    /// the phone happened to be pointing — every tilt away from that pose reads as
+    /// a positive elevation regardless of direction, which is indistinguishable
+    /// from a wheelie when the rider is only leaning. `AttitudeSmoother` already
+    /// anchors (it passes the first gate-open sample); the live filter must too.
+    private var hasAnchored: Bool
 
     // MARK: - Init
 
@@ -74,8 +85,10 @@ public struct AttitudeESKF {
             // Specific force points ALONG gravity, so f in body corresponds to
             // (0,0,-1) in world. Rotate body -> world accordingly.
             self.attitude = Quaternion.rotation(from: f, to: Conventions.worldGravity)
+            self.hasAnchored = true
         } else {
             self.attitude = .identity
+            self.hasAnchored = false
         }
 
         // Bias variance comes from the calibration that produced it: a filter told
@@ -98,6 +111,34 @@ public struct AttitudeESKF {
         let nominalDt = 1.0 / config.nominalSampleRate
         var dt = nominalDt
         var gapFactor = 1.0
+
+        // Tie the world frame to MEASURED gravity before integrating anything.
+        // Without this the filter integrates from identity, so its "up" is merely
+        // wherever the device pointed at session start: a lean and a wheelie both
+        // read as positive elevation and the app cannot tell them apart.
+        //
+        // Deferred to the first sample that LOOKS like rest rather than the literal
+        // first sample: specific force during acceleration is gravity plus thrust,
+        // and anchoring to that would bake the error in permanently. The magnitude
+        // band is the same one `ValidityGate` uses.
+        if !hasAnchored {
+            let magnitude = sample.specificForce.magnitude
+            if magnitude >= config.gateSpecificForceLow,
+               magnitude <= config.gateSpecificForceHigh {
+                attitude = Quaternion.rotation(from: sample.specificForce,
+                                               to: Conventions.worldGravity)
+                // The same at-rest sample also fixes the bike axes. Without this
+                // the alignment stays a hard-coded guess about how the phone sits,
+                // and when that guess is ~90 deg off, a lean is reported as a
+                // wheelie. Only reached when the caller supplied no anchor, so an
+                // explicitly-aligned pipeline (tests, replay, a real R7.1 solve)
+                // is never overridden.
+                alignment = MountAlignment.fromMeasuredGravity(
+                    specificForce: sample.specificForce,
+                    bikeProfileID: alignment.bikeProfileID)
+                hasAnchored = true
+            }
+        }
 
         guard let previous = time else {
             // The first sample establishes the epoch and is NOT integrated: there is

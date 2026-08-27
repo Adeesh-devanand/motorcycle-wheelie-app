@@ -57,6 +57,83 @@ public struct MountAlignment: Codable, Sendable, Equatable {
                        bikeProfileID: bikeProfileID)
     }
 
+    /// A phone held or cradled in PORTRAIT with the screen facing the rider — the
+    /// overwhelmingly common case, and a far better default than `identity`.
+    ///
+    /// CoreMotion's device frame is +X across the screen to the right, +Y along the
+    /// screen toward the top, +Z out of the front face. With the screen facing
+    /// backward at the rider:
+    ///
+    /// - bike forward `+X` is out the BACK of the phone → device `−Z`
+    /// - bike up `+Z` is the top of the screen           → device `+Y`
+    /// - bike left `+Y` is                                  device `−X`
+    ///
+    /// Right-handedness holds: `forward × left == (0,1,0) == up`, per Conventions.
+    ///
+    /// Why this matters: `identity` claims bike-forward is device `+X`, which in a
+    /// portrait mount is the LATERAL axis. `AxisElevation.pitch` then reports the
+    /// elevation of the bike's lateral axis — which is lean, not pitch. That is why
+    /// an identity-aligned portrait phone appears to measure only roll, and why its
+    /// angle swings negative as the phone tips either way.
+    ///
+    /// This is still a PRESET, not a measurement: it assumes a square mount. Only
+    /// the two-gesture solve (R7.1) accounts for a crooked one, so a rider whose
+    /// phone is visibly rotated in its cradle still needs the real alignment.
+    public static func portraitMount(bikeProfileID: UUID = UUID()) -> MountAlignment {
+        MountAlignment(forwardInBody: Vector3(0, 0, -1),
+                       upInBody: Vector3(0, 1, 0),
+                       leftInBody: Vector3(-1, 0, 0),
+                       residual: 0,
+                       peakPullAcceleration: 0,
+                       bikeProfileID: bikeProfileID)
+    }
+
+    /// Derives an alignment from the MEASURED rest specific-force vector alone.
+    ///
+    /// Gravity fixes `up` exactly. It cannot fix heading — rotation about up is
+    /// unobservable from gravity — so one assumption supplies the rest: the
+    /// device's screen-horizontal axis is the bike's lateral axis. That holds for
+    /// any ordinary cradle, portrait-upright or lying flat, which is precisely the
+    /// pair of cases a fixed preset cannot straddle: bike-forward is device -Z for
+    /// an upright phone but device +Y for a flat one, and guessing wrong swaps
+    /// lean and pitch.
+    ///
+    ///   up      = -normalize(f_rest)                  (measured)
+    ///   left    = device -X, Gram-Schmidt'd against up
+    ///   forward = left x up                           (Conventions: left x up == forward)
+    ///
+    /// A lean is then a rotation about `forward`, and rotating a vector about
+    /// itself is the identity, so `AxisElevation.pitch` is invariant under lean —
+    /// which is the property that stops a corner reading as a wheelie.
+    ///
+    /// This is still weaker than R7.1's two-gesture solve, which remains necessary:
+    /// this cannot detect a phone rotated in its cradle about the screen normal,
+    /// and cannot tell forward from backward.
+    public static func fromMeasuredGravity(specificForce: Vector3,
+                                           bikeProfileID: UUID = UUID()) -> MountAlignment {
+        let up = (specificForce * -1).normalized
+
+        // Device -X is the lateral candidate. If the phone is mounted on its side
+        // it can lie along `up`, where the projection collapses and would yield a
+        // NaN axis; device -Y is then guaranteed independent, since two orthogonal
+        // axes cannot both be parallel to up.
+        var lateralCandidate = Vector3(-1, 0, 0)
+        if abs(lateralCandidate.dot(up)) > 0.94 {          // within ~20 deg of up
+            lateralCandidate = Vector3(0, -1, 0)
+        }
+
+        let projected = lateralCandidate - up * lateralCandidate.dot(up)
+        let left = projected.normalized
+        let forward = left.cross(up)
+
+        return MountAlignment(forwardInBody: forward,
+                              upInBody: up,
+                              leftInBody: left,
+                              residual: 0,
+                              peakPullAcceleration: 0,
+                              bikeProfileID: bikeProfileID)
+    }
+
     /// Pitch of the bike given a device attitude, using this alignment.
     public func pitch(attitude: Quaternion) -> Double {
         AxisElevation.pitch(attitude: attitude, forwardInBody: forwardInBody)

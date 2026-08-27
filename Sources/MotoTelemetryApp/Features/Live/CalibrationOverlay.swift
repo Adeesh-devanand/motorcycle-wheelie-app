@@ -5,6 +5,11 @@ import SwiftUI
 struct CalibrationOverlay: View {
     let state: CalibrationState
     let onDismiss: (() -> Void)?
+    /// R6.2: the validity-gate condition currently blocking calibration, phrased for
+    /// the rider. Without it a stalled calibration shows only "Collecting data… 0%",
+    /// which names no cause and leaves the rider with nothing to act on. Optional so
+    /// existing call sites and previews are unaffected.
+    var blockingReason: String? = nil
 
     @State private var isPulsing = false
 
@@ -49,6 +54,15 @@ struct CalibrationOverlay: View {
                     Text(detail)
                         .font(AppTypography.cardSubtitle)
                         .foregroundStyle(AppColors.textSecondary)
+                }
+
+                // Why calibration is not progressing (R6.2).
+                if let blockingReason {
+                    Text(blockingReason)
+                        .font(AppTypography.cardSubtitle)
+                        .foregroundStyle(AppColors.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppSpacing.xxl)
                 }
             }
         }
