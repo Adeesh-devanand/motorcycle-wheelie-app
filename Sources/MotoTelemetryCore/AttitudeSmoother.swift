@@ -134,7 +134,7 @@ public struct AttitudeSmoother {
                                rotationRate: sample.rotationRate,
                                specificForce: sample.specificForce,
                                saturated: sample.saturated)
-            filter.propagate(imu, thermalState: thermalState)
+            filter.propagate(imu, verdict: sample.verdict, thermalState: thermalState)
             filter.updateWithGravity(imu, verdict: sample.verdict)
 
             let dt = previousTime.map { sample.time - $0 } ?? (1.0 / config.nominalSampleRate)

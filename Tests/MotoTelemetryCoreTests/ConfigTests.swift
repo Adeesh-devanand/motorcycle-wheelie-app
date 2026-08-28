@@ -22,11 +22,16 @@ final class ConfigTests: XCTestCase {
                        "encode→decode→encode→decode must be stable")
     }
 
-    func testVersionIsThree() {
-        // v3: calibration made survivable on a running bike — biasSigmaLimit raised
-        // to the README's own 0.05 deg/s budget, gateCloseConfirm added, the vibration
-        // hard-block demoted to reporting only.
-        XCTAssertEqual(Config().version, 3)
+    func testVersionIsFour() {
+        // v4: calibration's validity gate got its own, wider specific-force band
+        // (+/-0.03 g -> +/-0.10 g) so the gate stops flapping ~25x/s on a handled or
+        // idling bike; the bias mean is unaffected because that band is an
+        // accelerometer proxy which never enters the gyro mean. The ESTIMATOR's band
+        // stays at +/-0.03 g deliberately: 0.3 g of thrust is 1.044 g, so a wider band
+        // there feeds the 16.7 deg phantom angle into the gravity update. Rotation
+        // ceiling 3 -> 5 deg/s, shared. Added `anchorLevelCosine`, since a
+        // magnitude-only anchor test cannot reject a tilt at all.
+        XCTAssertEqual(Config().version, 4)
     }
 
     func testExitThresholdMatchesTheUISpec() {

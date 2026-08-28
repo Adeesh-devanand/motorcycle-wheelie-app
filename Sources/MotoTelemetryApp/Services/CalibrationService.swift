@@ -52,6 +52,11 @@ final class CalibrationService: @unchecked Sendable {
 
     var currentEstimate: BiasEstimate? { tracker.status.estimate }
 
+    /// True when the most recently ADOPTED estimate came from a rider-initiated
+    /// recalibration rather than an automatic one. Read by `RunRecorder`.
+    private(set) var adoptedEstimateWasUserRequested = false
+
+
     // MARK: - Private
 
     private let config: Config
@@ -90,6 +95,12 @@ final class CalibrationService: @unchecked Sendable {
     /// and the usual cause of a failed attempt is the rider still settling.
     private let exhaustedRetryCooldown: TimeInterval = 10.0
 
+    /// Gate-rejection accumulators for the 1 Hz summary — see `recordGateRejection`.
+    private var rejectCounts: [String: Int] = [:]
+    private var rejectTransitions = 0
+    private var lastRejectReason: ValidityGate.Reason?
+    private var lastRejectSummaryTime: TimeInterval?
+
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "CalibrationService")
 
     // MARK: - Diagnostics ("cal")
@@ -120,11 +131,6 @@ final class CalibrationService: @unchecked Sendable {
         case .stale:        return "stale"
         case .unavailable:  return "unavailable"
         }
-    }
-
-    private static func reasonName(_ r: ValidityGate.Reason?) -> String {
-        guard let r else { return "none" }
-        return r.rawValue
     }
 
     // MARK: - Init
@@ -241,7 +247,27 @@ final class CalibrationService: @unchecked Sendable {
         let attemptsExhausted = autoStartAttempts >= maxAutoStartAttempts
         let requiredCooldown = attemptsExhausted ? exhaustedRetryCooldown : autoStartCooldown
         let cooldownElapsed = lastAutoStartTime.map { sample.time - $0 >= requiredCooldown } ?? true
-        let canAutoStart = cooldownElapsed
+        // FIX (bug 1, the INFINITE loop — the flickering calibration screen):
+        // `canAutoStart` used to be `cooldownElapsed` alone, consulting nothing about
+        // whether calibration had already SUCCEEDED. `handleProgress(.done)` sets
+        // `estimator = nil`, so "no estimator exists" became true again the instant a
+        // zeroing completed; two seconds later the cooldown expired and auto-start
+        // re-fired — forever. A device log caught it re-arming 9 ms after each
+        // success, sailing past `maxAttempts=3` to attempt 4 and 5, because the
+        // attempt cap only ever guarded the FAILURE path. Every spurious cycle also
+        // fired a re-anchor that visibly reset the rider's angle to zero.
+        //
+        // A successful measurement is TERMINAL. The latch below is what says so, and
+        // it releases on exactly the three things that make a zeroing no longer
+        // current: the rider asks (`recalibrationRequested`), the bias goes stale
+        // (`tracker` moves to `.stale` past `biasStaleAfter`, or on a thermal shift),
+        // or the sensors genuinely drop out (`.unavailable`, handled above, which
+        // resets the budget). Note the manual-recalibrate button always worked —
+        // it goes through `requestRecalibration`, which resets generation and
+        // attempts properly.
+        let calibrationIsCurrent: Bool
+        if case .calibrated = tracker.status { calibrationIsCurrent = true } else { calibrationIsCurrent = false }
+        let canAutoStart = cooldownElapsed && !calibrationIsCurrent
         // A pending request outranks whatever `estimator` currently holds: a stale
         // write-back may have resurrected a FINISHED estimator, whose `process()`
         // returns nil forever, so `handleProgress` never runs and the state stays
@@ -254,18 +280,24 @@ final class CalibrationService: @unchecked Sendable {
             estimator = nil
         }
 
-        // BUG 1/3 instrumentation: heartbeat the auto-start budget so the
-        // "flickers then wedges" retry exhaustion is visible. Once
-        // autoStartAttempts == maxAutoStartAttempts and no estimator exists, no
-        // further sample can start one (only a user request will), which is the
-        // permanent wedge. cooldownRemaining shows the 2 s gap between flickers.
-        let cooldownRemaining = lastAutoStartTime.map { max(0, autoStartCooldown - (sample.time - $0)) } ?? 0
-        diag.emit("autostart:\(estimator == nil ? "idle" : "active")", time: sample.time,
+        // BUG 2 instrumentation: the auto-start latch, as a TRANSITION channel.
+        //
+        // The discriminator is now the categorical state alone. It used to embed
+        // `estimator == nil`, which flipped on most samples during the bug-1
+        // auto-start churn — so the emitter's own transition check was defeated and
+        // this single line became 10,480 of 15,952 app lines in 197 s (89% of the
+        // log, sustained at ~100/s). Numbers belong in `values`, which never gate
+        // emission; only a state name belongs in the key. That is the logging
+        // contract in `Diagnostics.swift`, and this caller was breaking it.
+        let cooldownRemaining = lastAutoStartTime.map { max(0, requiredCooldown - (sample.time - $0)) } ?? 0
+        diag.emit("autostart:\(Self.stateName(state)):\(calibrationIsCurrent ? "current" : "pending")",
+                  time: sample.time,
                   level: .info, message: "autostart status",
                   values: ["attempts": Double(autoStartAttempts),
                            "maxAttempts": Double(maxAutoStartAttempts),
                            "cooldownRemaining": cooldownRemaining,
                            "canAutoStart": canAutoStart ? 1 : 0,
+                           "calibrationIsCurrent": calibrationIsCurrent ? 1 : 0,
                            "hasEstimator": estimator == nil ? 0 : 1,
                            "recalRequested": recalibrationRequested ? 1 : 0])
 
@@ -368,20 +400,29 @@ final class CalibrationService: @unchecked Sendable {
             // the reason is the difference between "Waiting for stable position",
             // which tells the rider nothing, and naming the one condition that is
             // actually failing.
-            let old = Self.reasonName(gateReason)
             gateReason = reason
             gateOpenAccumulator = 0
             lastGateOpenTime = nil
             // Don't clear estimator — it resets internally on next gate open
-            diag.emit("reject:\(reason.rawValue)", time: ProcessInfo.processInfo.systemUptime,
-                      level: .info, message: "gate reason \(old) -> \(reason.rawValue)",
-                      values: [:])
+            recordGateRejection(reason)
 
         case .done(let estimate):
             tracker.adopt(estimate)
+            // Record whether the RIDER asked for this zeroing before clearing the
+            // flag: `RunRecorder` needs it to decide whether the re-anchor is earned
+            // (see `Config.reanchorBiasDelta`). Tapping the pill is a statement about
+            // the angle reference, so it always re-anchors.
+            adoptedEstimateWasUserRequested = recalibrationRequested
             recalibrationRequested = false
             gateReason = nil
             estimator = nil
+            // A success is terminal, so the retry budget it consumed is spent debt,
+            // not a running tally: clear it. The latch in `feedIMU` (see bug 1) is
+            // what prevents a restart; this only makes sure that when the bias DOES
+            // legitimately go stale in 300 s, the re-arm gets its full three fast
+            // attempts instead of dropping straight to the 10 s slow retry.
+            autoStartAttempts = 0
+            lastAutoStartTime = nil
             let t = ProcessInfo.processInfo.systemUptime
             logStateTransition(.calibrated(referenceID: estimate.id, calibratedAt: estimate.wallClock),
                                cause: "estimator done", at: t,
@@ -429,6 +470,36 @@ final class CalibrationService: @unchecked Sendable {
             state = .failed(message: failure.message)
             log.warning("Calibration failed: \(failure.message)")
         }
+    }
+
+    /// Accumulates gate rejections and emits ONE summary per second instead of one
+    /// line per rejection.
+    ///
+    /// The previous form keyed the emitter on the reason name, so with the gate
+    /// flapping between `rotating`, `dwellNotMet` and `specificForceOutOfBand` the
+    /// key changed on nearly every sample and the transition check never suppressed
+    /// anything: 3,698 lines in 197 s, ~25/s, from a phone lying on a desk. A
+    /// per-reason count plus a transition total answers every question the trail
+    /// answered — which condition dominates, and how hard it is thrashing — at 1 Hz.
+    private func recordGateRejection(_ reason: ValidityGate.Reason) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if reason != lastRejectReason {
+            rejectTransitions += 1
+            lastRejectReason = reason
+        }
+        rejectCounts[reason.rawValue, default: 0] += 1
+
+        let due = lastRejectSummaryTime.map { now - $0 >= 1.0 } ?? true
+        guard due else { return }
+        lastRejectSummaryTime = now
+
+        var values: [String: Double] = ["transitions": Double(rejectTransitions)]
+        for (name, count) in rejectCounts { values["n_\(name)"] = Double(count) }
+        // Constant message so the sink's per-(category|message) coalescer can also
+        // see this as one channel rather than N.
+        diag.always(time: now, level: .info, message: "gate reject summary", values: values)
+        rejectCounts.removeAll(keepingCapacity: true)
+        rejectTransitions = 0
     }
 
     private func syncState() {

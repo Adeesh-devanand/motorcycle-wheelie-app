@@ -167,13 +167,24 @@ public struct Pipeline {
                                                          heldFor: 0,
                                                          reason: .noData)
         if rawVerdict == nil { missingVerdictCount += 1 }
-        filter.propagate(imu, thermalState: thermalState)
+        filter.propagate(imu, verdict: verdict, thermalState: thermalState)
         filter.updateWithGravity(imu, verdict: verdict)
 
         if filter.isDegraded { flags.insert(.estimatorDegraded) }
 
         lastSpecificForce = imu.specificForce
         lastGateOpen = verdict.isOpen
+
+        // Publish NOTHING until the filter has tied its world frame to measured
+        // gravity. Before that `filter.pitch` is the raw device axis — a device log
+        // shows -89.7 deg reaching the pipeline 16 ms ahead of the anchor, and
+        // downstream nothing distinguishes it from a real -89.7 deg. Returning nil
+        // is the same "no output for this sample" contract GNSS and baro already
+        // use, and the anchor window is a handful of samples.
+        guard filter.isAnchored else {
+            emitPipeDiagnostics(time: imu.time, pitch: .nan, gateOpen: verdict.isOpen)
+            return nil
+        }
 
         // Record the state so a late GNSS fix can be applied where it belongs.
         delayed.record(filter.snapshot(measuredRate: imu.rotationRate,

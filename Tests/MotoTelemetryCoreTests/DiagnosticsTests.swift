@@ -5,6 +5,7 @@ import XCTest
 /// design — tests drive it single-threaded, which is the only place a recording
 /// sink is legitimate.
 final class RecordingSink: DiagnosticSink, @unchecked Sendable {
+
     private(set) var events: [DiagnosticEvent] = []
     func emit(_ event: DiagnosticEvent) { events.append(event) }
 
@@ -14,6 +15,13 @@ final class RecordingSink: DiagnosticSink, @unchecked Sendable {
 }
 
 final class DiagnosticsTests: XCTestCase {
+
+    /// A gate-open verdict, for tests that only need `propagate` to run.
+    ///
+    /// `propagate` consults the gate because the deferred gravity anchor must not
+    /// accept a sample the gate rejected (a magnitude-only test cannot see a tilt).
+    /// Tests that seed an explicit `gravityAnchor` are already anchored and ignore it.
+    private let openVerdict = ValidityGate.Verdict(isOpen: true, heldFor: 1.0, reason: .open)
     private let g = 9.80665
 
     private func level(_ t: TimeInterval, saturated: Bool = false) -> IMUSample {
@@ -120,7 +128,7 @@ final class DiagnosticsTests: XCTestCase {
             _ = baseline.process(GradeBaseline.Input(pitch: 0, gateOpen: true, time: t))
             _ = segmenter.process(time: t, pitch: 0, pitchRate: 0)
             _ = bias.process(s)
-            eskf.propagate(s)
+            eskf.propagate(s, verdict: openVerdict)
             _ = tracker.update(now: t)
         }
         // Reaching here without a trap is the assertion.

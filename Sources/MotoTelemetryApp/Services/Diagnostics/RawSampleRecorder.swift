@@ -35,6 +35,18 @@ final class RawSampleRecorder: @unchecked Sendable {
     /// ~120 bytes/sample × 100 Hz × 0.5 s ≈ 6 KB per flush; the cap bounds a stalled
     /// disk to a few seconds of samples before dropping and counting.
     private let maxBufferedChunks = 4_000
+    /// Hard ceiling on one raw trace, bytes.
+    ///
+    /// The recorder defaults ON and had no cap at all: a device log measured
+    /// `rawLogBytes=1,579,503` in a 44 s session, which is ~129 MB **per hour** of
+    /// riding, written into `<Documents>` where nothing ages it out. 64 MB is roughly
+    /// half an hour of continuous recording — long enough to cover any session worth
+    /// replaying, and bounded enough that forgetting the toggle cannot fill a phone.
+    /// `DiagnosticLog` is a separate file and already rotates at 20 MB keeping the
+    /// newest few; this is the raw trace's equivalent, except that truncating a
+    /// replay trace mid-stream is the honest behaviour — a rotated raw file would be
+    /// an unreplayable fragment with no header.
+    private let maxFileBytes: UInt64 = 64 * 1024 * 1024
 
     // MARK: - Public
 
@@ -43,6 +55,9 @@ final class RawSampleRecorder: @unchecked Sendable {
     /// is costing. Updated on each flush.
     private(set) var fileSizeBytes: UInt64 = 0
     private(set) var droppedSamples = 0
+    /// True once `maxFileBytes` was hit and recording stopped. Surfaced so the UI can
+    /// say the trace is truncated rather than silently ending it.
+    private(set) var sizeCapReached = false
 
     // MARK: - Private
 
@@ -101,6 +116,10 @@ final class RawSampleRecorder: @unchecked Sendable {
     func record(_ sample: Sample) {
         guard let data = try? LogFile.encode(sample) else { return }
         bufferLock.lock()
+        if sizeCapReached {
+            bufferLock.unlock()
+            return
+        }
         if buffer.count >= maxBufferedChunks {
             droppedSamples += 1
             bufferLock.unlock()
@@ -147,6 +166,19 @@ final class RawSampleRecorder: @unchecked Sendable {
 
         guard let h = handle else { return }
         for chunk in chunks {
+            if fileSizeBytes + UInt64(chunk.count) > maxFileBytes {
+                bufferLock.lock()
+                let alreadyReported = sizeCapReached
+                sizeCapReached = true
+                bufferLock.unlock()
+                if !alreadyReported {
+                    DiagnosticLog.shared.log(.warn, "rawrec",
+                                             "raw trace hit its size cap — recording stopped",
+                                             ["bytes": Double(fileSizeBytes),
+                                              "capBytes": Double(maxFileBytes)])
+                }
+                return
+            }
             h.write(chunk)
             fileSizeBytes += UInt64(chunk.count)
         }

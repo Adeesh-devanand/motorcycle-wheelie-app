@@ -3,9 +3,15 @@ import AVFoundation
 
 @main
 struct WheelieTrackerApp: App {
-    @State private var calibrationService = CalibrationService()
-    @State private var runRepository = RunRepository()
-    @State private var riderPreferences = RiderPreferences()
+    /// The ONE service graph for the process. `App` is instantiated once, so this
+    /// `@State` default runs once and every service inside it is constructed once.
+    ///
+    /// It used to hold three services of its own and inject them into the
+    /// environment while `RootTabView` built a separate `ServiceGraph` containing
+    /// its OWN `CalibrationService` and `RunRepository`. Any view reading
+    /// `@Environment` therefore observed different objects from the ones the recorder
+    /// was actually driving — a silent split-brain on top of the duplicate-graph bug.
+    @State private var services = ServiceGraph()
 
     init() {
         configureAudioSession()
@@ -13,10 +19,10 @@ struct WheelieTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
-                .environment(calibrationService)
-                .environment(runRepository)
-                .environment(riderPreferences)
+            RootTabView(services: services)
+                .environment(services.calibration)
+                .environment(services.repository)
+                .environment(services.preferences)
         }
     }
 

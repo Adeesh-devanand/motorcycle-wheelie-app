@@ -1,5 +1,4 @@
 import Foundation
-import Foundation
 import MotoTelemetryCore
 import Observation
 import os
@@ -59,6 +58,9 @@ final class RunRecorder: @unchecked Sendable {
     /// Id of the calibration currently reflected in the pipeline's anchor. When a new
     /// estimate is adopted this changes, which is how a completed re-zero is detected.
     private var lastCalibrationID: UUID?
+    /// Bias vector the attitude anchor was last established against — the reference
+    /// for the material-change test in `processSample`.
+    private var lastAnchoredBias: Vector3?
 
     private var collectedSamples: [TelemetrySample] = []
     private var sessionStartDate: Date?
@@ -120,6 +122,7 @@ final class RunRecorder: @unchecked Sendable {
         // Seed from the existing estimate so only a calibration adopted DURING this
         // session counts as a re-zero; the fresh filter anchors on its own anyway.
         self.lastCalibrationID = calibrationService.currentEstimate?.id
+        self.lastAnchoredBias = calibrationService.currentEstimate?.bias
 
         // Initialize pipeline with current calibration
         pipeline = Pipeline(
@@ -208,11 +211,31 @@ final class RunRecorder: @unchecked Sendable {
                   self.recordingState == .running,
                   self.sampleCount == 0,
                   !self.calibrationService.hasSeenSample else { return }
+
+            // What kind of silence is this? The watchdog measures EMITTED samples,
+            // and for five seconds it has seen none — but "none emitted" is two
+            // completely different faults. If raw CoreMotion callbacks are arriving,
+            // the hardware is demonstrably alive and our own pairing is dropping
+            // everything (bug 4); a device log shows this path telling the rider to
+            // check device permissions while 1,839 callbacks landed in that same
+            // window. Claiming a permissions problem then is a false diagnosis, and it
+            // sends them to a settings screen that was never the issue.
+            let raw = self.motionService.rawCallbackCount
+            if raw > 0 {
+                self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
+                                 message: "watchdog FIRED — sensors ALIVE but nothing emitted (pairing fault)",
+                                 values: ["rawCallbacks": Double(raw),
+                                          "emitted": Double(self.sampleCount)])
+                self.log.error("Motion callbacks arriving (\(raw)) but no paired samples emitted — pairing fault, not a hardware fault")
+                return
+            }
+
             self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
                              message: "watchdog FIRED — reporting sensors unavailable",
-                             values: ["sampleCount": Double(self.sampleCount)])
+                             values: ["sampleCount": Double(self.sampleCount),
+                                      "rawCallbacks": 0])
             self.calibrationService.reportSensorsUnavailable(
-                reason: "no IMU samples 5 s after starting motion updates")
+                reason: "no IMU samples and no raw motion callbacks 5 s after starting motion updates")
         }
     }
 
@@ -285,11 +308,33 @@ final class RunRecorder: @unchecked Sendable {
         let calibrationID = calibrationService.currentEstimate?.id
         if calibrationID != lastCalibrationID {
             lastCalibrationID = calibrationID
-            if calibrationID != nil {
-                pipe.requestReanchor()
-                log.info("Calibration adopted — re-anchoring attitude and bike axes")
-                diag.always(time: sample.time, level: .info,
-                            message: "re-anchor requested (calibration adopted)", values: [:])
+            if let estimate = calibrationService.currentEstimate {
+                // ...but a re-anchor is not free: it resets the rider's reported
+                // angle to zero. A device log shows seven calibrations in one session
+                // all measuring the SAME bias to three decimals, so six of the seven
+                // re-anchors changed nothing except to yank the angle back to 0
+                // mid-ride. Adopt-and-re-anchor only when the rider asked (the pill
+                // is a statement about the zero reference) or when the bias actually
+                // moved by more than its own repeatability.
+                let userAsked = calibrationService.adoptedEstimateWasUserRequested
+                let delta = lastAnchoredBias.map { (estimate.bias - $0).magnitude }
+                let material = delta.map { $0 > config.reanchorBiasDelta } ?? true
+                let degPerSec = 180.0 / Double.pi
+                if userAsked || material {
+                    lastAnchoredBias = estimate.bias
+                    pipe.requestReanchor()
+                    log.info("Calibration adopted — re-anchoring attitude and bike axes")
+                    diag.always(time: sample.time, level: .info,
+                                message: "re-anchor requested (calibration adopted)",
+                                values: ["userAsked": userAsked ? 1 : 0,
+                                         "biasDeltaDegPerSec": (delta ?? .infinity) * degPerSec,
+                                         "thresholdDegPerSec": config.reanchorBiasDelta * degPerSec])
+                } else {
+                    diag.always(time: sample.time, level: .info,
+                                message: "re-anchor suppressed (bias unchanged)",
+                                values: ["biasDeltaDegPerSec": (delta ?? 0) * degPerSec,
+                                         "thresholdDegPerSec": config.reanchorBiasDelta * degPerSec])
+                }
             }
         }
 

@@ -8,6 +8,13 @@ import os
 /// Delivers a stream of `Sample.imu` from device motion hardware.
 public protocol MotionProviding: Sendable {
     var samples: AsyncStream<Sample> { get }
+    /// Raw sensor callbacks received this session, before any pairing decision.
+    ///
+    /// On the protocol because `RunRecorder`'s watchdog needs it: "no samples
+    /// emitted" is two different faults, and only this number separates dead
+    /// hardware from a pipeline that is dropping everything. A provider with no raw
+    /// layer of its own may report 0.
+    var rawCallbackCount: Int { get }
     func start()
     func stop()
 }
@@ -36,6 +43,16 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
     // MARK: - Diagnostics
 
     public private(set) var unpairedCount: Int = 0
+
+    /// Raw CoreMotion callbacks received this session, gyro + accel, before any
+    /// pairing decision.
+    ///
+    /// This is the number that separates "the hardware is dead" from "our pipeline
+    /// drops everything". A device log has the watchdog telling the rider *"motion
+    /// sensors unavailable — check device permissions"* while 1,839 callbacks arrived
+    /// in that same window and were all discarded as unpaired. Emitted counts cannot
+    /// tell those two apart; this one can.
+    public private(set) var rawCallbackCount: Int = 0
 
     // MARK: - Private
 
@@ -98,6 +115,9 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         streamGeneration += 1
         sawFirstSample = false
         emittedCount = 0
+        lock.lock()
+        rawCallbackCount = 0
+        lock.unlock()
         firstEmitTime = nil
         diag.always(time: now, level: .info, message: "stream created (start)",
                     values: ["generation": Double(streamGeneration)])
@@ -167,6 +187,26 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         manager.stopGyroUpdates()
         manager.stopAccelerometerUpdates()
         manager.stopDeviceMotionUpdates()
+        // Clear the pairing state so the next session boots clean.
+        //
+        // This is bug 4: 3 of 6 sessions in a device log emitted ZERO samples while
+        // CoreMotion delivered ~100/s and every sample was discarded as unpaired.
+        // A half-sample left stashed here survives into the next `start()` and puts
+        // the very first tick into the overwrite phase relation — each gyro finds no
+        // pending accel and overwrites its own slot, each accel does likewise — from
+        // which timestamp pairing never self-heals, so the whole session emits
+        // nothing. `[sensor] first sample` appeared 6-7 ms after stream creation or
+        // never at all, which is the signature of a state decided on the first tick.
+        // `unpairedCount` is reset too: it was never per-session, so the number
+        // logged at stop was a process-cumulative total that over-counted every
+        // session after the first and made the diagnostic itself misleading.
+        lock.lock()
+        pendingGyro = nil
+        pendingAccel = nil
+        latestAttitude = nil
+        let unpairedThisSession = unpairedCount
+        unpairedCount = 0
+        lock.unlock()
         // Deliberately NOT calling `continuation.finish()`. The stream and its
         // continuation are created once in `init`, so finishing here would end it
         // permanently: a later `start()` would restart CoreMotion but every
@@ -175,7 +215,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         // as unavailable with no way back. Leaving Live and returning is enough to
         // trigger it. The service is long-lived and restartable; the continuation
         // is finished only when it is torn down.
-        log.info("MotionService stopped. Unpaired samples: \(self.unpairedCount)")
+        log.info("MotionService stopped. Unpaired samples: \(unpairedThisSession)")
         // BUG 2 instrumentation: stop() deliberately does NOT finish the continuation.
         // Logged so the trace shows the stream is STILL LIVE after stop — if the angle
         // freezes, the death was the consuming Task being cancelled (RunRecorder.
@@ -186,7 +226,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
                     message: "stopped (stream NOT finished — still live)",
                     values: ["streamEnded": 0,
                              "generation": Double(streamGeneration),
-                             "unpaired": Double(unpairedCount),
+                             "unpaired": Double(unpairedThisSession),
                              "emitted": Double(emittedCount)])
     }
 
@@ -198,6 +238,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
 
     private func receive(gyro rate: Vector3, at time: TimeInterval) {
         lock.lock()
+        rawCallbackCount += 1
         if let accel = pendingAccel, abs(accel.time - time) <= pairTolerance {
             // Pair found
             pendingAccel = nil
@@ -218,6 +259,18 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             // readings inflates the spread into a spurious "too much vibration".
             // A half-measured sample is evidence of nothing, so it is counted and
             // dropped rather than invented.
+            //
+            // An opposite-channel stash older than the tolerance window can never
+            // pair with anything that arrives from now on, so EVICT it instead of
+            // leaving it to block future matches. Without this the pairing can settle
+            // into a stable overwrite phase relation and emit zero for an entire
+            // session (bug 4) — the eviction is what makes that state recoverable
+            // rather than permanent. It only discards samples that were already
+            // unpairable, so a sample that would otherwise have paired is never lost.
+            if let accel = pendingAccel, time - accel.time > pairTolerance {
+                pendingAccel = nil
+                unpairedCount += 1
+            }
             if pendingGyro != nil {
                 unpairedCount += 1
             }
@@ -228,6 +281,7 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
 
     private func receive(accel force: Vector3, at time: TimeInterval) {
         lock.lock()
+        rawCallbackCount += 1
         if let gyro = pendingGyro, abs(gyro.time - time) <= pairTolerance {
             pendingGyro = nil
             let attitude = latestAttitude
@@ -235,6 +289,11 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             emit(time: time, rate: gyro.rate, force: force, attitude: attitude)
         } else {
             // Counted and dropped, not zero-filled — see `receive(gyro:at:)`.
+            // Stale-stash eviction, same reasoning as the gyro path.
+            if let gyro = pendingGyro, time - gyro.time > pairTolerance {
+                pendingGyro = nil
+                unpairedCount += 1
+            }
             if pendingAccel != nil {
                 unpairedCount += 1
             }

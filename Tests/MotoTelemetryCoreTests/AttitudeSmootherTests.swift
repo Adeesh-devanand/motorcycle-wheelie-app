@@ -3,6 +3,14 @@ import XCTest
 
 final class AttitudeSmootherTests: XCTestCase {
 
+    /// A gate-open verdict, for tests that only need `propagate` to run.
+    ///
+    /// `propagate` consults the gate because the deferred gravity anchor must not
+    /// accept a sample the gate rejected (a magnitude-only test cannot see a tilt).
+    /// Tests that seed an explicit `gravityAnchor` are already anchored and ignore it.
+    private let openVerdict = ValidityGate.Verdict(isOpen: true, heldFor: 1.0, reason: .open)
+
+
     private let bike = UUID()
 
     private func alignment() -> MountAlignment { .identity(bikeProfileID: bike) }
@@ -96,7 +104,7 @@ final class AttitudeSmootherTests: XCTestCase {
                                rotationRate: input.rotationRate,
                                specificForce: input.specificForce,
                                saturated: input.saturated)
-            filter.propagate(imu)
+            filter.propagate(imu, verdict: openVerdict)
             filter.updateWithGravity(imu, verdict: input.verdict)
             if input.time >= 6.0 && input.time <= eventEnd {
                 forwardWorst = max(forwardWorst,
@@ -207,7 +215,7 @@ final class AttitudeSmootherTests: XCTestCase {
                                rotationRate: input.rotationRate,
                                specificForce: input.specificForce,
                                saturated: input.saturated)
-            filter.propagate(imu)
+            filter.propagate(imu, verdict: openVerdict)
             filter.updateWithGravity(imu, verdict: input.verdict)
             filteredSigma = filter.pitchSigma
         }

@@ -92,7 +92,11 @@ public struct DelayedStateBuffer {
                                        rotationRate: entry.measuredRate,
                                        specificForce: entry.specificForce,
                                        saturated: entry.saturated)
-                filter.propagate(sample, thermalState: thermalState)
+                filter.propagate(sample, verdict: ValidityGate.Verdict(
+                                    isOpen: entry.gateOpen,
+                                    heldFor: 0,
+                                    reason: entry.gateReason),
+                                 thermalState: thermalState)
                 filter.updateWithGravity(
                     sample,
                     verdict: ValidityGate.Verdict(

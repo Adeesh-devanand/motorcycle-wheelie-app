@@ -30,8 +30,25 @@ import Foundation
 /// accumulation. `calibrationVibrationThreshold` no longer FAILS a zeroing -- it
 /// only decides whether an out-of-band rejection is reported as vibration, which is
 /// all its own doc comment ever claimed it did.
+///
+/// v3 -> v4: the calibration gate stopped flapping, and the attitude anchor gained
+/// the test it always needed. On a phone merely being HANDLED for 197 s a device log
+/// recorded 3,698 gate-reason transitions — 933 `specificForceOutOfBand`, 1,429
+/// `rotating` — so a +/-0.03 g band was never going to be satisfied with an engine
+/// running. The band is widened to +/-0.10 g for CALIBRATION only
+/// (`calibrationSpecificForceLow/High`), because there it is an accelerometer proxy
+/// for stillness that never enters the gyro mean, so the cost to the bias estimate is
+/// under 0.001 deg/s. It is deliberately NOT widened for the estimator: the same
+/// verdict also gates the ESKF's gravity update, where 0.3 g of thrust gives
+/// |f| = 1.044 g — inside a +/-0.10 g band — and admitting it converges the filter on
+/// the phantom angle atan(0.3) = 16.7 deg, which is the single failure this project
+/// exists to prevent. `gateMaxRotationRate` 3 -> 5 deg/s is shared, since it bounds
+/// real rotation for both consumers. Added `anchorLevelCosine`: specific-force
+/// MAGNITUDE is orientation-invariant at rest, so the anchor's old magnitude-only test
+/// could not reject a tilt, and a 29.3 deg hand-held pose became the definition of
+/// level for 12 s.
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 3
+    public var version: Int = 4
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -39,9 +56,22 @@ public struct Config: Codable, Sendable, Equatable {
     // specific-force magnitude is 1/cos(t), so 20 deg = 1.06 g and 30 deg = 1.15 g:
     // a +/-0.03 g window rejects anything past ~14 deg of lean before the rate
     // test even fires.
+    //
+    // This band is the ESTIMATOR's, and it stays tight.
+    // `AttitudeESKFTests.testSustainedThrustDoesNotDragTheEstimateToThePhantomAngle`
+    // is why: 0.3 g of forward thrust gives |f| = 1.044 g, so any band looser than
+    // about +/-0.04 g calls sustained acceleration "at rest" and feeds its 16.7 deg
+    // of phantom tilt straight into the gravity update. Calibration's own, looser
+    // band is separate — see `calibrationSpecificForceLow/High`.
     public var gateSpecificForceLow: Double = 0.97 * 9.80665   // m/s^2
     public var gateSpecificForceHigh: Double = 1.03 * 9.80665  // m/s^2
-    public var gateMaxRotationRate: Double = 3.0 * .pi / 180   // rad/s, per axis
+    /// Per-axis rotation ceiling, rad/s. Widened 3 -> 5 deg/s in v4 and NO further:
+    /// unlike the specific-force band this bounds real rotation during the 8-second
+    /// gyro mean, so a sustained rotation admitted here is averaged straight into
+    /// the bias. 5 deg/s widens the admit window ~1.7x and cuts the `rotating`
+    /// thrash while `biasSigmaLimit` (0.05 deg/s on the SEM) still rejects a
+    /// zeroing that actually was contaminated.
+    public var gateMaxRotationRate: Double = 5.0 * .pi / 180   // rad/s, per axis
     public var gateDwell: TimeInterval = 0.5                   // must hold this long
     /// How long a band violation must PERSIST before the gate actually closes.
     ///
@@ -69,6 +99,59 @@ public struct Config: Codable, Sendable, Equatable {
     /// a steady tilt at any window length. That is attenuated mechanically, at the
     /// mount.
     public var gateCloseConfirm: TimeInterval = 0.06            // seconds
+
+    /// Specific-force band for the CALIBRATION gate only, m/s^2. +/-0.10 g.
+    ///
+    /// `BiasEstimator` builds its own `ValidityGate` from these instead of
+    /// `gateSpecificForceLow/High`, because the two consumers of a stillness verdict
+    /// have opposite sensitivities to a loose band:
+    ///
+    /// - For the **bias mean** the band is only an accelerometer PROXY for "the bike
+    ///   is not moving". It never enters the average, which is a gyro mean, so a
+    ///   sample admitted at 1.08 g contributes exactly the same quiet gyro reading as
+    ///   one admitted at 1.02 g. Cost of widening: under 0.001 deg/s.
+    /// - For the **ESKF gravity update** the band IS the accuracy guard. Specific
+    ///   force during acceleration is gravity plus thrust, and 0.3 g of thrust gives
+    ///   |f| = 1.044 g — comfortably inside +/-0.10 g — while pointing 16.7 deg wrong.
+    ///
+    /// So the estimator keeps +/-0.03 g and calibration gets +/-0.10 g. A device log
+    /// recorded 933 `specificForceOutOfBand` rejections in 197 s from a phone being
+    /// handled on a desk; on an idling bike the tight band made an 8-second window of
+    /// unbroken quiet essentially unassemblable, which is the whole reason calibration
+    /// never finished. `gateMaxRotationRate` is deliberately NOT split — it bounds
+    /// real rotation, which matters to both.
+    public var calibrationSpecificForceLow: Double = 0.90 * 9.80665   // m/s^2 (-0.10 g)
+    public var calibrationSpecificForceHigh: Double = 1.10 * 9.80665  // m/s^2 (+0.10 g)
+
+    /// How much the gyro bias must MOVE before adopting a new estimate re-anchors
+    /// the attitude, rad/s. 0.01 deg/s.
+    ///
+    /// A re-anchor resets the rider's reported angle to zero, so it must be earned.
+    /// A device log shows seven calibrations in one session all measuring the same
+    /// bias to three decimals (`meanBiasX` -0.097, `meanBiasY` 0.013, `meanBiasZ`
+    /// 0.111 every time, SEM 0.0018 deg/s) — six of those re-anchors changed nothing
+    /// except to yank the angle back to 0 mid-ride. 0.01 deg/s sits ~5 sigma above
+    /// that repeatability, so a genuine change (a remount, or thermal drift, which
+    /// runs ~0.1 deg/s over 30 min) still gets through.
+    ///
+    /// This threshold never blocks a re-anchor the RIDER asked for: tapping the pill
+    /// means "this pose is level", which is a statement about the angle reference and
+    /// not about the bias at all.
+    public var reanchorBiasDelta: Double = 0.01 * .pi / 180     // rad/s
+
+
+    /// as `|f.z| / |f|` — i.e. `cos(max tilt)`. 0.94 is about 20 deg.
+    ///
+    /// The anchor used to test specific-force MAGNITUDE alone, which cannot work:
+    /// magnitude at rest is g at *every* orientation, so the test is structurally
+    /// blind to exactly the error it was there to catch. A device log has a 29.3 deg
+    /// hand-held pose (`|f|` = 9.817, squarely inside the band) accepted as level,
+    /// after which the app reported a constant -27.87 deg while standing still.
+    ///
+    /// Deliberately loose: at 20 deg it tolerates any plausible cradle angle and only
+    /// rejects a pose no one would call level. The validity gate supplies the
+    /// quiescence test; this supplies the one thing the gate does not check.
+    public var anchorLevelCosine: Double = 0.94                 // cos(~20 deg)
 
     // MARK: - Zero / baseline
     // Blend slowly so a brief false gate-open cannot yank the reference. Road
@@ -305,6 +388,10 @@ public struct Config: Codable, Sendable, Equatable {
         gateMaxRotationRate   = try get(.gateMaxRotationRate, d.gateMaxRotationRate)
         gateDwell             = try get(.gateDwell, d.gateDwell)
         gateCloseConfirm      = try get(.gateCloseConfirm, d.gateCloseConfirm)
+        anchorLevelCosine     = try get(.anchorLevelCosine, d.anchorLevelCosine)
+        calibrationSpecificForceLow  = try get(.calibrationSpecificForceLow, d.calibrationSpecificForceLow)
+        calibrationSpecificForceHigh = try get(.calibrationSpecificForceHigh, d.calibrationSpecificForceHigh)
+        reanchorBiasDelta     = try get(.reanchorBiasDelta, d.reanchorBiasDelta)
 
         baselineTimeConstant  = try get(.baselineTimeConstant, d.baselineTimeConstant)
         accelLowPassCutoff    = try get(.accelLowPassCutoff, d.accelLowPassCutoff)

@@ -134,6 +134,42 @@ public struct MountAlignment: Codable, Sendable, Equatable {
                               bikeProfileID: bikeProfileID)
     }
 
+    /// Re-levels an EXISTING alignment against a freshly measured gravity vector,
+    /// keeping the forward heading and replacing only what gravity actually observes.
+    ///
+    /// This is what a re-anchor needs, and neither of the two obvious options gives
+    /// it. Re-deriving the whole alignment with `fromMeasuredGravity` re-guesses which
+    /// horizontal direction is bike-forward, and a device log showed seven
+    /// calibrations in one session each silently reassigning which tilt counts as a
+    /// wheelie. Leaving the alignment untouched looks safe but does not zero the
+    /// angle: `AxisElevation.pitch` is the elevation of `forward`, so if the old
+    /// `forward` is not perpendicular to the NEW `up`, the pose the rider just
+    /// declared level still reads its full tilt — 35 deg still reported 35.0 deg, and
+    /// the re-zero the rider asked for did nothing.
+    ///
+    /// So: take `up` from the measurement (gravity fixes it exactly) and
+    /// Gram-Schmidt the existing `forward` against it. Forward keeps its heading, is
+    /// perpendicular to the new up by construction, and the pose reads exactly 0.
+    public func releveled(againstMeasuredGravity specificForce: Vector3) -> MountAlignment {
+        let up = (specificForce * -1).normalized
+        let projected = forwardInBody - up * forwardInBody.dot(up)
+        guard projected.magnitude > 1e-6 else {
+            // Forward is parallel to the new up: the phone has been turned through
+            // ~90 deg, which is a REMOUNT, not a re-level. There is no heading left
+            // to preserve, so fall back to deriving one.
+            return .fromMeasuredGravity(specificForce: specificForce,
+                                        bikeProfileID: bikeProfileID)
+        }
+        let forward = projected.normalized
+        return MountAlignment(forwardInBody: forward,
+                              upInBody: up,
+                              leftInBody: up.cross(forward),
+                              residual: residual,
+                              peakPullAcceleration: peakPullAcceleration,
+                              capturedAt: capturedAt,
+                              bikeProfileID: bikeProfileID)
+    }
+
     /// Pitch of the bike given a device attitude, using this alignment.
     public func pitch(attitude: Quaternion) -> Double {
         AxisElevation.pitch(attitude: attitude, forwardInBody: forwardInBody)

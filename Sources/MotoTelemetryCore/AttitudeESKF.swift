@@ -63,6 +63,16 @@ public struct AttitudeESKF {
     /// anchors (it passes the first gate-open sample); the live filter must too.
     private var hasAnchored: Bool
 
+    /// True once attitude has been tied to MEASURED gravity.
+    ///
+    /// Until then the world frame is the raw device frame and `pitch` is meaningless
+    /// — a flat phone reads about -90 deg, and a device log caught exactly that
+    /// (-89.7 deg) being published into the pipeline 16 ms before the anchor was
+    /// acquired. Callers must publish nothing while this is false.
+    public var isAnchored: Bool { hasAnchored }
+    /// Whether the pending anchor must be near-level. True for a COLD anchor (nobody
+    /// has declared anything); cleared by `requestReanchor()`, where the rider has.
+    private var anchorRequiresLevel = true
     /// Whether the bike axes have been derived from gravity yet.
     ///
     /// Deliberately NOT cleared by `requestReanchor()`. A re-anchor must re-zero the
@@ -139,6 +149,15 @@ public struct AttitudeESKF {
     /// live path should call it — replay and tests keep the alignment they were given.
     public mutating func requestReanchor() {
         hasAnchored = false
+        // A re-anchor is a DECLARATION, not a measurement: it is called when a
+        // calibration completes, i.e. the rider held the bike still and in doing so
+        // said "this pose is level". So the near-level test is waived here — a
+        // nose-down cradle is a legitimate mount, and refusing to zero it would make
+        // the pill do nothing. The gate must still be open, so the pose still has to
+        // be quiescent. The COLD anchor keeps the level requirement, because nobody
+        // declared anything there, and that is the path a device log caught accepting
+        // a 29.3 deg hand-held pose as level.
+        anchorRequiresLevel = false
         diag.always(time: time ?? 0, level: .info,
                     message: "eskf requestReanchor",
                     values: ["pitchDeg": pitch * 180 / .pi])
@@ -151,7 +170,13 @@ public struct AttitudeESKF {
     /// `dt` is taken from consecutive sample times and clamped: a gap outside the
     /// plausible range is a dropout, and it is recorded and propagated with
     /// inflated process noise rather than pretended away.
-    public mutating func propagate(_ sample: IMUSample, thermalState: Int = 0) {
+    ///
+    /// `verdict` is the gate reading for THIS sample, computed once upstream. It is
+    /// required, not optional: the deferred gravity anchor needs it, and a caller
+    /// that cannot supply one has no business deciding that a sample represents rest.
+    public mutating func propagate(_ sample: IMUSample,
+                                   verdict: ValidityGate.Verdict,
+                                   thermalState: Int = 0) {
         let nominalDt = 1.0 / config.nominalSampleRate
         var dt = nominalDt
         var gapFactor = 1.0
@@ -163,36 +188,58 @@ public struct AttitudeESKF {
         //
         // Deferred to the first sample that LOOKS like rest rather than the literal
         // first sample: specific force during acceleration is gravity plus thrust,
-        // and anchoring to that would bake the error in permanently. The magnitude
-        // band is the same one `ValidityGate` uses.
+        // and anchoring to that would bake the error in permanently.
         if !hasAnchored {
+            // Two conditions, and the magnitude band alone was never one of them.
+            //
+            // 1. The GATE must be open. It already tests the magnitude band, the
+            //    rotation-rate ceiling and dwell, and it is computed once upstream —
+            //    so consult it instead of reimplementing a weaker copy here.
+            // 2. The pose must be NEAR-LEVEL — unless a re-anchor waived it, in which
+            //    case the rider has declared this pose level (see `requestReanchor`).
+            //    This is the condition the old check was structurally incapable of
+            //    expressing: specific-force magnitude is orientation-INVARIANT at
+            //    rest — it is g at every orientation — so it cannot reject a tilt. A
+            //    device log caught a hand-held 29.3 deg pose (|f| = 9.817, squarely in
+            //    band) becoming the definition of level, and the app then reported a
+            //    constant -27.87 deg while standing still. At rest f ~= -g*up, so
+            //    |f.z|/|f| ~ cos(tilt); 0.94 rejects tilt past ~20 deg while
+            //    tolerating a generous cradle angle. Deliberately loose — the gate
+            //    carries the strictness.
             let magnitude = sample.specificForce.magnitude
-            if magnitude >= config.gateSpecificForceLow,
-               magnitude <= config.gateSpecificForceHigh {
+            let nearLevel = magnitude > 1e-6
+                && abs(sample.specificForce.z) / magnitude >= config.anchorLevelCosine
+            if verdict.isOpen, nearLevel || !anchorRequiresLevel {
                 attitude = Quaternion.rotation(from: sample.specificForce,
                                                to: Conventions.worldGravity)
-                // The same at-rest sample also fixes the bike axes — but ONLY the
-                // FIRST time. Gravity determines `up` and nothing else: it cannot know
-                // which horizontal direction is bike-forward, so
-                // `fromMeasuredGravity` has to guess, and the guess depends on how the
-                // phone happened to be lying. Re-deriving it on every re-anchor
-                // therefore reassigns which tilt direction counts as a wheelie. A
-                // device log showed seven calibrations in one session, each silently
-                // redefining that axis, which is why the reported angle's sign felt
-                // arbitrary and a real tilt could read as 0.
+                // The same at-rest sample also fixes the bike axes. Gravity determines
+                // `up` and nothing else: it cannot know which horizontal direction is
+                // bike-forward, so `fromMeasuredGravity` has to guess, and the guess
+                // depends on how the phone happened to be lying. Re-deriving it in
+                // full on every re-anchor therefore reassigns which tilt direction
+                // counts as a wheelie. A device log showed seven calibrations in one
+                // session, each silently redefining that axis, which is why the
+                // reported angle's sign felt arbitrary and a real tilt could read as 0.
                 //
-                // A re-zero must still move the ANGLE to zero — that is the whole
-                // point of re-anchoring after calibration — so the attitude above is
-                // always re-derived. Only the axes are sticky. A proper per-bike
-                // solve is R7.1; until it exists, one guess held steady beats a fresh
-                // guess every zeroing.
-                if !hasDerivedAlignment {
+                // But leaving the axes ALONE is not the answer either: pitch is the
+                // elevation of `forward`, so an old `forward` that is not perpendicular
+                // to the NEW `up` leaves the pose reading its full tilt — the same log
+                // has a 35 deg pose still reporting 35.0 deg after the re-zero that was
+                // supposed to make it 0. `releveled(againstMeasuredGravity:)` is the
+                // narrow operation this needs: take `up` from the measurement, keep the
+                // forward HEADING, and re-orthogonalise. First anchor still derives the
+                // heading from scratch, because there is none to keep.
+                if hasDerivedAlignment {
+                    alignment = alignment.releveled(
+                        againstMeasuredGravity: sample.specificForce)
+                } else {
                     alignment = MountAlignment.fromMeasuredGravity(
                         specificForce: sample.specificForce,
                         bikeProfileID: alignment.bikeProfileID)
                     hasDerivedAlignment = true
                 }
                 hasAnchored = true
+                anchorRequiresLevel = true
                 emitAnchor(time: sample.time, gravity: sample.specificForce)
             }
         }
@@ -255,11 +302,17 @@ public struct AttitudeESKF {
 
         // 1 Hz heartbeat: pitch deg, applied bias deg/s. Keyed on a constant so it
         // is a pure heartbeat (propagation has no categorical state of its own).
+        //
+        // Pitch is reported as NaN before an anchor exists. Attitude is identity
+        // then, so the number is the raw device axis, not a bike angle — a device
+        // log shows -89.7183 deg published 16 ms ahead of the anchor. Logging a
+        // sentinel keeps the heartbeat's cadence honest without publishing a lie.
         let degrees = 180.0 / .pi
         diag.emit("propagate", time: sample.time,
                   message: "eskf heartbeat",
                   values: [
-                    "pitchDeg": pitch * degrees,
+                    "pitchDeg": hasAnchored ? pitch * degrees : Double.nan,
+                    "isAnchored": hasAnchored ? 1 : 0,
                     "biasXDegPerSec": bias.x * degrees,
                     "biasYDegPerSec": bias.y * degrees,
                     "biasZDegPerSec": bias.z * degrees,
@@ -496,6 +549,28 @@ public struct AttitudeESKF {
 
     // MARK: - Shared update machinery
 
+    /// Zeroes the yaw (Z) row of a bias-error gain block, so no measurement update
+    /// ever moves `bias.z`.
+    ///
+    /// Yaw bias is structurally UNOBSERVABLE from gravity: an accelerometer at rest
+    /// constrains the two tilt axes and says nothing about rotation about vertical.
+    /// Left free, `bias.z` random-walks — a device log has it climbing monotonically
+    /// to 5.05 deg/s against a measured truth of 0.111 deg/s, on a phone lying still
+    /// on a desk, and still rising. That is not cosmetic: `bias` is subtracted from
+    /// the measured rate and the result is integrated into attitude, so once the
+    /// phone tilts, body-Z is no longer world-vertical and rotation about it acquires
+    /// a component that moves forward's elevation. The pitch leak is zero at exactly
+    /// level and grows as sin(tilt) — i.e. worst during the wheelie being measured.
+    ///
+    /// So do not estimate it: hold the calibrated value, which `BiasEstimator`
+    /// measures from an 8-second mean far better than an update carrying no
+    /// information about it ever could. X and Y stay fully estimated.
+    private func zeroYawBiasGain(_ k2: inout Matrix3) {
+        k2[2, 0] = 0
+        k2[2, 1] = 0
+        k2[2, 2] = 0
+    }
+
     /// Three-dimensional update where `H = [h, 0]`, i.e. the measurement sees
     /// attitude error only. Joseph form throughout.
     private mutating func applyVectorUpdate(h: Matrix3,
@@ -514,7 +589,8 @@ public struct AttitudeESKF {
 
         // K = P H^T S^-1, in two 3x3 blocks because H's right half is zero.
         let k1 = p11 * hT * sInverse
-        let k2 = p21 * hT * sInverse
+        var k2 = p21 * hT * sInverse
+        zeroYawBiasGain(&k2)
 
         // Inject the correction and reset the error state to zero.
         let deltaTheta = k1 * residual
@@ -553,7 +629,10 @@ public struct AttitudeESKF {
         guard s > 1e-15 else { return false }
 
         let k1 = (p11 * hVector) / s
-        let k2 = (p21 * hVector) / s
+        var k2 = (p21 * hVector) / s
+        // Yaw bias is unobservable — see `zeroYawBiasGain`. Here the gain block is
+        // already a Vector3, so the projection is exact and trivial.
+        k2.z = 0
 
         attitude = (attitude * Quaternion.exp(rotationVector: k1 * residual)).normalized
         bias = bias + k2 * residual

@@ -3,6 +3,14 @@ import XCTest
 
 final class AttitudeESKFTests: XCTestCase {
 
+    /// A gate-open verdict, for tests that only need `propagate` to run.
+    ///
+    /// `propagate` consults the gate because the deferred gravity anchor must not
+    /// accept a sample the gate rejected (a magnitude-only test cannot see a tilt).
+    /// Tests that seed an explicit `gravityAnchor` are already anchored and ignore it.
+    private let openVerdict = ValidityGate.Verdict(isOpen: true, heldFor: 1.0, reason: .open)
+
+
     private let bike = UUID()
 
     private func alignment() -> MountAlignment { .identity(bikeProfileID: bike) }
@@ -60,7 +68,7 @@ final class AttitudeESKFTests: XCTestCase {
             let sample = IMUSample(time: Double(i) / 100,
                                    rotationRate: rate,
                                    specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
         }
         // 199 integrated steps of 0.01 s: the first sample only sets the epoch,
         // because there is no elapsed interval before it.
@@ -74,7 +82,7 @@ final class AttitudeESKFTests: XCTestCase {
             let sample = IMUSample(time: Double(i) / 100,
                                    rotationRate: rate,
                                    specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
             filter.updateWithGravity(sample, gateOpen: i % 3 == 0)
         }
         XCTAssertNotNil(filter.covariance.cholesky(),
@@ -97,12 +105,12 @@ final class AttitudeESKFTests: XCTestCase {
         for i in 1...100 {
             filter.propagate(IMUSample(time: Double(i) / 100,
                                        rotationRate: rate,
-                                       specificForce: Conventions.restSpecificForce))
+                                       specificForce: Conventions.restSpecificForce), verdict: openVerdict)
         }
         let before = filter.pitch
         filter.propagate(IMUSample(time: 0.5,      // in the past
                                    rotationRate: rate,
-                                   specificForce: Conventions.restSpecificForce))
+                                   specificForce: Conventions.restSpecificForce), verdict: openVerdict)
         XCTAssertEqual(filter.pitch, before, accuracy: 1e-15)
     }
 
@@ -110,7 +118,7 @@ final class AttitudeESKFTests: XCTestCase {
         var filter = makeFilter()
         let rate = Conventions.rotationRate(pitchRate: 30 * .pi / 180)
         filter.propagate(IMUSample(time: 0.01, rotationRate: rate,
-                                   specificForce: Conventions.restSpecificForce))
+                                   specificForce: Conventions.restSpecificForce), verdict: openVerdict)
         XCTAssertEqual(filter.pitchRate * 180 / .pi, 30, accuracy: 1e-9)
     }
 
@@ -122,7 +130,7 @@ final class AttitudeESKFTests: XCTestCase {
                                rotationRate: .zero,
                                specificForce: Vector3(50, 0, -9.8),
                                saturated: true)
-        filter.propagate(sample)
+        filter.propagate(sample, verdict: openVerdict)
         XCTAssertFalse(filter.updateWithGravity(sample, gateOpen: true))
     }
 
@@ -159,7 +167,7 @@ final class AttitudeESKFTests: XCTestCase {
                 let sample = IMUSample(time: t,
                                        rotationRate: drift,
                                        specificForce: Conventions.restSpecificForce)
-                filter.propagate(sample)
+                filter.propagate(sample, verdict: openVerdict)
                 filter.updateWithGravity(sample,
                                          verdict: ValidityGate.Verdict(
                                             isOpen: reason == .open,
@@ -200,7 +208,7 @@ final class AttitudeESKFTests: XCTestCase {
                                    rotationRate: .zero,
                                    specificForce: force)
             let verdict = gate.process(sample)!
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
             filter.updateWithGravity(sample, verdict: verdict)
         }
         XCTAssertLessThan(abs(filter.pitch) * 180 / .pi, phantom / 4,
@@ -216,7 +224,7 @@ final class AttitudeESKFTests: XCTestCase {
         for i in 1...100 {
             filter.propagate(IMUSample(time: Double(i) / 100,
                                        rotationRate: bogus,
-                                       specificForce: Conventions.restSpecificForce))
+                                       specificForce: Conventions.restSpecificForce), verdict: openVerdict)
         }
         let corrupted = abs(filter.pitch)
         XCTAssertGreaterThan(corrupted * 180 / .pi, 5)
@@ -225,7 +233,7 @@ final class AttitudeESKFTests: XCTestCase {
             let sample = IMUSample(time: Double(i) / 100,
                                    rotationRate: .zero,
                                    specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
             filter.updateWithGravity(sample, gateOpen: true)
         }
         XCTAssertLessThan(abs(filter.pitch) * 180 / .pi, 0.5,
@@ -261,7 +269,7 @@ final class AttitudeESKFTests: XCTestCase {
                 let sample = IMUSample(time: t,
                                        rotationRate: trueBias,
                                        specificForce: bikeForce)
-                filter.propagate(sample)
+                filter.propagate(sample, verdict: openVerdict)
                 filter.updateWithGravity(sample, gateOpen: false)
 
                 if useGNSS, t >= gnssTime {
@@ -329,7 +337,7 @@ final class AttitudeESKFTests: XCTestCase {
                 let t = Double(i) / 100
                 let sample = IMUSample(time: t, rotationRate: trueBias,
                                        specificForce: force)
-                filter.propagate(sample)
+                filter.propagate(sample, verdict: openVerdict)
                 filter.updateWithGravity(sample, gateOpen: false)
                 buffer.record(filter.snapshot(measuredRate: sample.rotationRate,
                                               specificForce: sample.specificForce,
@@ -378,7 +386,7 @@ final class AttitudeESKFTests: XCTestCase {
             let sample = IMUSample(time: Double(i) / 100,
                                    rotationRate: .zero,
                                    specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
             buffer.record(filter.snapshot(measuredRate: sample.rotationRate,
                                           specificForce: sample.specificForce,
                                           saturated: false,
@@ -400,7 +408,7 @@ final class AttitudeESKFTests: XCTestCase {
             let sample = IMUSample(time: Double(i) / 100,
                                    rotationRate: .zero,
                                    specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample)
+            filter.propagate(sample, verdict: openVerdict)
             buffer.record(filter.snapshot(measuredRate: sample.rotationRate,
                                           specificForce: sample.specificForce,
                                           saturated: false,

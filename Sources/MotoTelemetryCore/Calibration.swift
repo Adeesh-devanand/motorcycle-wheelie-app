@@ -214,7 +214,18 @@ public struct BiasEstimator: Stage {
         self.config = config
         self.bikeProfileID = bikeProfileID
         self.thermalState = thermalState
-        self.gate = ValidityGate(config: config)
+        // Calibration's gate runs on the WIDER specific-force band. See
+        // `Config.calibrationSpecificForceLow` for the full argument: that band is an
+        // accelerometer proxy for stillness here and never enters the gyro mean, so
+        // widening it costs the estimate under 0.001 deg/s — whereas widening the
+        // estimator's copy would let 0.3 g of thrust pass as "at rest" and feed
+        // 16.7 deg of phantom tilt into the ESKF's gravity update. The rotation-rate
+        // ceiling and dwell are shared unchanged, and `biasSigmaLimit` remains the
+        // real accuracy backstop on the finished mean.
+        var gateConfig = config
+        gateConfig.gateSpecificForceLow = config.calibrationSpecificForceLow
+        gateConfig.gateSpecificForceHigh = config.calibrationSpecificForceHigh
+        self.gate = ValidityGate(config: gateConfig)
         self.vibration = HighFrequencyIndicator(config: config)
         self.diag = DiagnosticEmitter(sink: sink, category: "bias")
     }
@@ -305,6 +316,25 @@ public struct BiasEstimator: Stage {
                                required: config.biasCalibrationDuration)
         }
 
+        // A gap far larger than a nominal interval is not a pause, it is a
+        // DISCONTINUITY: the sensor stream died — the rider left the Live tab, the
+        // consuming Task was cancelled, the session restarted — and the pre-gap
+        // partial estimate can no longer be assumed to describe the same still bike
+        // at the same temperature in the same pose. A device log has a 19 s gap
+        // straddled by one accumulation window. The 30-nominal-interval threshold
+        // (300 ms at 100 Hz) is far past any real scheduling jitter and far below any
+        // genuine dropout, and deliberately larger than `biasGateGracePeriod`: a gap
+        // this size means missing SAMPLES, which is a different thing from a gate
+        // closure. Begin the window afresh from this sample rather than pooling
+        // across the dead stream.
+        if let previous = lastAccumulateTime, sample.time - previous > discontinuityGap {
+            resetAccumulation(reason: "streamGap", at: sample.time)
+            accumulate(sample.rotationRate)
+            firstSampleTime = sample.time
+            lastAccumulateTime = sample.time
+            return .collecting(elapsed: 0, required: config.biasCalibrationDuration)
+        }
+
         accumulate(sample.rotationRate)
         if firstSampleTime == nil { firstSampleTime = sample.time }
         // Held-still time EXCLUDING paused gaps. Using wall sample time here would
@@ -359,6 +389,12 @@ public struct BiasEstimator: Stage {
               time - start >= config.biasAttemptWindow else { return nil }
         finished = true
         return .failed(.gateNeverOpened(lastReason: lastReason))
+    }
+
+    /// Inter-sample gap beyond which the stream is treated as having DIED rather
+    /// than paused — 30 nominal intervals, i.e. 300 ms at 100 Hz.
+    private var discontinuityGap: TimeInterval {
+        config.nominalSampleRate > 0 ? 30.0 / config.nominalSampleRate : 0.3
     }
 
     private mutating func accumulate(_ v: Vector3) {

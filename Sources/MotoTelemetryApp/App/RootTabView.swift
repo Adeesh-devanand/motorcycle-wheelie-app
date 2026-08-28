@@ -18,7 +18,23 @@ struct TwinMeterGlyph: View {
 /// (ui-spec §7.6). Nothing here is optional: with no recorder there is no
 /// pipeline, so the meters read zero and Past Runs stays empty forever.
 struct RootTabView: View {
-    @State private var services = ServiceGraph()
+    /// Injected by `WheelieTrackerApp` and held for the app lifetime.
+    ///
+    /// Deliberately a plain `let`, NOT `@State private var services = ServiceGraph()`.
+    /// That form is a trap: the `@State` default-value autoclosure re-runs
+    /// `ServiceGraph()` on every `RootTabView.init`. SwiftUI keeps only the first
+    /// instance, but the throwaways are FULLY CONSTRUCTED first — and
+    /// `ServiceGraph.init` eagerly builds `SpeedService`, which starts location
+    /// authorization. So the side effects fire before the object is discarded. A
+    /// device log shows three graphs built in one session: twice at launch (identity
+    /// pass + first body pass) and twice more when a run was SAVED, because saving
+    /// mutates the observable `RunRepository` that `body` depends on and re-runs
+    /// `init`. The result was three `SpeedService` instances holding
+    /// `bestForNavigation` GPS simultaneously, one of them reporting
+    /// `first GNSS fix generation=0` while the live one was on generation 5.
+    ///
+    /// Do not wrap this in `@State` again.
+    let services: ServiceGraph
     @State private var selectedTab = 0
 
     var body: some View {

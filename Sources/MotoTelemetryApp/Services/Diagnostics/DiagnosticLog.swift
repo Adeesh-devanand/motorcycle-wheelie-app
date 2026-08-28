@@ -116,30 +116,40 @@ final class DiagnosticLog: DiagnosticSink {
     func emit(_ event: DiagnosticEvent) {
         let line = encode(event)
 
-        // OSLog mirror for .info and above; trace/debug stay file-only so the
-        // Console stays readable.
-        if event.level.osLogEligible {
-            mirror(event)
-        }
-
         bufferLock.lock()
         // Defence-in-depth coalescing over the core's transition+heartbeat rule.
         let key = event.category + "|" + event.message
+        let exemptFromCoalescing = (event.level == .warn || event.level == .error)
         if let last = lastEmitByKey[key], event.time - last < coalesceWindow,
-           event.level != .warn, event.level != .error {
+           !exemptFromCoalescing {
             droppedCount += 1
             bufferLock.unlock()
             return
         }
         lastEmitByKey[key] = event.time
 
-        if buffer.count >= maxBufferedLines {
+        let bufferFull = buffer.count >= maxBufferedLines
+        if bufferFull {
             droppedCount += 1
-            bufferLock.unlock()
-            return
+        } else {
+            buffer.append(line)
         }
-        buffer.append(line)
         bufferLock.unlock()
+
+        // OSLog mirror for .info and above; trace/debug stay file-only so the
+        // Console stays readable.
+        //
+        // This runs AFTER the coalescing check, not before it. It used to be the
+        // first thing `emit` did, so the on-disk NDJSON was correctly held to 20/s
+        // while every `.info` event reached the Xcode console unthrottled — the
+        // device log that prompted this audit IS the OSLog stream, which is why it
+        // measured ~100/s against a coalescer that was working correctly. The two
+        // numbers were never in conflict; they were two different sinks. `.warn` and
+        // `.error` are exempt from coalescing above, so the mirror still receives
+        // every one of them.
+        if event.level.osLogEligible {
+            mirror(event)
+        }
     }
 
     // MARK: - Convenience for app code (no core sample time available)
