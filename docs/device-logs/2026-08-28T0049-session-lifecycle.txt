@@ -1,0 +1,195 @@
+00:49:57.644947 [RunRepository] Loaded 0 runs from disk
+00:49:57.650365 [app] app launch — configuring audio session
+00:49:57.899293 [RunRepository] Loaded 0 runs from disk
+00:49:58.450246 [app] ServiceGraph constructed bikeStore=1.0 calibration=1.0 motion=1.0 repository=1.0 cueRenderer=1.0 recorder=1.0 speed=1.0
+00:49:58.486728 [sensor] authorization changed authStatus=4.0
+00:49:58.486994 [sensor] speed updates started authStatus=4.0 background=1.0
+00:49:58.736421 [live] onAppear
+00:49:58.736467 [live] display link start (30 Hz)
+00:49:58.744670 [rec] raw recorder started
+00:49:58.744805 [sensor] stream finished (start: replacing old) streamEnded=1.0 generation=0.0
+00:49:58.744853 [sensor] stream created (start) generation=1.0
+00:49:58.752294 [MotionService] MotionService started at 100.000000 Hz
+00:49:58.752346 [sensor] started hz=100.0 deviceMotionAvail=1.0 accelAvail=1.0 gyroAvail=1.0
+00:49:58.752377 [sensor] stream finished (start: replacing old) streamEnded=1.0 generation=0.0
+00:49:58.752408 [sensor] speed stream created (start) authStatus=4.0 generation=1.0
+00:49:58.752714 [sensor] speed updates started background=1.0 authStatus=4.0
+00:49:58.883785 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:49:58.883809 [rec] session started hasInitialBias=0.0
+00:49:58.884638 [live] session started (subscribed)
+00:49:58.884638 [rec] watchdog armed (2×2.5s)
+00:49:59.032099 [sensor] first GNSS fix generation=1.0 speed=-1.0 speedAcc=-1.0
+00:50:03.995740 [rec] watchdog FIRED — reporting sensors unavailable sampleCount=0.0
+00:50:07.894192 [app] tab changed tab=1.0
+00:50:07.956433 [live] onDisappear — stopping display link & session
+00:50:07.956516 [rec] consuming Tasks cancelled — sensor streams die here sampleCount=0.0 streamEnded=1.0 motionTaskLive=1.0 speedTaskLive=1.0
+00:50:07.959776 [MotionService] MotionService stopped. Unpaired samples: 1839
+00:50:07.959816 [sensor] stopped (stream NOT finished — still live) generation=1.0 unpaired=1839.0 emitted=0.0 streamEnded=0.0
+00:50:07.959944 [sensor] stopped (stream NOT finished — still live) streamEnded=0.0 fixes=5.0 generation=1.0
+00:50:07.963852 [RunRecorder] Recording session stopped. Total samples: 0
+00:50:07.963904 [rec] session stopped totalSamples=0.0 rawLogBytes=3180.0
+00:50:08.799476 [app] tab changed tab=0.0
+00:50:08.800479 [live] onAppear
+00:50:08.800561 [live] display link start (30 Hz)
+00:50:08.805580 [rec] raw recorder started
+00:50:08.805703 [sensor] stream finished (start: replacing old) streamEnded=1.0 generation=1.0
+00:50:08.805776 [sensor] stream created (start) generation=2.0
+00:50:08.809481 [MotionService] MotionService started at 100.000000 Hz
+00:50:08.809636 [sensor] started hz=100.0 gyroAvail=1.0 deviceMotionAvail=1.0 accelAvail=1.0
+00:50:08.809722 [sensor] stream finished (start: replacing old) generation=1.0 streamEnded=1.0
+00:50:08.809798 [sensor] speed stream created (start) authStatus=4.0 generation=2.0
+00:50:08.810149 [sensor] speed updates started authStatus=4.0 background=1.0
+00:50:08.818857 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:50:08.818905 [rec] session started hasInitialBias=0.0
+00:50:08.818943 [live] session started (subscribed)
+00:50:08.819003 [rec] watchdog armed (2×2.5s)
+00:50:08.827707 [sensor] first GNSS fix speed=-1.0 generation=2.0 speedAcc=-1.0
+00:50:14.010655 [rec] watchdog FIRED — reporting sensors unavailable sampleCount=0.0
+00:50:20.133313 [app] tab changed tab=1.0
+00:50:20.139773 [live] onDisappear — stopping display link & session
+00:50:20.139953 [rec] consuming Tasks cancelled — sensor streams die here motionTaskLive=1.0 speedTaskLive=1.0 streamEnded=1.0 sampleCount=0.0
+00:50:20.145067 [MotionService] MotionService stopped. Unpaired samples: 4105
+00:50:20.145192 [sensor] stopped (stream NOT finished — still live) streamEnded=0.0 unpaired=4105.0 generation=2.0 emitted=0.0
+00:50:20.145472 [sensor] stopped (stream NOT finished — still live) fixes=6.0 streamEnded=0.0 generation=2.0
+00:50:20.149696 [RunRecorder] Recording session stopped. Total samples: 0
+00:50:20.149755 [rec] session stopped rawLogBytes=3437.0 totalSamples=0.0
+00:50:20.729966 [app] tab changed tab=0.0
+00:50:20.730701 [live] onAppear
+00:50:20.730757 [live] display link start (30 Hz)
+00:50:20.741825 [rec] raw recorder started
+00:50:20.741917 [sensor] stream finished (start: replacing old) generation=2.0 streamEnded=1.0
+00:50:20.741975 [sensor] stream created (start) generation=3.0
+00:50:20.744547 [MotionService] MotionService started at 100.000000 Hz
+00:50:20.744611 [sensor] started hz=100.0 deviceMotionAvail=1.0 accelAvail=1.0 gyroAvail=1.0
+00:50:20.744658 [sensor] stream finished (start: replacing old) generation=2.0 streamEnded=1.0
+00:50:20.744705 [sensor] speed stream created (start) generation=3.0 authStatus=4.0
+00:50:20.745041 [sensor] speed updates started background=1.0 authStatus=4.0
+00:50:20.748405 [sensor] first sample generation=3.0
+00:50:20.753512 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:50:20.753551 [rec] session started hasInitialBias=0.0
+00:50:20.753588 [live] session started (subscribed)
+00:50:20.753674 [rec] watchdog armed (2×2.5s)
+00:50:20.762874 [sensor] first GNSS fix generation=3.0 speed=-1.0 speedAcc=-1.0
+00:50:29.251423 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:50:29.251603 [rec] re-anchor requested (calibration adopted)
+00:50:37.763358 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:50:37.763399 [rec] re-anchor requested (calibration adopted)
+00:50:46.277046 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:50:46.277146 [rec] re-anchor requested (calibration adopted)
+00:50:56.278647 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:50:56.278687 [rec] re-anchor requested (calibration adopted)
+00:51:04.275529 [app] tab changed tab=1.0
+00:51:04.279490 [live] onDisappear — stopping display link & session
+00:51:04.279604 [rec] consuming Tasks cancelled — sensor streams die here streamEnded=1.0 motionTaskLive=1.0 speedTaskLive=1.0 sampleCount=4352.0
+00:51:04.284437 [MotionService] MotionService stopped. Unpaired samples: 4107
+00:51:04.284520 [sensor] stopped (stream NOT finished — still live) streamEnded=0.0 unpaired=4107.0 emitted=4352.0 generation=3.0
+00:51:04.284762 [sensor] stopped (stream NOT finished — still live) streamEnded=0.0 generation=3.0 fixes=11.0
+00:51:04.291083 [RunRecorder] Recording session stopped. Total samples: 4352
+00:51:04.291151 [rec] session stopped totalSamples=4352.0 rawLogBytes=1579503.0
+00:51:06.727763 [app] tab changed tab=0.0
+00:51:06.728436 [live] onAppear
+00:51:06.728495 [live] display link start (30 Hz)
+00:51:06.738187 [rec] raw recorder started
+00:51:06.738281 [sensor] stream finished (start: replacing old) generation=3.0 streamEnded=1.0
+00:51:06.738334 [sensor] stream created (start) generation=4.0
+00:51:06.741699 [MotionService] MotionService started at 100.000000 Hz
+00:51:06.741788 [sensor] started accelAvail=1.0 gyroAvail=1.0 deviceMotionAvail=1.0 hz=100.0
+00:51:06.741856 [sensor] stream finished (start: replacing old) generation=3.0 streamEnded=1.0
+00:51:06.741924 [sensor] speed stream created (start) authStatus=4.0 generation=4.0
+00:51:06.742285 [sensor] speed updates started authStatus=4.0 background=1.0
+00:51:06.785713 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:51:06.785756 [rec] session started hasInitialBias=1.0
+00:51:06.790706 [live] session started (subscribed)
+00:51:06.790730 [rec] watchdog armed (2×2.5s)
+00:51:06.801878 [sensor] first GNSS fix speedAcc=-1.0 generation=4.0 speed=-1.0
+00:51:16.260622 [app] tab changed tab=1.0
+00:51:16.266450 [live] onDisappear — stopping display link & session
+00:51:16.266619 [rec] consuming Tasks cancelled — sensor streams die here speedTaskLive=1.0 streamEnded=1.0 sampleCount=0.0 motionTaskLive=1.0
+00:51:16.272119 [MotionService] MotionService stopped. Unpaired samples: 6012
+00:51:16.272269 [sensor] stopped (stream NOT finished — still live) unpaired=6012.0 emitted=0.0 generation=4.0 streamEnded=0.0
+00:51:16.272629 [sensor] stopped (stream NOT finished — still live) streamEnded=0.0 generation=4.0 fixes=10.0
+00:51:16.278852 [RunRecorder] Recording session stopped. Total samples: 0
+00:51:16.278994 [rec] session stopped rawLogBytes=4647.0 totalSamples=0.0
+00:51:16.793547 [app] tab changed tab=0.0
+00:51:16.794388 [live] onAppear
+00:51:16.794465 [live] display link start (30 Hz)
+00:51:16.804774 [rec] raw recorder started
+00:51:16.804886 [sensor] stream finished (start: replacing old) generation=4.0 streamEnded=1.0
+00:51:16.804949 [sensor] stream created (start) generation=5.0
+00:51:16.807992 [MotionService] MotionService started at 100.000000 Hz
+00:51:16.808076 [sensor] started gyroAvail=1.0 hz=100.0 accelAvail=1.0 deviceMotionAvail=1.0
+00:51:16.808133 [sensor] stream finished (start: replacing old) generation=4.0 streamEnded=1.0
+00:51:16.808197 [sensor] speed stream created (start) generation=5.0 authStatus=4.0
+00:51:16.808622 [sensor] speed updates started authStatus=4.0 background=1.0
+00:51:16.811928 [sensor] first sample generation=5.0
+00:51:16.820330 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:51:16.820374 [rec] session started hasInitialBias=1.0
+00:51:16.820403 [live] session started (subscribed)
+00:51:16.820678 [rec] watchdog armed (2×2.5s)
+00:51:16.829695 [sensor] first GNSS fix speed=0.0 generation=5.0 speedAcc=1.6299999952316284
+00:51:28.843643 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:51:28.843724 [rec] re-anchor requested (calibration adopted)
+00:51:37.354084 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:51:37.354134 [rec] re-anchor requested (calibration adopted)
+00:51:39.785941 [RunRecorder] Event onset at 19298.210s
+00:51:39.786102 [rec] event onset speed=0.0 onset=19298.20966992773
+00:51:48.348415 [RunRecorder] Event end at 19306.675s
+00:51:48.348549 [rec] event end end=19306.6750656989 duration=8.465395771167096
+00:51:48.381561 [RunRepository] Loaded 1 runs from disk
+00:51:48.389172 [app] ServiceGraph constructed bikeStore=1.0 recorder=1.0 cueRenderer=1.0 speed=1.0 repository=1.0 motion=1.0 calibration=1.0
+00:51:48.432446 [sensor] authorization changed authStatus=4.0
+00:51:48.432466 [RunRepository] Saved run 79237939-4410-4122-BDF8-FA50B766CC51: 65.7° max, 8.5s
+00:51:48.432528 [rec] event finalized — windowed & saved onsetElapsed=22.825987177729985 windowed=846.0 collected=3153.0 endElapsed=31.29138294889708
+00:51:48.432621 [sensor] speed updates started authStatus=4.0 background=1.0
+00:51:48.435980 [RunRepository] Loaded 1 runs from disk
+00:51:48.439621 [app] ServiceGraph constructed calibration=1.0 bikeStore=1.0 recorder=1.0 cueRenderer=1.0 repository=1.0 speed=1.0 motion=1.0
+00:51:48.443277 [sensor] authorization changed authStatus=4.0
+00:51:48.443406 [sensor] speed updates started authStatus=4.0 background=1.0
+00:51:48.445903 [sensor] first GNSS fix generation=0.0 speed=0.0 speedAcc=0.3080157138848601
+00:51:50.587674 [RunRecorder] Event onset at 19309.013s
+00:51:50.587834 [rec] event onset speed=0.0 onset=19309.01254896688
+00:51:57.060048 [RunRecorder] Event end at 19315.385s
+00:51:57.060218 [rec] event end duration=6.372791523775959 end=19315.385340490655
+00:51:57.082254 [RunRepository] Saved run 2528FB2D-5BB2-41AB-9F1C-5AD53D73EBCB: 48.5° max, 6.4s
+00:51:57.082449 [rec] event finalized — windowed & saved onsetElapsed=33.62886621687721 collected=871.0 windowed=637.0 endElapsed=40.00165774065317
+00:51:58.126313 [app] tab changed tab=1.0
+00:51:58.138357 [live] onDisappear — stopping display link & session
+00:51:58.138444 [rec] consuming Tasks cancelled — sensor streams die here sampleCount=4132.0 speedTaskLive=1.0 motionTaskLive=1.0 streamEnded=1.0
+00:51:58.142556 [MotionService] MotionService stopped. Unpaired samples: 6014
+00:51:58.142612 [sensor] stopped (stream NOT finished — still live) unpaired=6014.0 generation=5.0 emitted=4133.0 streamEnded=0.0
+00:51:58.142780 [sensor] stopped (stream NOT finished — still live) generation=5.0 fixes=42.0 streamEnded=0.0
+00:51:58.148691 [RunRecorder] Recording session stopped. Total samples: 4133
+00:51:58.148737 [rec] session stopped totalSamples=4133.0 rawLogBytes=1484621.0
+00:52:17.293616 [app] tab changed tab=0.0
+00:52:17.294474 [live] onAppear
+00:52:17.294515 [live] display link start (30 Hz)
+00:52:17.303441 [rec] raw recorder started
+00:52:17.303506 [sensor] stream finished (start: replacing old) generation=5.0 streamEnded=1.0
+00:52:17.303551 [sensor] stream created (start) generation=6.0
+00:52:17.306267 [MotionService] MotionService started at 100.000000 Hz
+00:52:17.306349 [sensor] started gyroAvail=1.0 hz=100.0 accelAvail=1.0 deviceMotionAvail=1.0
+00:52:17.306395 [sensor] stream finished (start: replacing old) generation=5.0 streamEnded=1.0
+00:52:17.306438 [sensor] speed stream created (start) generation=6.0 authStatus=4.0
+00:52:17.306723 [sensor] speed updates started background=1.0 authStatus=4.0
+00:52:17.309555 [sensor] first sample generation=6.0
+00:52:17.355379 [RunRecorder] Recording session started for bike 229032CF-A631-431F-AE79-FEA66C9E29A7
+00:52:17.355437 [rec] session started hasInitialBias=1.0
+00:52:17.355483 [live] session started (subscribed)
+00:52:17.355523 [rec] watchdog armed (2×2.5s)
+00:52:17.367673 [sensor] first GNSS fix speedAcc=0.3810830343177404 generation=6.0 speed=0.0
+00:52:27.585361 [RunRecorder] Calibration adopted — re-anchoring attitude and bike axes
+00:52:27.585549 [rec] re-anchor requested (calibration adopted)
+00:52:29.193954 [RunRecorder] Event onset at 19347.623s
+00:52:29.194087 [rec] event onset onset=19347.622850832464 speed=0.0
+00:52:38.516979 [RunRecorder] Event end at 19356.845s
+00:52:38.517160 [rec] event end end=19356.844971074064 duration=9.22212024160035
+00:52:38.542210 [RunRepository] Saved run 7EBA0047-2E21-440B-BC0E-3B61BD906356: 50.4° max, 9.2s
+00:52:38.542382 [rec] event finalized — windowed & saved onsetElapsed=11.73612129079629 endElapsed=20.95824153239664 windowed=922.0 collected=2120.0
+00:52:40.218362 [app] tab changed tab=1.0
+00:52:40.224793 [live] onDisappear — stopping display link & session
+00:52:40.224883 [rec] consuming Tasks cancelled — sensor streams die here speedTaskLive=1.0 sampleCount=2291.0 streamEnded=1.0 motionTaskLive=1.0
+00:52:40.229414 [MotionService] MotionService stopped. Unpaired samples: 6014
+00:52:40.229474 [sensor] stopped (stream NOT finished — still live) generation=6.0 emitted=2291.0 unpaired=6014.0 streamEnded=0.0
+00:52:40.229660 [sensor] stopped (stream NOT finished — still live) generation=6.0 streamEnded=0.0 fixes=24.0
+00:52:40.235279 [RunRecorder] Recording session stopped. Total samples: 2291
+00:52:40.235320 [rec] session stopped rawLogBytes=827472.0 totalSamples=2291.0

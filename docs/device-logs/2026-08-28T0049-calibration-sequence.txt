@@ -1,0 +1,58 @@
+00:50:03.995866 [CalibrationService] Motion sensors unavailable: no IMU samples 5 s after starting motion updates
+00:50:03.996083 [cal] reportSensorsUnavailable: no IMU samples 5 s after starting motion updates hasSeenSample=0.0
+00:50:14.010796 [CalibrationService] Motion sensors unavailable: no IMU samples 5 s after starting motion updates
+00:50:14.010971 [cal] reportSensorsUnavailable: no IMU samples 5 s after starting motion updates hasSeenSample=0.0
+00:50:20.758245 [CalibrationService] First IMU sample received — sensor path is live
+00:50:20.758290 [cal] first IMU sample — cal path live
+00:50:20.758302 [CalibrationService] IMU samples resumed — clearing unavailable state
+00:50:20.758330 [cal] state unavailable -> calibrating [IMU resumed] gateReasonSet=0.0
+00:50:20.758436 [cal] estimator generation mismatch — rebuilding recalGen=0.0 estimatorGen=-1.0
+00:50:20.758597 [cal] state calibrating -> calibrating [auto-start attempt 1] attempt=1.0 maxAttempts=3.0 gateReasonSet=0.0
+00:50:29.250672 [bias] bias finish rawStdZ=0.05230122511848175 semZ=0.0018479729249108682 n=801.0 meanBiasY=0.01652420167921862 rawStdY=0.04873077550285682 semX=0.0018756749391046481 sqrtN=28.30194339616981 biasSigmaLimit=0.05 semY=0.0017218172908031364 meanBiasZ=0.11185309497903437 meanBiasX=-0.10087718732643093 rawStdX=0.05308524595615401
+00:50:29.251061 [caltrack] caltrack adopt biasStaleAfter=300.0 thermalStateAtCapture=0.0 sampleCount=801.0
+00:50:29.251230 [cal] state calibrating -> calibrated [estimator done] gateReasonSet=0.0 sigmaDeg=0.0018756749391046483
+00:50:29.251272 [CalibrationService] Calibration complete. Sigma: 0.0019 deg/s
+00:50:29.260749 [cal] state calibrated -> calibrating [auto-start attempt 2] attempt=2.0 maxAttempts=3.0 gateReasonSet=0.0
+00:50:37.763022 [bias] bias finish n=801.0 semY=0.0015247941247201156 sqrtN=28.30194339616981 rawStdX=0.0485461643257066 meanBiasZ=0.11048780500861645 rawStdY=0.04315463700864101 biasSigmaLimit=0.05 meanBiasX=-0.09724858622203353 meanBiasY=0.013267412227742628 rawStdZ=0.051034193765329215 semX=0.001715294375589646 semZ=0.0018032045733027589
+00:50:37.763133 [caltrack] caltrack adopt thermalStateAtCapture=0.0 sampleCount=801.0 biasStaleAfter=300.0
+00:50:37.763223 [cal] state calibrated -> calibrated [estimator done] gateReasonSet=0.0 sigmaDeg=0.0018032045733027589
+00:50:37.763262 [CalibrationService] Calibration complete. Sigma: 0.0018 deg/s
+00:50:37.773222 [cal] state calibrated -> calibrating [auto-start attempt 3] maxAttempts=3.0 attempt=3.0 gateReasonSet=0.0
+00:50:46.276183 [bias] bias finish rawStdX=0.04484740208025084 rawStdZ=0.052182240744207055 n=801.0 semX=0.0015846050376286235 sqrtN=28.30194339616981 meanBiasZ=0.10672393219746575 semY=0.0016458679411500863 meanBiasX=-0.0974589707005967 meanBiasY=0.013066971502799164 semZ=0.0018437688187613658 biasSigmaLimit=0.05 rawStdY=0.04658126130800029
+00:50:46.276499 [caltrack] caltrack adopt sampleCount=801.0 biasStaleAfter=300.0 thermalStateAtCapture=0.0
+00:50:46.276701 [cal] state calibrated -> calibrated [estimator done] sigmaDeg=0.001843768818761366 gateReasonSet=0.0
+00:50:46.276759 [CalibrationService] Calibration complete. Sigma: 0.0018 deg/s
+00:50:47.775932 [cal] state calibrated -> calibrating [auto-start attempt 4] maxAttempts=3.0 gateReasonSet=0.0 attempt=4.0
+00:50:56.278221 [bias] bias finish rawStdY=0.0463728059914483 rawStdZ=0.052238693073300556 semY=0.0016385025346960477 semZ=0.001845763463733384 semX=0.0016670981236297784 meanBiasZ=0.1066058241363293 rawStdX=0.04718211673083089 meanBiasX=-0.09758182222846434 meanBiasY=0.013773619111671905 sqrtN=28.30194339616981 n=801.0 biasSigmaLimit=0.05
+00:50:56.278374 [caltrack] caltrack adopt biasStaleAfter=300.0 sampleCount=801.0 thermalStateAtCapture=0.0
+00:50:56.278476 [cal] state calibrated -> calibrated [estimator done] gateReasonSet=0.0 sigmaDeg=0.0018457634637333838
+00:50:56.278502 [CalibrationService] Calibration complete. Sigma: 0.0018 deg/s
+00:50:57.778899 [cal] state calibrated -> calibrating [auto-start attempt 5] gateReasonSet=0.0 maxAttempts=3.0 attempt=5.0
+00:51:17.246327 [cal] requestRecalibration autoStartAttemptsBefore=5.0 recalGenBefore=0.0
+00:51:17.246377 [CalibrationService] Recalibration requested by user
+00:51:17.248960 [cal] estimator generation mismatch — rebuilding estimatorGen=0.0 recalGen=1.0
+00:51:17.249104 [cal] state calibrating -> calibrating [auto-start attempt 1] gateReasonSet=0.0 attempt=1.0 maxAttempts=3.0
+00:51:28.842898 [bias] bias finish meanBiasY=0.010464900363611794 semZ=0.001782551477573447 rawStdZ=0.05044967101904256 meanBiasZ=0.11377046363181643 rawStdX=0.05774025912081236 n=801.0 semX=0.0020401517419693 biasSigmaLimit=0.05 meanBiasX=-0.09715257602088877 sqrtN=28.30194339616981 rawStdY=0.0570494014751379 semY=0.0020157414873092625
+00:51:28.843086 [caltrack] caltrack adopt biasStaleAfter=300.0 thermalStateAtCapture=0.0 sampleCount=801.0
+00:51:28.843310 [cal] state calibrating -> calibrated [estimator done] gateReasonSet=0.0 sigmaDeg=0.0020401517419693
+00:51:28.843365 [CalibrationService] Calibration complete. Sigma: 0.0020 deg/s
+00:51:28.852211 [cal] state calibrated -> calibrating [auto-start attempt 2] maxAttempts=3.0 gateReasonSet=0.0 attempt=2.0
+00:51:37.353702 [bias] bias finish sqrtN=28.30194339616981 n=801.0 rawStdX=0.04659159759729366 rawStdZ=0.052313931872003866 semY=0.001591638549341133 semZ=0.0018484218959707083 meanBiasX=-0.0990036518680305 meanBiasY=0.013817147723254528 rawStdY=0.045046464130614576 semX=0.0016462331559746897 biasSigmaLimit=0.05 meanBiasZ=0.11103603558405313
+00:51:37.353833 [caltrack] caltrack adopt biasStaleAfter=300.0 sampleCount=801.0 thermalStateAtCapture=0.0
+00:51:37.353945 [cal] state calibrated -> calibrated [estimator done] gateReasonSet=0.0 sigmaDeg=0.0018484218959707083
+00:51:37.353980 [CalibrationService] Calibration complete. Sigma: 0.0018 deg/s
+00:51:37.363636 [cal] state calibrated -> calibrating [auto-start attempt 3] gateReasonSet=0.0 maxAttempts=3.0 attempt=3.0
+00:52:17.356063 [bias] bias finish semY=0.08000564151117345 semZ=0.011460568751247787 meanBiasY=-0.05057800090273854 meanBiasZ=0.1237853988979991 biasSigmaLimit=0.05 meanBiasX=-0.13803466774809758 n=25.0 rawStdZ=0.05730284375623894 sqrtN=5.0 rawStdY=0.40002820755586727 semX=0.02862278035840795 rawStdX=0.14311390179203975
+00:52:17.356186 [bias] bias failed sigmaTooHigh sigmaDegPerSec=0.08000564151117345 limitDegPerSec=0.05 axis=1.0
+00:52:17.357732 [cal] state calibrated -> failed [estimator failed, retries exhausted] autoStartAttempts=3.0 maxAttempts=3.0 gateReasonSet=0.0
+00:52:17.357772 [CalibrationService] Calibration failed: Gyro Y axis too noisy: 0.0800 deg/s (limit 0.0500). Hold the bike still.
+00:52:17.359530 [cal] state calibrated -> calibrating [auto-start attempt 4] attempt=4.0 maxAttempts=3.0 gateReasonSet=0.0
+00:52:19.077126 [cal] requestRecalibration recalGenBefore=1.0 autoStartAttemptsBefore=4.0
+00:52:19.077180 [CalibrationService] Recalibration requested by user
+00:52:19.079283 [cal] estimator generation mismatch — rebuilding recalGen=2.0 estimatorGen=1.0
+00:52:19.079402 [cal] state calibrating -> calibrating [auto-start attempt 1] attempt=1.0 maxAttempts=3.0 gateReasonSet=0.0
+00:52:27.582590 [bias] bias finish rawStdY=0.042661089411544166 n=801.0 semY=0.0015073554778332863 meanBiasY=0.013525497229893631 meanBiasZ=0.11100212704383063 rawStdX=0.044760226063624786 meanBiasX=-0.09772155145948681 sqrtN=28.30194339616981 semX=0.0015815248245349231 biasSigmaLimit=0.05 semZ=0.001782680132919088 rawStdZ=0.05045331221535251
+00:52:27.582937 [caltrack] caltrack adopt biasStaleAfter=300.0 sampleCount=801.0 thermalStateAtCapture=0.0
+00:52:27.583674 [cal] state calibrating -> calibrated [estimator done] sigmaDeg=0.0017826801329190879 gateReasonSet=0.0
+00:52:27.584031 [CalibrationService] Calibration complete. Sigma: 0.0018 deg/s
+00:52:27.591971 [cal] state calibrated -> calibrating [auto-start attempt 2] attempt=2.0 maxAttempts=3.0 gateReasonSet=0.0
