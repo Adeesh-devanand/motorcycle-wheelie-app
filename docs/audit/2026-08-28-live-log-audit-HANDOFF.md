@@ -316,6 +316,89 @@ Flag that trade-off to him rather than silently capping it at 5.
 
 ---
 
+## 3.11 CRITICAL — the log is older than the source for two files
+
+**Read this before acting on any log evidence.** The device run was **00:49:47**. Two source
+files were edited *after* it, so the logged binary does not contain their current code:
+
+| File | mtime | In the logged build? |
+| --- | --- | --- |
+| `Core/Calibration.swift` | 00:59:21 | ❌ **stale — log predates it** |
+| `Core/AttitudeESKF.swift` | 00:59:56 | ❌ **stale — log predates it** |
+| `Core/Config.swift` | 00:27:45 | ✅ |
+| `Core/ValidityGate.swift` | 00:29:45 | ✅ |
+| `Core/MountAlignment.swift` | 08-26 13:45 | ✅ |
+| `Services/CalibrationService.swift` | 00:38:01 | ✅ |
+| `Services/MotionService.swift` | 08-27 23:39 | ✅ |
+| `Services/RunRecorder.swift` | 08-27 23:38 | ✅ |
+| `App/RootTabView.swift` | 08-27 23:29 | ✅ |
+| `App/WheelieTrackerApp.swift` | 08-27 23:30 | ✅ |
+| `Services/Diagnostics/DiagnosticLog.swift` | 08-27 23:46 | ✅ |
+
+The `.app` bundle was rebuilt at 01:06:36, also after the run — so **the phone may already
+be running code newer than this log describes.** Get a fresh log before trusting any
+symptom to still be present.
+
+### Consequence 1 — bug 6 (25-sample finish) is ALREADY FIXED. Do not re-fix it.
+
+`Calibration.swift:335–337` now carries a sample-count floor:
+
+```swift
+let requiredSamples = Int(config.biasCalibrationDuration
+                          * config.nominalSampleRate * 0.5)     // 8 * 100 * 0.5 = 400
+guard elapsed >= config.biasCalibrationDuration, n >= requiredSamples else { … }
+```
+
+`finish(at:)` has exactly **one** call site (line 354) and it sits behind that guard, so
+`n=25` can no longer reach it — `25 < 400`. Report 04 flagged the contradiction; the
+mtimes resolve it. **Verified separately:** the paused-time exclusion was never the hole.
+It caps each credited interval at `nominalInterval * 3` (30 ms) and nils
+`lastAccumulateTime` on every non-accumulating path, so the 19 s gap was credited as ~0 ms
+all along. The duration axis was always sound; the missing guard was the *count* axis.
+
+What remains from report 04 is smaller: a stream-discontinuity reset, so an accumulator
+already sitting near 8 s cannot pool pre-gap samples with post-restart ones across a dead
+stream. Report 04 proposes a 300 ms gap threshold. That is a real but narrow hardening,
+not the bug the log showed.
+
+**Also verified against current code:** `resetAccumulation()` can *not* be triggered by a
+single out-of-band sample. Three independent mechanisms prevent it — `gateCloseConfirm`
+(60 ms) keeps the gate open through a one-sample violation; the reset needs
+`n > 0 && sample.time - violatedSince >= biasGateGracePeriod` (250 ms); and an
+out-of-band-but-gate-open sample takes the `sampleWithinBand` path, which is a one-sample
+*pause*, not a reset. The prior session's claim holds. The only immediate reset is
+`.saturated`, which is intentional and correct.
+
+### Consequence 2 — bug 3 and bug 10 ARE still live, despite the stale file
+
+`AttitudeESKF.swift` is stale relative to the log, but investigation 03 read the **current**
+source and found the magnitude-only anchor test still present at lines 168–198, and the
+unbounded bias-Z still there. So both survive the 00:59 edit and remain real. Where an
+agent reading current source agrees with the log, the bug is live; where it disagrees
+(bug 6), the log is history.
+
+### Consequence 3 — bug 10 is NOT cosmetic. It was going to be dropped; it should not be.
+
+Investigation 03 answered the question that decided its rank, and the answer is worse than
+expected. Bias-Z corrupts `corrected = sample.rotationRate - bias` (line 227), which
+integrates into attitude (line 231). At *exactly* level, a bias-Z error is pure yaw and
+rotates `forward` **within** the horizontal plane, so pitch — the elevation of `forward`
+above horizontal — is untouched, and the leak is zero. **But once the phone tilts, body-Z
+is no longer world-vertical**, so rotation about body-Z acquires a component that does move
+`forward`'s elevation. The leak is proportional to `sin(tilt)`: negligible near level and
+**growing precisely in the wheelie regime**. Between anchors an unbounded, monotonically
+climbing bias-Z is an unbounded pitch-error source during the exact event being measured.
+
+Fix is still one line: yaw bias is unobservable from gravity, so stop estimating it and
+hold the calibrated value by zeroing the Z row of the bias-error Kalman gain in both update
+paths. **Verify `Matrix3.setRow` actually exists before writing it** — report 03 flags this
+as unconfirmed against the linear-algebra API; in `applyScalarUpdate` `k2` is a `Vector3`,
+so `k2.z = 0` is exact and trivial there.
+
+---
+
+---
+
 ## 4. The task list, in the order to do it
 
 Ordered by user-visible value ÷ risk. Bugs 1 and 3 **ship together** (see §0).
@@ -328,11 +411,11 @@ Ordered by user-visible value ÷ risk. Bugs 1 and 3 **ship together** (see §0).
 | 3 | Anchor accepted while tilted 29° → phantom −27.87°. Require quiescent **and** near-level before accepting. Reuse the existing `ValidityGate` rather than inventing a second test. Publish **nothing** before a valid anchor exists | `Core/AttitudeESKF.swift`, `Core/MountAlignment.swift` | **P0** — ship with #1 |
 | 4 | 3 of 6 sessions emit zero samples (accel/gyro pairing dies across restart). Also reset the `unpaired` counter per session | `Services/MotionService.swift` | **P1** |
 | 5 | Re-anchor fires on every adopted calibration even when the bias is unchanged, resetting the rider's angle. Gate on a material-change threshold | `Services/CalibrationService.swift`, `Services/RunRecorder.swift` | **P1** — falls out of #1 |
-| 6 | Bias estimator finishes on 25 samples after a stream gap. Require a minimum sample count derived from `duration × nominal rate` (don't hardcode 800), and/or treat a large inter-sample gap as a discontinuity | `Core/Calibration.swift`, `Core/Config.swift` | **P1** |
-| 7 | Loosen gate thresholds per §3.9, with quantified justification per threshold | `Core/Config.swift`, `Core/ValidityGate.swift` | **P1** |
+| 6 | ~~Bias estimator finishes on 25 samples~~ — **ALREADY FIXED in source**, see §3.11. The `n >= 400` floor exists; the log predates it. Remaining: a 300 ms stream-discontinuity reset so an accumulator near 8 s can't pool across a dead stream | `Core/Calibration.swift` | ~~P1~~ **done**; narrow hardening left |
+| 7 | Loosen gate thresholds per §3.9. Specific-force band 3.3× wider is free; rotation rate 3→5 °/s only — **put that trade-off to Adeesh** | `Core/Config.swift`, `Core/ValidityGate.swift` | **P1** — patch ready |
 | 8 | ServiceGraph constructed 3× — saving a run rebuilds every service, leaving 3 GPS sessions live | `App/WheelieTrackerApp.swift`, `App/RootTabView.swift` | **P1** — battery |
 | 9 | Watchdog reports "sensors unavailable" when the real fault is "samples arrive but none emitted". Give it a raw-callback count alongside the emitted count; reconsider a hard error at 5 s | `Services/RunRecorder.swift` (watchdog only) | **P2** |
-| 10 | Yaw-bias runaway to 5 °/s. **Rank only after proving whether it leaks into pitch** (§3.4) | `Core/AttitudeESKF.swift` | **P2 or drop** |
+| 10 | Yaw-bias runaway to 5 °/s vs a measured 0.111. **Promoted from "maybe drop" — the pitch leak is PROVEN** (§3.11, consequence 3): zero at exactly level, but grows as `sin(tilt)`, i.e. worst during the wheelie being measured. One-line fix: stop estimating the unobservable Z bias, hold the calibrated value | `Core/AttitudeESKF.swift` | **P1** — patch ready |
 | 11 | `RawSampleRecorder` has no size cap and defaults ON: `rawLogBytes=1,579,503` in a 44 s session ≈ 129 MB/hour. `DiagnosticLog` reportedly prunes to 5 files — verify both claims | `Services/Diagnostics/RawSampleRecorder.swift` | **P2** |
 | 12 | `UIBackgroundModes=audio` still unset in `Info.plist`. Without it the audio cue dies when the screen locks, which is most of a ride — one line, and it makes the existing audio work usable | `MotoTelemetryApp/.../Info.plist` | **P2**, trivial |
 
