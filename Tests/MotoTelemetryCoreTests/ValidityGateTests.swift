@@ -17,29 +17,88 @@ final class ValidityGateTests: XCTestCase {
         XCTAssertEqual(gate.process(level(0.5))?.isOpen, true)
     }
 
-    func testLeanIsRejected() {
-        var gate = ValidityGate(config: Config())
-        _ = gate.process(level(0.0))
-        _ = gate.process(level(0.6))
-        // A 30 deg lean gives |a| = g/cos(30) = 1.15 g — outside the band.
-        let leaned = IMUSample(time: 1.0, rotationRate: .zero,
-                               specificForce: Vector3(0, 0, -g / cos(30 * .pi / 180)))
-        let v = gate.process(leaned)
-        XCTAssertEqual(v?.isOpen, false)
-        XCTAssertEqual(v?.reason, .specificForceOutOfBand)
+    /// Feeds `sample` repeatedly at 100 Hz from `from` and returns when the gate first
+    /// closed, with the reason it gave.
+    private func firstClosure(of gate: inout ValidityGate,
+                              from: TimeInterval,
+                              window: TimeInterval,
+                              _ make: (TimeInterval) -> IMUSample)
+        -> (at: TimeInterval, reason: ValidityGate.Reason)? {
+        var t = from
+        while t < from + window {
+            if let v = gate.process(make(t)), v.isOpen == false {
+                return (t, v.reason)
+            }
+            t += 0.01
+        }
+        return nil
     }
 
-    func testTurningIsRejected() {
+    func testSustainedLeanIsRejectedWithinTheConfirmationWindow() {
+        let config = Config()
+        var gate = ValidityGate(config: config)
+        _ = gate.process(level(0.0))
+        XCTAssertEqual(gate.process(level(0.6))?.isOpen, true,
+                       "gate must be open before the lean, or this proves nothing")
+
+        // A 30 deg lean gives |a| = g/cos(30) = 1.15 g — outside the band. A lean is
+        // SUSTAINED: a bike cannot reach 30 deg and return inside 10 ms, so the gate
+        // deliberately requires the violation to persist (Config.gateCloseConfirm).
+        // The LATENCY of the closure is what governs accuracy — every millisecond the
+        // gate stays open during real acceleration is a contaminated gravity update —
+        // so that is what this pins, not merely that it closes eventually.
+        guard let closure = firstClosure(of: &gate, from: 1.0,
+                                        window: config.gateCloseConfirm * 4, { t in
+            IMUSample(time: t, rotationRate: .zero,
+                      specificForce: Vector3(0, 0, -self.g / cos(30 * .pi / 180)))
+        }) else {
+            return XCTFail("a sustained lean must close the gate")
+        }
+        XCTAssertEqual(closure.reason, .specificForceOutOfBand)
+        XCTAssertLessThanOrEqual(closure.at - 1.0, config.gateCloseConfirm + 0.011,
+                                 "closure must not lag the confirmation window by more "
+                                 + "than one sample")
+    }
+
+    func testSustainedTurnIsRejectedWithinTheConfirmationWindow() {
+        let config = Config()
+        var gate = ValidityGate(config: config)
+        _ = gate.process(level(0.0))
+        XCTAssertEqual(gate.process(level(0.6))?.isOpen, true)
+
+        guard let closure = firstClosure(of: &gate, from: 1.0,
+                                        window: config.gateCloseConfirm * 4, { t in
+            IMUSample(time: t,
+                      rotationRate: Vector3(0, 0, 10 * .pi / 180),
+                      specificForce: Vector3(0, 0, -self.g))
+        }) else {
+            return XCTFail("a sustained turn must close the gate")
+        }
+        XCTAssertEqual(closure.reason, .rotating)
+        XCTAssertLessThanOrEqual(closure.at - 1.0, config.gateCloseConfirm + 0.011)
+    }
+
+    func testSingleSampleImpulseDoesNotCloseTheGateButIsBarredFromAverages() {
+        // The deliberate trade-off behind `Config.gateCloseConfirm`, pinned here so it
+        // is not quietly "fixed" back. Closing on a 10 ms excursion is what reset the
+        // calibration dwell continuously on a running bike and made zeroing — and
+        // therefore mid-ride recalibration — impossible. A 10 ms 1.15 g excursion is
+        // engine excitation or a pothole impulse, not a lean.
+        //
+        // The sample is still refused entry to any average, which is the other half of
+        // the trade: tolerating it in the GATE must not mean trusting it in the MEAN.
         var gate = ValidityGate(config: Config())
         _ = gate.process(level(0.0))
-        _ = gate.process(level(0.6))
-        // Yaw rate above the limit means we are turning, not cruising level.
-        let turning = IMUSample(time: 1.0,
-                                rotationRate: Vector3(0, 0, 10 * .pi / 180),
-                                specificForce: Vector3(0, 0, -g))
-        let v = gate.process(turning)
-        XCTAssertEqual(v?.isOpen, false)
-        XCTAssertEqual(v?.reason, .rotating)
+        XCTAssertEqual(gate.process(level(0.6))?.isOpen, true)
+
+        let impulse = IMUSample(time: 0.61, rotationRate: .zero,
+                                specificForce: Vector3(0, 0, -g / cos(30 * .pi / 180)))
+        XCTAssertEqual(gate.process(impulse)?.isOpen, true,
+                       "a 10 ms excursion must not close the gate")
+        XCTAssertFalse(gate.sampleWithinBand(impulse),
+                       "but it must never be trusted as an individual sample")
+        XCTAssertEqual(gate.process(level(0.62))?.isOpen, true,
+                       "and the dwell must have survived the impulse")
     }
 
     func testSaturatedSampleNeverOpensGate() {

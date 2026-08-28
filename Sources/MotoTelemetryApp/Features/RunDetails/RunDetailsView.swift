@@ -39,8 +39,7 @@ struct RunDetailsView: View {
                 navRow
                 titleSection
                 heroCard
-                angleChart
-                speedChart
+                chartsGroup
                 insightStrip
                 legendCaption
                 intervalTimeline
@@ -198,6 +197,61 @@ struct RunDetailsView: View {
     }
 
     // MARK: - Charts (§9.4)
+
+    /// Both charts stacked, with ONE continuous scrubber line drawn across them
+    /// as a single overlay (M-UI8). Each chart reports its plot rect + scrubber x
+    /// via `ScrubberGeometryKey`; the overlay joins them into one line and floats
+    /// the time bubble at the scrubber's x.
+    private var chartsGroup: some View {
+        VStack(spacing: AppSpacing.lg) {
+            angleChart
+            speedChart
+        }
+        .overlayPreferenceValue(ScrubberGeometryKey.self) { frames in
+            GeometryReader { geo in
+                sharedScrubberOverlay(frames: frames, container: geo)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sharedScrubberOverlay(frames: [ScrubberFrame], container: GeometryProxy) -> some View {
+        // Convert the reported global plot rects into this container's local space.
+        let origin = container.frame(in: .global).origin
+        let angle = frames.first { $0.metric == .angle }
+        let speed = frames.first { $0.metric == .speed }
+
+        if viewModel.selectedTime != nil,
+           let angle, let speed,
+           let gx = angle.scrubberX ?? speed.scrubberX {
+            let x = gx - origin.x
+            let topY = angle.plotRect.minY - origin.y
+            let bottomY = speed.plotRect.maxY - origin.y
+
+            // One continuous vertical line from the top of the angle plot to the
+            // bottom of the speed plot.
+            Path { p in
+                p.move(to: CGPoint(x: x, y: topY))
+                p.addLine(to: CGPoint(x: x, y: bottomY))
+            }
+            .stroke(AppColors.textPrimary.opacity(0.85), lineWidth: 1)
+            .allowsHitTesting(false)
+
+            // Time bubble tracking the scrubber x, above the angle chart.
+            if let time = viewModel.selectedTime {
+                Text(String(format: "%.1fs", time))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: 0x1A1A20).opacity(0.95))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .fixedSize()
+                    .position(x: x, y: max(topY - 14, 10))
+                    .allowsHitTesting(false)
+            }
+        }
+    }
 
     private var angleChart: some View {
         TelemetryCard {

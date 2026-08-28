@@ -39,11 +39,15 @@ enum AppColors {
     static let accentBright = Color(hex: 0x4A9EFF)
     static let accentGlow = Color(hex: 0x3B82F6, opacity: 0.22)
 
-    // MARK: Meter fill gradient (dark navy at the bottom → blue at the cursor)
+    // MARK: Meter fill gradient (dark navy at the bottom → moderate blue at the cursor)
+    //
+    // Two-stop ramp (M-UI1): the top reads as a *moderate* blue, not a bright
+    // accent. `meterFillMid` is retained for any callers but is no longer used
+    // by the meter fill.
 
     static let meterFillBottom = Color(hex: 0x0A1F3D)
     static let meterFillMid = Color(hex: 0x1656A8)
-    static let meterFillTop = Color(hex: 0x2E86E0)
+    static let meterFillTop = Color(hex: 0x1E5FB0)
 
     // MARK: Text
 

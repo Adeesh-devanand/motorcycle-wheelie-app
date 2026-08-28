@@ -218,6 +218,7 @@ The UI consumes this state; the sensor service owns how calibration is calculate
 ## 6. Shared navigation
 
 - Root navigation contains two tabs: **Live** and **Runs**.
+- Tab glyphs match the mockup: **Live** uses the custom twin-meter glyph (two short vertical rounded bars), **not** a single gauge symbol; **Runs** uses the list glyph. The active tab is tinted `accentBlue`.
 - Live is the default tab.
 - Run Details is pushed within the Runs navigation stack.
 - Returning from Run Details preserves scroll position, active filters, and sort order.
@@ -260,7 +261,7 @@ Recommended geometry at 390 pt width:
 
 - Meter visual height: 430–480 pt, responsive
 - Meter track width: 34–40 pt
-- Gap between meter centers: 112–136 pt
+- Gap between meter centers: 112–136 pt. Position each meter so it is centered within its own half of the screen width (angle in the left half, speed in the right half, near the screen quarter-points); widen the gap and shrink track width / side content as needed to achieve this while keeping all scale labels on-screen.
 - Tick-to-track gap: 8 pt
 
 ##### Angle meter
@@ -271,20 +272,20 @@ Recommended geometry at 390 pt width:
 - Current cursor example: 38°.
 - Target example: 35°–45°.
 - Show `ANGLE` above the meter.
-- Place the current value outside the meter on the left.
-- Place a small target-edit/sliders button beside `TARGET 35°–45°`.
+- Place the current value outside the meter on the left, vertically tracked to the cursor. Render it as a single large blue value with the degree symbol, e.g. `38°`.
+- The target label reads `TARGET` on the first line and the range `35°–45°` on the second line (both bounds carry the degree symbol), on the left (leading) side of the angle track, with a small inward-pointing triangle at the band edge. The label block itself is the tap target that opens the target editor — do not place a separate sliders/edit button beside it. It opens an editor for the **angle range only**: the two targets are independently editable, and tapping this label must not also expose the speed range.
 
 ##### Speed meter
 
-- Default scale: 0 at bottom, 100 km/h at top.
-- Major labels: 0, 25, 50, 75, 100.
+- Default scale: 0 at bottom, at the configured `speedGaugeMaximum` (default 100 km/h) at top.
+- Major labels: `0`, `25`, `50`, `75`. Do **not** draw a numeric label at the very top of the track (e.g. `100`): the maximum is communicated by the `MAX … km/h` chip above the meter, and the top label would collide with it. Space the four labels evenly against the track top even when the gauge maximum is not 100 (the top label is at 75% of the range only when the maximum is 100; otherwise label the same four evenly-spaced fractions 0 / 25% / 50% / 75% of the gauge maximum).
 - Minor tick every 5 km/h.
 - Current cursor example: 42 km/h.
 - Target example: 35–50 km/h.
 - Show `SPEED` above the meter.
-- Place the current value outside the meter on the right.
-- Place a target-edit/sliders button beside `TARGET 35–50`.
-- Show an editable `MAX 100 km/h` control near the meter title/top.
+- Place the current value outside the meter on the right, vertically tracked to the cursor. Render the number large with the unit inline beneath it and smaller, as the mockup shows — a big `42` with `km/h` directly under it as its unit caption, both blue.
+- The target label reads `TARGET` on the first line and the range `35–50` on the second line (no unit shown on the label), on the right (trailing) side of the speed track, with a small inward-pointing triangle at the band edge. The label block itself is the tap target that opens the target editor — do not place a separate sliders/edit button beside it. It opens an editor for the **speed range only**, mirroring the angle meter.
+- Do **not** show a `MAX … km/h` chip above the meter for now. The speed gauge maximum is **fixed at 100 km/h** and is not user-editable in this version; the in-app scale selector (§7.5) is deferred. Removing the chip also keeps the speed meter header the same height as the angle meter header.
 
 ##### Meter fill behavior
 
@@ -296,9 +297,9 @@ cursorY = trackBottom - (fillFraction × trackHeight)
 fillRect = track from trackBottom up to cursorY
 ```
 
-- Clip the fill to the rounded track.
+- Clip the fill to the rounded track so its **bottom** corners follow the track radius. The fill's **top edge must be flat** — a straight horizontal edge flush against the cursor line. Do not round or cap the top of the fill (no semicircle/dome); only the track outline is rounded.
 - Fill and unfill continuously as the value changes.
-- Use a monochromatic dark-blue-to-moderate-blue fill. The gradient is clipped to the filled portion only.
+- Use a monochromatic dark-blue-to-moderate-blue fill: a **two-stop** vertical gradient from a deep navy at the track bottom to a moderate blue at the cursor. Do not add a bright/saturated third stop — the top of the fill should read as *moderate* blue, not a bright accent. The gradient is clipped to the filled portion only.
 - Do not use a full-height gradient behind an empty track.
 - Draw target ranges as translucent bands spanning their calibrated lower and upper positions.
 - Draw the current cursor as a crisp horizontal line and small circular marker.
@@ -358,8 +359,8 @@ While a wheelie is active:
 
 Suggested defaults, owned by the telemetry layer:
 
-- Begin an attempt when calibrated angle remains above 8° for at least 150 ms.
-- End an attempt when angle remains below 5° for at least 250 ms.
+- Begin an attempt when calibrated angle remains above 10° for at least 150 ms.
+- End an attempt when angle remains below 7° for at least 250 ms.
 - Discard accidental events shorter than 0.4 s unless debugging mode is enabled.
 - Reset current-attempt maximums only when a new attempt begins.
 - Persist the completed run atomically when it ends.
@@ -405,19 +406,29 @@ Do not display attempt sequence numbers such as `#12`.
 
 - Back chevron if the screen is presented inside a navigation stack; omit if it is the root of the Runs tab.
 - Title: `PAST RUNS`.
-- Subtitle: dynamic count and scope, e.g. `12 attempts today`.
+- Subtitle: dynamic count and scope. Use the noun **attempts** and scope the count to **today**, e.g. `12 attempts today`. Do not render it as `N runs` or an all-time count.
 - Settings gear at top-right.
-- Three independent sort/filter chips: `TIME`, `ANGLE`, `SPEED`.
+- Four independent sort chips: `RECENT`, `TIME`, `ANGLE`, `SPEED`. `RECENT` sorts
+  on when the run happened; `TIME` sorts on the run's **duration**, matching the
+  `TIME` column. Four chips do not fit across a 390 pt screen, so the chip strip
+  scrolls horizontally while the filter control stays pinned at the trailing edge.
 - One compact general filter/sliders control at the far right.
 - Optional explanatory caption: `Color ranked to your personal range`.
+- An overflow (`ellipsis`) control left of the gear, shown only when at least one
+  run exists, holding `Delete All Runs` as a destructive item. It deletes every
+  stored run, including runs hidden by the active filters, and must confirm first
+  with the run count named in the confirm button.
 
 #### Sort behavior
 
 - First tap selects the metric and sorts descending.
 - Repeated tap toggles descending/ascending.
-- Selected chip uses a blue outline and slightly raised surface.
+- Selected chip uses a blue outline and slightly raised surface, and is the only
+  chip that shows a direction arrow (`chevron.down` descending, `chevron.up`
+  ascending). Unselected chips carry no arrow — a static glyph there indicates
+  nothing.
 - Only one primary sort key is active.
-- Default sort is most recent.
+- Default sort is most recent: the `RECENT` chip, descending.
 - The general filter sheet controls date scope and numeric min/max filters.
 
 ### 8.3 Row design
@@ -425,9 +436,12 @@ Do not display attempt sequence numbers such as `#12`.
 - Use compact rounded list cells or edge-to-edge grouped cells, not tall dashboard cards and not a rigid spreadsheet grid.
 - Target height: 76–84 pt.
 - Entire row is tappable and pushes Run Details.
+- Long-pressing a row opens a context menu with a destructive `Delete Run` item,
+  which confirms against a summary of that specific run before deleting. Rows are
+  cards rather than `List` rows, so a swipe action is not available here.
 - Far-right chevron is visual confirmation only; it is part of the row hit target.
 - Use timestamp as the primary identifier, e.g. `9:41 AM`.
-- Use relative time below it, e.g. `Just now`, `3 min ago`.
+- Use relative time below it, with an explicit `ago` suffix and a `Just now` floor for very recent runs, e.g. `Just now`, `3 min ago`, `29 min ago`. Do not use a bare/auto-counting relative style that omits `ago` or lacks a `Just now` floor.
 - Optional tiny badges:
   - `LATEST` on the newest run
   - `LONGEST` on the longest-duration run in the active history scope
@@ -580,8 +594,8 @@ Use two vertically stacked charts sharing the same x-domain `[0, run.duration]`.
 #### Shared scrubber
 
 - A horizontal drag on either chart sets one shared `selectedTime`.
-- Draw one vertical scrubber across both chart plot areas.
-- Show a time bubble above the angle chart, e.g. `3.8s`.
+- Draw **one continuous vertical scrubber line that spans both chart plot areas as a single overlay** — not one independent `RuleMark`/hairline drawn separately inside each chart. The line must read as unbroken from the top of the angle chart through the bottom of the speed chart.
+- Show a time bubble above the angle chart, e.g. `3.8s`. The bubble is **horizontally positioned at the scrubber's x** (it tracks the line as it moves), not centered over the chart.
 - Interpolate and display both values at `selectedTime`, e.g. `42°` and `48 km/h`.
 - Clamp the scrubber to the run domain.
 - On touch end, keep the last selection until the user taps outside the charts or presses a clear affordance.

@@ -605,10 +605,10 @@ public struct EventSegmenter: Stage {
 State machine, thresholds all from `Config` (R10.1–R10.3):
 
 ```
-idle      --pitch > eventEntryPitch (8°)--------------> arming   (mark candidate t)
+idle      --pitch > eventEntryPitch (10°)-------------> arming   (mark candidate t)
 arming    --held ≥ eventEntryDwell (150 ms)-----------> active   (onset = interpolated crossing)
 arming    --pitch drops below---------------------------> idle
-active    --pitch < eventExitPitch (5°)---------------> disarming
+active    --pitch < eventExitPitch (7°)---------------> disarming
 disarming --held ≥ eventExitDwell (250 ms)------------> idle     (end = interpolated crossing)
 disarming --pitch rises above exit--------------------> active
 end - onset < eventMinDuration (0.4 s)  →  discarded (unless debug)

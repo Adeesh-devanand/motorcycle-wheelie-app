@@ -22,15 +22,20 @@ final class ConfigTests: XCTestCase {
                        "encode→decode→encode→decode must be stable")
     }
 
-    func testVersionIsTwo() {
-        XCTAssertEqual(Config().version, 2)
+    func testVersionIsThree() {
+        // v3: calibration made survivable on a running bike — biasSigmaLimit raised
+        // to the README's own 0.05 deg/s budget, gateCloseConfirm added, the vibration
+        // hard-block demoted to reporting only.
+        XCTAssertEqual(Config().version, 3)
     }
 
     func testExitThresholdMatchesTheUISpec() {
-        // docs/ui-spec.md 7.6: end an attempt below 5 deg for 250 ms.
-        XCTAssertEqual(Config().eventExitPitch * 180 / .pi, 5.0, accuracy: 1e-12)
+        // docs/ui-spec.md 7.6: begin above 10 deg for 150 ms, end below 7 deg
+        // for 250 ms. Onset is the angle at which a wheelie starts being counted
+        // AND clocked, so it also sets what a duration means.
+        XCTAssertEqual(Config().eventExitPitch * 180 / .pi, 7.0, accuracy: 1e-12)
         XCTAssertEqual(Config().eventExitDwell, 0.25, accuracy: 1e-12)
-        XCTAssertEqual(Config().eventEntryPitch * 180 / .pi, 8.0, accuracy: 1e-12)
+        XCTAssertEqual(Config().eventEntryPitch * 180 / .pi, 10.0, accuracy: 1e-12)
         XCTAssertEqual(Config().eventEntryDwell, 0.15, accuracy: 1e-12)
     }
 

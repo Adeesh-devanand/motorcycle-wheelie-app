@@ -582,7 +582,49 @@ final class GradeBaselinePipelineTests: XCTestCase {
         for seconds in [10.0, 50.0, 90.0] {
             let reported = reportedPitch(heldAt: 20, seconds: seconds)
             XCTAssertEqual(reported, 20, accuracy: 1.0,
-                           "a held 20 deg tilt must survive \(seconds) s, got \(reported)")
+                           "a held 20 deg tilt must survive the full hold")
+        }
+    }
+
+    /// Re-anchoring is what makes a completed calibration reset the angle to 0: the
+    /// pose the rider held still becomes the new level reference, at any tilt.
+    func testReanchorZeroesTheReportedAngleAtAnyTilt() {
+        let config = Config()
+        for degrees in [0.0, 12.0, 35.0, -20.0] {
+            let force = Conventions.specificForce(pitch: degrees * .pi / 180)
+            // Anchored level, so a tilted phone initially reports the real tilt.
+            var pipeline = Pipeline(config: config,
+                                   alignment: .identity(),
+                                   initialBias: nil,
+                                   gravityAnchor: Conventions.restSpecificForce)
+            var reported = 0.0
+            var t = 0.0
+            let dt = 1.0 / config.nominalSampleRate
+            while t < 2.0 {
+                if let out = pipeline.process(.imu(IMUSample(time: t,
+                                                            rotationRate: .zero,
+                                                            specificForce: force))) {
+                    reported = out.pitch * 180 / .pi
+                }
+                t += dt
+            }
+            if abs(degrees) > 1 {
+                XCTAssertEqual(reported, degrees, accuracy: 2.0,
+                               "before re-anchor the real tilt should be reported")
+            }
+
+            // Calibration completes -> re-anchor -> this pose IS level.
+            pipeline.requestReanchor()
+            while t < 4.0 {
+                if let out = pipeline.process(.imu(IMUSample(time: t,
+                                                            rotationRate: .zero,
+                                                            specificForce: force))) {
+                    reported = out.pitch * 180 / .pi
+                }
+                t += dt
+            }
+            XCTAssertEqual(reported, 0, accuracy: 0.01,
+                           "after re-anchor a \(degrees) deg pose must read 0")
         }
     }
 }

@@ -39,6 +39,14 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
     /// Set on the first fix: `monotonicOffset = systemUptime - location.timestamp`.
     private var monotonicOffset: TimeInterval?
 
+    // MARK: - Diagnostics ("sensor")
+
+    private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "sensor")
+    private var fixCount = 0
+    private var sawFirstFix = false
+    private var firstFixTime: TimeInterval?
+    private var streamGeneration = 0
+
     // MARK: - Init
 
     public override init() {
@@ -61,10 +69,20 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
 
     public func start() {
         // Fresh stream per session — see MotionService.start().
+        let now = ProcessInfo.processInfo.systemUptime
+        diag.always(time: now, level: .info, message: "stream finished (start: replacing old)",
+                    values: ["generation": Double(streamGeneration), "streamEnded": 1])
         continuation.finish()
         var cont: AsyncStream<Sample>.Continuation!
         fixes = AsyncStream { cont = $0 }
         continuation = cont
+        streamGeneration += 1
+        sawFirstFix = false
+        fixCount = 0
+        firstFixTime = nil
+        diag.always(time: now, level: .info, message: "speed stream created (start)",
+                    values: ["generation": Double(streamGeneration),
+                             "authStatus": Double(locationManager.authorizationStatus.rawValue)])
 
         // Ask for authorization before starting updates. Without this call the
         // status stays `.notDetermined`, iOS silently delivers NO fixes and no
@@ -72,12 +90,16 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
         switch locationManager.authorizationStatus {
         case .notDetermined:
             log.info("Requesting when-in-use location authorization")
+            diag.always(time: now, level: .info, message: "requesting location authorization",
+                        values: ["authStatus": Double(locationManager.authorizationStatus.rawValue)])
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
             beginUpdates()
         case .denied, .restricted:
             // R15.3: no location means speed is UNAVAILABLE, never a fabricated 0.
             log.error("Location denied/restricted — speed and distance unavailable")
+            diag.always(time: now, level: .error, message: "location denied/restricted — speed unavailable",
+                        values: ["authStatus": Double(locationManager.authorizationStatus.rawValue)])
         @unknown default:
             locationManager.requestWhenInUseAuthorization()
         }
@@ -89,6 +111,10 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
         // Finishing the once-created stream here would make every later session
         // receive no fixes at all, permanently pinning speed at 0.
         log.info("SpeedService stopped")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "stopped (stream NOT finished — still live)",
+                    values: ["streamEnded": 0,
+                             "generation": Double(streamGeneration), "fixes": Double(fixCount)])
     }
 
     deinit {
@@ -100,12 +126,17 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
     /// Authorization is asynchronous: `start()` only asks. Updates begin here,
     /// once the user has actually answered the prompt.
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let now = ProcessInfo.processInfo.systemUptime
+        diag.always(time: now, level: .info, message: "authorization changed",
+                    values: ["authStatus": Double(manager.authorizationStatus.rawValue)])
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             log.info("Location authorized — starting updates")
             beginUpdates()
         case .denied, .restricted:
             log.error("Location denied/restricted — speed and distance unavailable")
+            diag.always(time: now, level: .error, message: "location denied/restricted — speed unavailable",
+                        values: ["authStatus": Double(manager.authorizationStatus.rawValue)])
         case .notDetermined:
             break
         @unknown default:
@@ -126,6 +157,10 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
         }
         locationManager.startUpdatingLocation()
         log.info("SpeedService started (bestForNavigation, no distance filter)")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "speed updates started",
+                    values: ["authStatus": Double(status.rawValue),
+                             "background": locationManager.allowsBackgroundLocationUpdates ? 1 : 0])
     }
 
     public func locationManager(_ manager: CLLocationManager,
@@ -155,11 +190,29 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
             )
 
             continuation.yield(.gnss(fix))
+
+            // Diagnostics on the fix's monotonic (systemUptime-domain) time, so speed
+            // lines interleave with sensor lines. 1 Hz heartbeat carries live speed.
+            fixCount += 1
+            if !sawFirstFix {
+                sawFirstFix = true
+                diag.always(time: fixTime, level: .info, message: "first GNSS fix",
+                            values: ["generation": Double(streamGeneration),
+                                     "speed": fix.speed, "speedAcc": fix.speedAccuracy])
+            }
+            if firstFixTime == nil { firstFixTime = fixTime }
+            diag.emit("live", time: fixTime, level: .info, message: "speed heartbeat",
+                      values: ["speed": fix.speed, "speedAcc": fix.speedAccuracy,
+                               "count": Double(fixCount),
+                               "hAcc": fix.horizontalAccuracy])
         }
     }
 
     public func locationManager(_ manager: CLLocationManager,
                                 didFailWithError error: Error) {
         log.error("CLLocationManager error: \(error.localizedDescription)")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
+                    message: "CLLocationManager error",
+                    values: ["code": Double((error as NSError).code)])
     }
 }

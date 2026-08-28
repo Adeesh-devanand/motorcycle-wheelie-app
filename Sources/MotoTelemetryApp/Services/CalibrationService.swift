@@ -85,15 +85,58 @@ final class CalibrationService: @unchecked Sendable {
     /// Monotonic time of the last auto-start, gating the retry cooldown.
     private var lastAutoStartTime: TimeInterval?
     private let autoStartCooldown: TimeInterval = 2.0
+    /// Retry interval once the rapid attempts are spent. The budget throttles, it no
+    /// longer terminates: a calibration screen that can never retry is a dead screen,
+    /// and the usual cause of a failed attempt is the rider still settling.
+    private let exhaustedRetryCooldown: TimeInterval = 10.0
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "CalibrationService")
+
+    // MARK: - Diagnostics ("cal")
+
+    /// Heartbeat channel keyed on the state name; one-shot causes go through `always`.
+    private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "cal")
+
+    /// Records a state transition old -> new WITH its cause. Called under `lock`.
+    /// `stateName` collapses the enum to a stable greppable token; `gateReason` is
+    /// logged alongside so the "stale gateReason over a .failed state" hypothesis
+    /// (bug 3) is directly visible in the log.
+    private func logStateTransition(_ new: CalibrationState, cause: String, at time: TimeInterval,
+                                    extra: [String: Double] = [:]) {
+        let old = Self.stateName(state)
+        let newName = Self.stateName(new)
+        var v = extra
+        v["gateReasonSet"] = gateReason == nil ? 0 : 1
+        let level: DiagnosticEvent.Level = (newName == "failed" || newName == "unavailable") ? .warn : .info
+        diag.always(time: time, level: level,
+                    message: "state \(old) -> \(newName) [\(cause)]", values: v)
+    }
+
+    private static func stateName(_ s: CalibrationState) -> String {
+        switch s {
+        case .calibrating:  return "calibrating"
+        case .calibrated:   return "calibrated"
+        case .failed:       return "failed"
+        case .stale:        return "stale"
+        case .unavailable:  return "unavailable"
+        }
+    }
+
+    private static func reasonName(_ r: ValidityGate.Reason?) -> String {
+        guard let r else { return "none" }
+        return r.rawValue
+    }
 
     // MARK: - Init
 
     init(config: Config = Config(), bikeProfileID: UUID = UUID()) {
         self.config = config
-        self.tracker = CalibrationTracker(config: config)
+        self.tracker = CalibrationTracker(config: config, sink: Self.coreSink)
     }
+
+    /// The core-stage sink (bias/gate/eskf/caltrack lines land here with sample
+    /// time). Same singleton the app-side channels use, so all lines interleave.
+    private static let coreSink: DiagnosticSink = DiagnosticLog.shared
 
     // MARK: - Pipeline consumption
 
@@ -136,7 +179,8 @@ final class CalibrationService: @unchecked Sendable {
                 estimator = BiasEstimator(
                     config: config,
                     bikeProfileID: bikeProfileID,
-                    thermalState: thermalState
+                    thermalState: thermalState,
+                    sink: Self.coreSink
                 )
                 state = .calibrating(progress: 0)
                 log.info("Calibration started")
@@ -163,6 +207,8 @@ final class CalibrationService: @unchecked Sendable {
         if !hasSeenSample {
             hasSeenSample = true
             log.info("First IMU sample received — sensor path is live")
+            diag.always(time: sample.time, level: .info, message: "first IMU sample — cal path live",
+                        values: [:])
         }
 
         // A sample IS the sensors working. `.unavailable` is set by RunRecorder's
@@ -173,6 +219,7 @@ final class CalibrationService: @unchecked Sendable {
         // measured absence sets it.
         if state == .unavailable {
             log.info("IMU samples resumed — clearing unavailable state")
+            logStateTransition(.calibrating(progress: nil), cause: "IMU resumed", at: sample.time)
             state = .calibrating(progress: nil)
             estimator = nil
             autoStartAttempts = 0
@@ -182,14 +229,45 @@ final class CalibrationService: @unchecked Sendable {
         // Auto-start on the first sample, and retry a bounded number of times
         // after a failure so a transient cause does not wedge the screen. An
         // explicit user request always starts, regardless of the budget.
-        let cooldownElapsed = lastAutoStartTime.map { sample.time - $0 >= autoStartCooldown } ?? true
-        let canAutoStart = autoStartAttempts < maxAutoStartAttempts && cooldownElapsed
+        //
+        // FIX (bug 1, the permanent wedge): the budget is no longer TERMINAL. Once
+        // `autoStartAttempts` reached `maxAutoStartAttempts`, no sample could ever
+        // start an estimator again and only a manual tap could recover — so a rider
+        // who hit three transient failures had a screen that never came back. The
+        // budget now only governs how FAST retries happen: `maxAutoStartAttempts`
+        // rapid attempts at `autoStartCooldown`, then an indefinite slow retry at
+        // `exhaustedRetryCooldown`. Backing off is right; giving up is not, because the
+        // cause is usually the rider still settling and it clears by itself.
+        let attemptsExhausted = autoStartAttempts >= maxAutoStartAttempts
+        let requiredCooldown = attemptsExhausted ? exhaustedRetryCooldown : autoStartCooldown
+        let cooldownElapsed = lastAutoStartTime.map { sample.time - $0 >= requiredCooldown } ?? true
+        let canAutoStart = cooldownElapsed
         // A pending request outranks whatever `estimator` currently holds: a stale
         // write-back may have resurrected a FINISHED estimator, whose `process()`
         // returns nil forever, so `handleProgress` never runs and the state stays
         // on `.calibrating(progress: nil)` permanently.
         let generationStale = estimatorGeneration != recalibrationGeneration
-        if generationStale { estimator = nil }
+        if generationStale {
+            diag.always(time: sample.time, level: .warn, message: "estimator generation mismatch — rebuilding",
+                        values: ["estimatorGen": Double(estimatorGeneration),
+                                 "recalGen": Double(recalibrationGeneration)])
+            estimator = nil
+        }
+
+        // BUG 1/3 instrumentation: heartbeat the auto-start budget so the
+        // "flickers then wedges" retry exhaustion is visible. Once
+        // autoStartAttempts == maxAutoStartAttempts and no estimator exists, no
+        // further sample can start one (only a user request will), which is the
+        // permanent wedge. cooldownRemaining shows the 2 s gap between flickers.
+        let cooldownRemaining = lastAutoStartTime.map { max(0, autoStartCooldown - (sample.time - $0)) } ?? 0
+        diag.emit("autostart:\(estimator == nil ? "idle" : "active")", time: sample.time,
+                  level: .info, message: "autostart status",
+                  values: ["attempts": Double(autoStartAttempts),
+                           "maxAttempts": Double(maxAutoStartAttempts),
+                           "cooldownRemaining": cooldownRemaining,
+                           "canAutoStart": canAutoStart ? 1 : 0,
+                           "hasEstimator": estimator == nil ? 0 : 1,
+                           "recalRequested": recalibrationRequested ? 1 : 0])
 
         if estimator == nil && (canAutoStart || recalibrationRequested || generationStale) {
             autoStartAttempts += 1
@@ -198,8 +276,13 @@ final class CalibrationService: @unchecked Sendable {
             estimator = BiasEstimator(
                 config: config,
                 bikeProfileID: bikeProfileID,
-                thermalState: thermalState
+                thermalState: thermalState,
+                sink: Self.coreSink
             )
+            logStateTransition(.calibrating(progress: 0), cause: "auto-start attempt \(autoStartAttempts)",
+                               at: sample.time,
+                               extra: ["attempt": Double(autoStartAttempts),
+                                       "maxAttempts": Double(maxAutoStartAttempts)])
             state = .calibrating(progress: 0)
         }
 
@@ -220,6 +303,9 @@ final class CalibrationService: @unchecked Sendable {
     /// a default.
     func reportSensorsUnavailable(reason: String) {
         log.error("Motion sensors unavailable: \(reason)")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
+                    message: "reportSensorsUnavailable: \(reason)",
+                    values: ["hasSeenSample": hasSeenSample ? 1 : 0])
         state = .unavailable
     }
 
@@ -227,6 +313,10 @@ final class CalibrationService: @unchecked Sendable {
     func requestRecalibration() {
         lock.lock()
         defer { lock.unlock() }
+        let t = ProcessInfo.processInfo.systemUptime
+        diag.always(time: t, level: .info, message: "requestRecalibration",
+                    values: ["recalGenBefore": Double(recalibrationGeneration),
+                             "autoStartAttemptsBefore": Double(autoStartAttempts)])
         recalibrationRequested = true
         recalibrationGeneration += 1
         autoStartAttempts = 0
@@ -241,7 +331,7 @@ final class CalibrationService: @unchecked Sendable {
         // rider just asked for, and the two writers fought every cycle — the
         // overlay froze. A fresh tracker reports `.unavailable`, which `syncState()`
         // deliberately leaves alone, so the re-zero can actually proceed (R6.10).
-        tracker = CalibrationTracker(config: config)
+        tracker = CalibrationTracker(config: config, sink: Self.coreSink)
         estimator?.restart()
         estimator = nil
         state = .calibrating(progress: nil)
@@ -266,28 +356,76 @@ final class CalibrationService: @unchecked Sendable {
         switch progress {
         case .collecting(let elapsed, let required):
             state = .calibrating(progress: elapsed / required)
+            // Heartbeat only — collecting fires ~100 Hz, so gate on the "collecting"
+            // key + sample-time heartbeat rather than per sample.
+            diag.emit("collecting", time: ProcessInfo.processInfo.systemUptime,
+                      level: .trace, message: "collecting",
+                      values: ["elapsed": elapsed, "required": required,
+                               "fraction": required > 0 ? elapsed / required : 0])
 
         case .rejected(let reason):
             // R6.2: a gate closure resets progress AND the UI reports WHY. Keeping
             // the reason is the difference between "Waiting for stable position",
             // which tells the rider nothing, and naming the one condition that is
             // actually failing.
+            let old = Self.reasonName(gateReason)
             gateReason = reason
             gateOpenAccumulator = 0
             lastGateOpenTime = nil
             // Don't clear estimator — it resets internally on next gate open
+            diag.emit("reject:\(reason.rawValue)", time: ProcessInfo.processInfo.systemUptime,
+                      level: .info, message: "gate reason \(old) -> \(reason.rawValue)",
+                      values: [:])
 
         case .done(let estimate):
             tracker.adopt(estimate)
             recalibrationRequested = false
             gateReason = nil
             estimator = nil
+            let t = ProcessInfo.processInfo.systemUptime
+            logStateTransition(.calibrated(referenceID: estimate.id, calibratedAt: estimate.wallClock),
+                               cause: "estimator done", at: t,
+                               extra: ["sigmaDeg": estimate.worstSigma * 180 / .pi])
             state = .calibrated(referenceID: estimate.id, calibratedAt: estimate.wallClock)
             log.info("Calibration complete. Sigma: \(estimate.worstSigma * 180 / .pi, format: .fixed(precision: 4)) deg/s")
 
         case .failed(let failure):
             estimator = nil
             recalibrationRequested = false
+            // FIX (bug 3, the permanent stick): clear `gateReason`. Leaving it set
+            // meant `blockingReasonText` kept returning the last gate complaint —
+            // typically "Almost — keep it still a moment longer" — and the overlay
+            // renders that unconditionally alongside the state text. The rider was
+            // therefore shown a still-trying message over a state that had already
+            // failed, with nothing indicating the attempt was over.
+            gateReason = nil
+            let t = ProcessInfo.processInfo.systemUptime
+            let retriesRemain = autoStartAttempts < maxAutoStartAttempts
+
+            // FIX (bug 1, the flicker): do not SHOW `.failed` while an automatic retry
+            // is still coming. The auto-start budget re-arms after `autoStartCooldown`,
+            // so surfacing `.failed` here produced exactly the reported symptom — the
+            // overlay flipping failed → calibrating → failed a few times, 2 s apart,
+            // for no reason the rider could act on. A retry that is about to happen is
+            // still "calibrating"; only a genuinely exhausted attempt is a failure.
+            if retriesRemain {
+                logStateTransition(.calibrating(progress: nil),
+                                   cause: "estimator failed, auto-retry pending", at: t,
+                                   extra: ["autoStartAttempts": Double(autoStartAttempts),
+                                           "maxAttempts": Double(maxAutoStartAttempts)])
+                diag.always(time: t, level: .info,
+                            message: "failed — retry pending, not surfaced to rider",
+                            values: ["attemptsRemaining":
+                                        Double(maxAutoStartAttempts - autoStartAttempts)])
+                state = .calibrating(progress: nil)
+                log.info("Calibration attempt failed, retrying: \(failure.message)")
+                return
+            }
+
+            logStateTransition(.failed(message: failure.message),
+                               cause: "estimator failed, retries exhausted", at: t,
+                               extra: ["autoStartAttempts": Double(autoStartAttempts),
+                                       "maxAttempts": Double(maxAutoStartAttempts)])
             state = .failed(message: failure.message)
             log.warning("Calibration failed: \(failure.message)")
         }

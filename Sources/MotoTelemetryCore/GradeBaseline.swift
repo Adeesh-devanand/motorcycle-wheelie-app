@@ -22,11 +22,25 @@ public struct GradeBaseline: Stage {
         public var pitch: Double
         public var gateOpen: Bool
         public var time: TimeInterval
+        /// Diagnostic-only breakdown of why the caller did/didn't allow adaptation.
+        /// The caller (Pipeline) computes `gateOpen` as `verdict.isOpen &&
+        /// !eventActive && nearLevel`; passing the three parts lets the grade log
+        /// name which one blocked an adapt without the baseline re-deriving them.
+        /// Purely additive: defaults reproduce the pre-diagnostics call sites.
+        public var verdictOpen: Bool?
+        public var eventActive: Bool?
+        public var nearLevel: Bool?
 
-        public init(pitch: Double, gateOpen: Bool, time: TimeInterval) {
+        public init(pitch: Double, gateOpen: Bool, time: TimeInterval,
+                    verdictOpen: Bool? = nil,
+                    eventActive: Bool? = nil,
+                    nearLevel: Bool? = nil) {
             self.pitch = pitch
             self.gateOpen = gateOpen
             self.time = time
+            self.verdictOpen = verdictOpen
+            self.eventActive = eventActive
+            self.nearLevel = nearLevel
         }
     }
 
@@ -34,6 +48,7 @@ public struct GradeBaseline: Stage {
     private var value: Double?
     private var lastTime: TimeInterval?
     private var gateOpenSamples = 0
+    private var diag: DiagnosticEmitter
 
     /// Current grade estimate, radians. Nil until the gate has ever opened.
     public var grade: Double? { value }
@@ -41,13 +56,15 @@ public struct GradeBaseline: Stage {
     /// of samples is not yet trustworthy, and the caller can see that.
     public var sampleCount: Int { gateOpenSamples }
 
-    public init(config: Config) {
+    public init(config: Config, sink: DiagnosticSink? = nil) {
         self.timeConstant = config.baselineTimeConstant
+        self.diag = DiagnosticEmitter(sink: sink, category: "grade")
     }
 
     /// Returns the grade-corrected pitch for this sample.
     public mutating func process(_ input: Input) -> Double? {
         defer { lastTime = input.time }
+        emitDiagnostics(input)
 
         guard input.gateOpen else {
             // Frozen. Still correct the output using the last known grade.
@@ -76,5 +93,42 @@ public struct GradeBaseline: Stage {
         value = nil
         lastTime = nil
         gateOpenSamples = 0
+    }
+
+    // MARK: - Diagnostics
+
+    /// Emits adapt/freeze transitions with baseline deg, pitch deg, and which of
+    /// the three adapt conditions blocked adaptation. The state key is the
+    /// adapt/freeze decision plus the blocking condition, so a change in WHY it is
+    /// frozen is a transition, not just a heartbeat.
+    private mutating func emitDiagnostics(_ input: Input) {
+        let adapting = input.gateOpen
+        // Name the first blocking condition, in the same order the Pipeline ANDs
+        // them. Only meaningful when the caller supplied the breakdown.
+        let blocked: String
+        if adapting {
+            blocked = "none"
+        } else if let vo = input.verdictOpen, !vo {
+            blocked = "gateClosed"
+        } else if let ea = input.eventActive, ea {
+            blocked = "eventActive"
+        } else if let nl = input.nearLevel, !nl {
+            blocked = "notNearLevel"
+        } else {
+            blocked = "gateClosed"
+        }
+        let degrees = 180.0 / .pi
+        diag.emit(adapting ? "adapt" : "freeze:" + blocked,
+                  time: input.time,
+                  message: adapting ? "grade adapt" : "grade freeze",
+                  values: [
+                    "baselineDeg": (value ?? 0) * degrees,
+                    "pitchDeg": input.pitch * degrees,
+                    "adapting": adapting ? 1 : 0,
+                    "gateOpenSamples": Double(gateOpenSamples),
+                    "blockGateClosed": (input.verdictOpen.map { $0 ? 0 : 1 }) ?? -1,
+                    "blockEventActive": (input.eventActive.map { $0 ? 1 : 0 }) ?? -1,
+                    "blockNotNearLevel": (input.nearLevel.map { $0 ? 0 : 1 }) ?? -1,
+                  ])
     }
 }

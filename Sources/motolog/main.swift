@@ -117,7 +117,7 @@ case "replay":
     var segmenter = EventSegmenter(config: effectiveConfig)
     var scorer = RunScorer(config: effectiveConfig)
 
-    // CueEngine: use eventEntryPitch * 2.5 as default angle target upper bound (~20 deg)
+    // CueEngine: use eventEntryPitch * 2.5 as default angle target upper bound (~25 deg)
     let angleTargetUpper = effectiveConfig.eventEntryPitch * 2.5
     var cueEngine = CueEngine(
         angleTargetUpper: angleTargetUpper,

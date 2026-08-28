@@ -69,7 +69,16 @@ final class LiveWheelieViewModel {
     private var displayLink: DisplayLinkProxy?
     private var sensorTask: Task<Void, Never>?
     private var sessionStarted = false
-    private let log = Logger(subsystem: "com.mototelemetry.app", category: "LiveWheelieVM")
+
+    // MARK: - Diagnostics ("live")
+
+    /// Folds the previous standalone `Logger` into the shared diagnostic path so
+    /// there is ONE logging mechanism, not two. `.info` still reaches OSLog via the
+    /// sink's mirror. Display heartbeat is stamped with `systemUptime` (the shared
+    /// clock) so it interleaves with sensor/rec lines, and gated at 1 Hz — the
+    /// 30 Hz display tick must never emit per frame.
+    private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "live")
+    private var lastHeartbeat: TimeInterval = 0
 
     // MARK: - Init
 
@@ -86,11 +95,15 @@ final class LiveWheelieViewModel {
     // MARK: - Lifecycle
 
     func onAppear() {
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "onAppear", values: [:])
         startDisplayDecimation()
         startSession()
     }
 
     func onDisappear() {
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "onDisappear — stopping display link & session", values: [:])
         displayLink?.stop()
         displayLink = nil
         recorder.stopSession()
@@ -119,7 +132,8 @@ final class LiveWheelieViewModel {
             mountAlignment: .portraitMount(bikeProfileID: bikeProfileID),
             angleTarget: preferences.angleTarget
         )
-        log.info("Live session started")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "session started (subscribed)", values: [:])
     }
 
     // MARK: - User Actions
@@ -132,6 +146,8 @@ final class LiveWheelieViewModel {
     // MARK: - Private
 
     private func startDisplayDecimation() {
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "display link start (30 Hz)", values: [:])
         displayLink = DisplayLinkProxy { [weak self] in
             self?.decimateToDisplay()
         }
@@ -145,6 +161,20 @@ final class LiveWheelieViewModel {
         let alpha = 0.3
         calibrationState = calibrationService.state
         blockingReason = calibrationService.blockingReasonText
+
+        // BUG 2 heartbeat: the angle CURRENTLY DISPLAYED, at 1 Hz. Cross-referenced
+        // against the "sensor heartbeat" lines this shows unambiguously whether a
+        // frozen angle is a dead stream (no sensor lines) or a display stall (sensor
+        // lines flowing but this value stuck). Runs whether or not calibrated.
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastHeartbeat >= 1.0 {
+            lastHeartbeat = now
+            diag.always(time: now, level: .info, message: "live heartbeat",
+                        values: ["displayedAngle": currentAngle,
+                                 "recorderPitch": recorder.livePitch,
+                                 "calibrated": isCalibrated ? 1 : 0,
+                                 "eventActive": eventActive ? 1 : 0])
+        }
 
         // §7.2: freeze live values unless calibrated.
         guard isCalibrated else { return }

@@ -6,7 +6,10 @@ import SwiftUI
 struct LiveWheelieView: View {
     @State private var viewModel: LiveWheelieViewModel
     @State private var showSettings = false
-    @State private var showTargetEditor = false
+    /// Which target range the rider asked to edit, or nil for none. An enum
+    /// rather than a Bool: a Bool cannot carry *which* meter was tapped, which
+    /// is why one sheet used to open both ranges at once.
+    @State private var editingTarget: TargetRangeEditor.Field?
     private let bikeStore: BikeProfileStore
 
     init(calibrationService: CalibrationService,
@@ -49,9 +52,10 @@ struct LiveWheelieView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(preferences: viewModel.preferences, bikeStore: bikeStore)
         }
-        .sheet(isPresented: $showTargetEditor) {
+        .sheet(item: $editingTarget) { field in
             TargetRangeEditor(
                 preferences: viewModel.preferences,
+                field: field,
                 isDisabled: viewModel.eventActive || !viewModel.isCalibrated
             )
         }
@@ -92,12 +96,14 @@ struct LiveWheelieView: View {
     // MARK: - Meters Section
 
     private var metersSection: some View {
-        HStack(spacing: AppSpacing.meterGap) {
-            // ANGLE meter — labels on left
+        HStack(spacing: 0) {
+            // ANGLE meter — centered in the left half of the screen
             angleMeter
+                .frame(maxWidth: .infinity)
 
-            // SPEED meter — labels on right, with max chip above
+            // SPEED meter — centered in the right half of the screen
             speedMeter
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -112,50 +118,26 @@ struct LiveWheelieView: View {
             rangeStatus: viewModel.angleInRange
         )
         meter.labelsOnLeading = true
-        meter.onTargetEdit = targetEditDisabled ? nil : { showTargetEditor = true }
+        meter.onTargetEdit = targetEditDisabled ? nil : { editingTarget = .angle }
         return meter
     }
 
+    /// Speed meter. The gauge maximum is fixed at 100 km/h for now and the old
+    /// editable MAX chip has been removed (M-UI3), so the speed and angle meters
+    /// share the same header height (M-UI10).
     private var speedMeter: some View {
-        VStack(spacing: AppSpacing.xs) {
-            // MAX chip above the speed meter
-            gaugeMaxChip
-
-            speedMeterContent
-        }
-    }
-
-    private var speedMeterContent: some View {
-        let speedUnit = viewModel.preferences.speedUnit == .kph ? "km/h" : "mph"
         var meter = VerticalTelemetryMeter(
             value: viewModel.currentSpeed,
             range: 0...viewModel.preferences.speedGaugeMaximum,
             targetBand: viewModel.preferences.speedTarget,
-            unit: speedUnit,
+            unit: viewModel.preferences.speedUnit == .kph ? "km/h" : "mph",
             label: "SPEED",
             valueFont: AppTypography.meterValue,
             rangeStatus: viewModel.speedInRange
         )
         meter.labelsOnLeading = false
-        meter.onTargetEdit = targetEditDisabled ? nil : { showTargetEditor = true }
+        meter.onTargetEdit = targetEditDisabled ? nil : { editingTarget = .speed }
         return meter
-    }
-
-    /// Small rounded chip: "MAX 100 km/h" with pencil + chevron.
-    private var gaugeMaxChip: some View {
-        HStack(spacing: AppSpacing.xs) {
-            Image(systemName: "pencil")
-                .font(.system(size: 11))
-            Text("MAX \(Int(viewModel.preferences.speedGaugeMaximum)) \(viewModel.preferences.speedUnit == .kph ? "km/h" : "mph")")
-                .font(.system(size: 13, weight: .medium))
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10))
-        }
-        .foregroundStyle(AppColors.textSecondary)
-        .padding(.horizontal, AppSpacing.sm)
-        .padding(.vertical, AppSpacing.xs)
-        .background(AppColors.surfaceCard)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.chip))
     }
 
     // MARK: - Bottom Metrics (three equal cards)

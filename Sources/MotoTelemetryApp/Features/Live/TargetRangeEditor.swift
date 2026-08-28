@@ -1,60 +1,85 @@
 import SwiftUI
 
-/// Inline compact editor for angle and speed target ranges.
+/// Compact editor for ONE target range. Angle and speed are edited separately:
+/// tapping the angle meter's TARGET label must not put the speed range under
+/// your thumb as well, so the caller states which field it opened.
 /// Updates RiderPreferences directly; disabled during active recording.
 struct TargetRangeEditor: View {
+
+    /// Which single range this editor edits. `Identifiable` so a caller can
+    /// present it with `.sheet(item:)` — there the non-nil field IS the request
+    /// to open, which makes "which meter did they tap" impossible to lose.
+    enum Field: String, Identifiable, CaseIterable {
+        case angle, speed
+        var id: String { rawValue }
+    }
+
     @Bindable var preferences: RiderPreferences
+    let field: Field
     let isDisabled: Bool
 
     var body: some View {
         VStack(spacing: AppSpacing.md) {
-            // Angle range
-            DualThumbSlider(
-                label: "Angle Target",
-                unit: "°",
-                lower: Binding(
-                    get: { preferences.angleTarget.lower },
-                    set: { newLower in
-                        let clamped = min(newLower, preferences.angleTarget.upper - 1)
-                        preferences.angleTarget = MetricRange(lower: max(0, clamped), upper: preferences.angleTarget.upper)
-                    }
-                ),
-                upper: Binding(
-                    get: { preferences.angleTarget.upper },
-                    set: { newUpper in
-                        let clamped = max(newUpper, preferences.angleTarget.lower + 1)
-                        preferences.angleTarget = MetricRange(lower: preferences.angleTarget.lower, upper: min(90, clamped))
-                    }
-                ),
-                bounds: 0...90
-            )
-
-            // Speed range
-            DualThumbSlider(
-                label: "Speed Target",
-                unit: preferences.speedUnit == .kph ? "km/h" : "mph",
-                lower: Binding(
-                    get: { preferences.speedTarget.lower },
-                    set: { newLower in
-                        let clamped = min(newLower, preferences.speedTarget.upper - 1)
-                        preferences.speedTarget = MetricRange(lower: max(0, clamped), upper: preferences.speedTarget.upper)
-                    }
-                ),
-                upper: Binding(
-                    get: { preferences.speedTarget.upper },
-                    set: { newUpper in
-                        let clamped = max(newUpper, preferences.speedTarget.lower + 1)
-                        preferences.speedTarget = MetricRange(lower: preferences.speedTarget.lower, upper: min(preferences.speedGaugeMaximum, clamped))
-                    }
-                ),
-                bounds: 0...preferences.speedGaugeMaximum
-            )
+            switch field {
+            case .angle: angleSlider
+            case .speed: speedSlider
+            }
         }
         .padding(AppSpacing.cardPadding)
         .background(AppColors.surfaceCard)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card))
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1.0)
+    }
+
+    // MARK: - Per-field sliders
+
+    private var angleSlider: some View {
+        DualThumbSlider(
+            label: "Angle Target",
+            unit: "°",
+            lower: Binding(
+                get: { preferences.angleTarget.lower },
+                set: { newLower in
+                    let clamped = min(newLower, preferences.angleTarget.upper - 1)
+                    preferences.angleTarget = MetricRange(lower: max(0, clamped),
+                                                          upper: preferences.angleTarget.upper)
+                }
+            ),
+            upper: Binding(
+                get: { preferences.angleTarget.upper },
+                set: { newUpper in
+                    let clamped = max(newUpper, preferences.angleTarget.lower + 1)
+                    preferences.angleTarget = MetricRange(lower: preferences.angleTarget.lower,
+                                                          upper: min(90, clamped))
+                }
+            ),
+            bounds: 0...90
+        )
+    }
+
+    private var speedSlider: some View {
+        DualThumbSlider(
+            label: "Speed Target",
+            unit: preferences.speedUnit == .kph ? "km/h" : "mph",
+            lower: Binding(
+                get: { preferences.speedTarget.lower },
+                set: { newLower in
+                    let clamped = min(newLower, preferences.speedTarget.upper - 1)
+                    preferences.speedTarget = MetricRange(lower: max(0, clamped),
+                                                          upper: preferences.speedTarget.upper)
+                }
+            ),
+            upper: Binding(
+                get: { preferences.speedTarget.upper },
+                set: { newUpper in
+                    let clamped = max(newUpper, preferences.speedTarget.lower + 1)
+                    preferences.speedTarget = MetricRange(lower: preferences.speedTarget.lower,
+                                                          upper: min(preferences.speedGaugeMaximum, clamped))
+                }
+            ),
+            bounds: 0...preferences.speedGaugeMaximum
+        )
     }
 }
 
@@ -154,10 +179,10 @@ private struct DualThumbSlider: View {
 // MARK: - Preview
 
 #Preview {
-    TargetRangeEditor(
-        preferences: RiderPreferences(),
-        isDisabled: false
-    )
+    VStack(spacing: AppSpacing.md) {
+        TargetRangeEditor(preferences: RiderPreferences(), field: .angle, isDisabled: false)
+        TargetRangeEditor(preferences: RiderPreferences(), field: .speed, isDisabled: false)
+    }
     .padding()
     .background(AppColors.background)
 }

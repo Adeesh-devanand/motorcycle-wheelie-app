@@ -89,37 +89,62 @@ final class CalibrationTests: XCTestCase {
 
     // MARK: - The failure paths, which are the point of the class
 
-    func testVibrationFailsCalibrationRatherThanPoisoningIt() {
-        // 3 m/s^2 of 83 Hz excitation, i.e. a twin around 5000 rpm on a rigid
-        // mount. Note what the gate does here: its band is +/-0.03 g = 0.294 m/s^2
-        // and it is INSTANTANEOUS, so it rejects this immediately rather than
-        // averaging it to 1 g. The gate is therefore the detector; the
-        // high-frequency indicator's job is to turn that rejection into an
-        // actionable reason instead of "bike is not level and still".
+    func testViolentShakeNeverCompletesAZeroing() {
+        // 3 m/s^2 of 83 Hz excitation, i.e. a twin around 5000 rpm on a rigid mount.
+        // This must not silently produce an estimate — but note HOW it is refused.
+        // The gate's band is breached for a large fraction of every cycle, longer
+        // than `gateCloseConfirm`, so the gate keeps closing and the dwell never
+        // completes. The refusal comes from the gate reporting its own condition, not
+        // from a vibration RMS threshold, and it is honest: with the attempt window
+        // (30 s) longer than this fixture (12 s) the estimator is still trying.
         let result = run(stationarySamples(duration: 12, vibrationAmplitude: 3.0))
 
-        guard case .failed(let failure)? = result else {
-            return XCTFail("a shaking bike must not produce a silent estimate, got "
-                           + "\(String(describing: result))")
+        switch result {
+        case .done:
+            XCTFail("a violently shaking mount must not produce an estimate")
+        case .failed(let failure):
+            // Acceptable: the attempt window elapsed and it explained why.
+            guard case .gateNeverOpened = failure else {
+                return XCTFail("expected gateNeverOpened, got \(failure)")
+            }
+        case .rejected, .collecting, .none:
+            break  // still trying, which is correct inside the attempt window
         }
-        guard case .vibrationTooHigh(let rms, let limit) = failure else {
-            return XCTFail("expected vibrationTooHigh, got \(failure)")
-        }
-        XCTAssertGreaterThan(rms, limit)
-        XCTAssertTrue(failure.message.contains("mount"),
-                      "the message must point at the mechanical fix")
     }
 
-    func testMildVibrationInsideTheGateBandStillFailsCalibration() {
-        // 0.2 m/s^2 stays inside the gate's window, so the gate never objects.
-        // This is the dangerous case: without the RMS check the bias would be
-        // averaged over the oscillation and come out quietly wrong.
-        let result = run(stationarySamples(duration: 12, vibrationAmplitude: 0.2))
-        guard case .failed(let failure)? = result,
-              case .vibrationTooHigh = failure else {
-            return XCTFail("mild in-band vibration must still fail, got "
+    func testMildInBandVibrationCalibratesAndTheBiasIsStillAccurate() {
+        // THIS TEST INVERTED IN v3, deliberately. It used to assert that 0.2 m/s^2
+        // of vibration FAILED calibration, on the stated grounds that "without the
+        // RMS check the bias would be averaged over the oscillation and come out
+        // quietly wrong."
+        //
+        // That premise is false, and this fixture is why: `vibrationAmplitude`
+        // perturbs `specificForce` ONLY — the gyro is untouched — and the bias
+        // estimate is the MEAN OF THE GYRO. More generally, even real gyro vibration
+        // is zero-mean, and averaging is precisely the operation that removes it;
+        // what survives is the standard error, which `biasSigmaLimit` bounds. So the
+        // check rejected a perfectly good zeroing and left the filter with no bias at
+        // all, which is the far larger error. It also made calibrating on a running
+        // bike impossible, and mid-ride recalibration impossible outright.
+        //
+        // The assertion is therefore the one that actually matters: it completes, AND
+        // the number it produces is right.
+        let trueBias = Vector3(0.003, -0.002, 0.001)
+        let result = run(stationarySamples(duration: 12,
+                                           trueBias: trueBias,
+                                           vibrationAmplitude: 0.2))
+
+        guard case .done(let estimate)? = result else {
+            return XCTFail("mild in-band vibration must still calibrate, got "
                            + "\(String(describing: result))")
         }
+        // Accurate to well inside the 0.05 deg/s (8.7e-4 rad/s) error budget.
+        XCTAssertEqual(estimate.bias.x, trueBias.x, accuracy: 1e-4)
+        XCTAssertEqual(estimate.bias.y, trueBias.y, accuracy: 1e-4)
+        XCTAssertEqual(estimate.bias.z, trueBias.z, accuracy: 1e-4)
+        XCTAssertLessThan(estimate.worstSigma, Config().biasSigmaLimit,
+                          "vibration must not inflate the reported uncertainty past the limit")
+        XCTAssertGreaterThan(estimate.sampleCount, 700)
     }
 
     func testQuietMountCalibratesDespiteTheVibrationCheck() {
@@ -202,19 +227,61 @@ final class CalibrationTests: XCTestCase {
         XCTAssertTrue(failure.message.contains("moving"))
     }
 
-    func testInterruptionResetsProgressSoAPartialZeroingIsNeverAccepted() {
+    func testATransientBlipPausesProgressRatherThanDiscardingIt() {
+        // REPLACES a v2 test that asserted the opposite ("two sub-duration stretches
+        // must not add up"). Discarding on ANY single closed sample is what produced
+        // the reported "stuck at 0%": on a running bike a blip fires constantly, and
+        // 8 s of unbroken quiet never assembles. A 10 ms blip is 0.2 deg of rotation
+        // — the bike has not moved, and throwing away 3 s of good samples over it is
+        // the bug, not the safeguard.
         var config = Config()
         config.biasCalibrationDuration = 4.0
         var estimator = BiasEstimator(config: config, bikeProfileID: bike)
 
-        // 3 s of quiet, then a bump, then 3 s of quiet: neither stretch is long
-        // enough, so nothing may complete.
-        var samples = stationarySamples(duration: 3, rate: 100)
+        let trueBias = Vector3(0.003, -0.002, 0.001)
+        var samples = stationarySamples(duration: 3, rate: 100, trueBias: trueBias)
         samples.append(IMUSample(time: 3.0,
                                  rotationRate: Vector3(0, 0, 20 * .pi / 180),
                                  specificForce: Conventions.restSpecificForce))
-        samples += stationarySamples(duration: 3, rate: 100).map {
+        samples += stationarySamples(duration: 3, rate: 100, trueBias: trueBias).map {
             IMUSample(time: $0.time + 3.01,
+                      rotationRate: $0.rotationRate,
+                      specificForce: $0.specificForce)
+        }
+
+        var estimate: BiasEstimate?
+        for sample in samples {
+            if let p = estimator.process(sample), case .done(let e) = p { estimate = e }
+        }
+
+        guard let estimate else {
+            return XCTFail("a 10 ms blip must not prevent a 6 s zeroing from completing")
+        }
+        // And the blip must not have leaked into the mean: the gate stays open across
+        // it, so exclusion is `sampleWithinBand`'s job, not the gate's.
+        XCTAssertEqual(estimate.bias.z, trueBias.z, accuracy: 1e-4,
+                       "the 20 deg/s spike leaked into the bias mean")
+        XCTAssertEqual(estimate.bias.x, trueBias.x, accuracy: 1e-4)
+    }
+
+    func testASustainedInterruptionDiscardsProgress() {
+        // The other side of the grace period: an interruption long enough that the
+        // bike may genuinely have moved or been re-oriented DOES discard, so two
+        // sub-duration stretches still cannot add up to a zeroing.
+        var config = Config()
+        config.biasCalibrationDuration = 4.0
+        var estimator = BiasEstimator(config: config, bikeProfileID: bike)
+
+        // 3 s quiet, 1 s of real rotation (well past both gateCloseConfirm and
+        // biasGateGracePeriod), then 3 s quiet. Neither stretch reaches 4 s alone.
+        var samples = stationarySamples(duration: 3, rate: 100)
+        samples += (0..<100).map { i in
+            IMUSample(time: 3.0 + Double(i) / 100,
+                      rotationRate: Vector3(0, 0, 20 * .pi / 180),
+                      specificForce: Conventions.restSpecificForce)
+        }
+        samples += stationarySamples(duration: 3, rate: 100).map {
+            IMUSample(time: $0.time + 4.01,
                       rotationRate: $0.rotationRate,
                       specificForce: $0.specificForce)
         }
@@ -224,7 +291,7 @@ final class CalibrationTests: XCTestCase {
             if let p = estimator.process(sample), case .done = p { completed = true }
         }
         XCTAssertFalse(completed,
-                       "two sub-duration stretches must not add up to a zeroing")
+                       "a sustained interruption must still discard accumulated progress")
     }
 
     // MARK: - Age and confidence

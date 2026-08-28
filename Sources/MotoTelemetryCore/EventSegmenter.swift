@@ -66,7 +66,10 @@ public struct EventSegmenter {
     private var prevPitch: Double?
     private var prevTime: TimeInterval?
 
-    public init(config: Config = Config(), debugBypassMinDuration: Bool = false) {
+    private var diag: DiagnosticEmitter
+
+    public init(config: Config = Config(), debugBypassMinDuration: Bool = false,
+                sink: DiagnosticSink? = nil) {
         self.entryPitch = config.eventEntryPitch
         self.exitPitch = config.eventExitPitch
         self.entryDwell = config.eventEntryDwell
@@ -74,6 +77,7 @@ public struct EventSegmenter {
         self.minDuration = config.eventMinDuration
         self.entryPitchRate = config.eventEntryPitchRate
         self.debugBypassMinDuration = debugBypassMinDuration
+        self.diag = DiagnosticEmitter(sink: sink, category: "event")
     }
 
     /// Feed one pipeline output sample. Returns a transition when a boundary is
@@ -84,15 +88,51 @@ public struct EventSegmenter {
             prevTime = time
         }
 
+        let before = state
+        let transition: Transition?
         switch state {
         case .idle:
-            return processIdle(time: time, pitch: pitch, pitchRate: pitchRate)
+            transition = processIdle(time: time, pitch: pitch, pitchRate: pitchRate)
         case .arming:
-            return processArming(time: time, pitch: pitch, pitchRate: pitchRate)
+            transition = processArming(time: time, pitch: pitch, pitchRate: pitchRate)
         case .active:
-            return processActive(time: time, pitch: pitch, pitchRate: pitchRate)
+            transition = processActive(time: time, pitch: pitch, pitchRate: pitchRate)
         case .disarming:
-            return processDisarming(time: time, pitch: pitch, pitchRate: pitchRate)
+            transition = processDisarming(time: time, pitch: pitch, pitchRate: pitchRate)
+        }
+        emitState(before: before, time: time, pitch: pitch, pitchRate: pitchRate)
+        return transition
+    }
+
+    /// State-machine transitions with pitch deg, pitchRate deg/s, and the
+    /// entry/exit thresholds and dwells being compared against.
+    private mutating func emitState(before: State,
+                                    time: TimeInterval,
+                                    pitch: Double,
+                                    pitchRate: Double) {
+        let degrees = 180.0 / .pi
+        diag.emit(stateName(state),
+                  time: time,
+                  message: "event " + stateName(state),
+                  values: [
+                    "pitchDeg": pitch * degrees,
+                    "pitchRateDegPerSec": pitchRate * degrees,
+                    "entryPitchDeg": entryPitch * degrees,
+                    "exitPitchDeg": exitPitch * degrees,
+                    "entryPitchRateDegPerSec": entryPitchRate * degrees,
+                    "entryDwell": entryDwell,
+                    "exitDwell": exitDwell,
+                    "minDuration": minDuration,
+                    "changed": before == state ? 0 : 1,
+                  ])
+    }
+
+    private func stateName(_ s: State) -> String {
+        switch s {
+        case .idle:      return "idle"
+        case .arming:    return "arming"
+        case .active:    return "active"
+        case .disarming: return "disarming"
         }
     }
 

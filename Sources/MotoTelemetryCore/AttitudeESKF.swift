@@ -63,6 +63,17 @@ public struct AttitudeESKF {
     /// anchors (it passes the first gate-open sample); the live filter must too.
     private var hasAnchored: Bool
 
+    /// Whether the bike axes have been derived from gravity yet.
+    ///
+    /// Deliberately NOT cleared by `requestReanchor()`. A re-anchor must re-zero the
+    /// attitude, but the axes are a guess gravity cannot improve on, and re-guessing
+    /// them per calibration silently changes which tilt counts as a wheelie.
+    private var hasDerivedAlignment: Bool
+
+    /// eskf diagnostics. Anchor/reanchor/bias-applied are milestones (via
+    /// `always`); the per-sample pitch/bias line is a 1 Hz heartbeat.
+    private var diag: DiagnosticEmitter
+
     // MARK: - Init
 
     /// Seeds from a bias estimate and, optionally, a gate-open specific force that
@@ -76,19 +87,26 @@ public struct AttitudeESKF {
                 alignment: MountAlignment,
                 initialBias: BiasEstimate?,
                 gravityAnchor: Vector3? = nil,
-                initialAttitudeSigma: Double = 5.0 * .pi / 180) {
+                initialAttitudeSigma: Double = 5.0 * .pi / 180,
+                sink: DiagnosticSink? = nil) {
         self.config = config
         self.alignment = alignment
         self.bias = initialBias?.bias ?? .zero
+        self.diag = DiagnosticEmitter(sink: sink, category: "eskf")
 
         if let f = gravityAnchor, f.magnitude > 1e-6 {
             // Specific force points ALONG gravity, so f in body corresponds to
             // (0,0,-1) in world. Rotate body -> world accordingly.
             self.attitude = Quaternion.rotation(from: f, to: Conventions.worldGravity)
             self.hasAnchored = true
+            // A caller that supplied an anchor supplied an alignment too (tests,
+            // replay, a real R7.1 solve). Treat those axes as established so no
+            // later re-anchor overwrites them with a gravity guess.
+            self.hasDerivedAlignment = true
         } else {
             self.attitude = .identity
             self.hasAnchored = false
+            self.hasDerivedAlignment = false
         }
 
         // Bias variance comes from the calibration that produced it: a filter told
@@ -98,6 +116,32 @@ public struct AttitudeESKF {
         let biasVariance = biasSigma * biasSigma
         self.covariance = .diagonal([attitudeVariance, attitudeVariance, attitudeVariance,
                                      biasVariance, biasVariance, biasVariance])
+
+        if let f = gravityAnchor, f.magnitude > 1e-6 {
+            emitAnchor(time: 0, gravity: f)
+        }
+    }
+
+    /// Re-arms the gravity anchor so the next at-rest sample re-establishes both the
+    /// attitude and the bike axes.
+    ///
+    /// Call this when a calibration COMPLETES. Anchoring is otherwise one-shot per
+    /// filter, so the reported angle keeps its reference from whenever the session
+    /// first saw a still sample — the rider zeroes the instrument and the number does
+    /// not move. Re-deriving the alignment (not just the attitude) is what makes the
+    /// result exactly 0: the anchor sets `upInBody = -f.normalized` and
+    /// `forwardInBody = left x up`, so forward is perpendicular to up and
+    /// `AxisElevation.pitch` is identically zero. Resetting attitude alone would
+    /// leave the old forward axis slightly off-perpendicular and report a small
+    /// residual instead.
+    ///
+    /// Note this also overrides an explicitly supplied `gravityAnchor`, so only the
+    /// live path should call it — replay and tests keep the alignment they were given.
+    public mutating func requestReanchor() {
+        hasAnchored = false
+        diag.always(time: time ?? 0, level: .info,
+                    message: "eskf requestReanchor",
+                    values: ["pitchDeg": pitch * 180 / .pi])
     }
 
     // MARK: - Propagation
@@ -127,16 +171,29 @@ public struct AttitudeESKF {
                magnitude <= config.gateSpecificForceHigh {
                 attitude = Quaternion.rotation(from: sample.specificForce,
                                                to: Conventions.worldGravity)
-                // The same at-rest sample also fixes the bike axes. Without this
-                // the alignment stays a hard-coded guess about how the phone sits,
-                // and when that guess is ~90 deg off, a lean is reported as a
-                // wheelie. Only reached when the caller supplied no anchor, so an
-                // explicitly-aligned pipeline (tests, replay, a real R7.1 solve)
-                // is never overridden.
-                alignment = MountAlignment.fromMeasuredGravity(
-                    specificForce: sample.specificForce,
-                    bikeProfileID: alignment.bikeProfileID)
+                // The same at-rest sample also fixes the bike axes — but ONLY the
+                // FIRST time. Gravity determines `up` and nothing else: it cannot know
+                // which horizontal direction is bike-forward, so
+                // `fromMeasuredGravity` has to guess, and the guess depends on how the
+                // phone happened to be lying. Re-deriving it on every re-anchor
+                // therefore reassigns which tilt direction counts as a wheelie. A
+                // device log showed seven calibrations in one session, each silently
+                // redefining that axis, which is why the reported angle's sign felt
+                // arbitrary and a real tilt could read as 0.
+                //
+                // A re-zero must still move the ANGLE to zero — that is the whole
+                // point of re-anchoring after calibration — so the attitude above is
+                // always re-derived. Only the axes are sticky. A proper per-bike
+                // solve is R7.1; until it exists, one guess held steady beats a fresh
+                // guess every zeroing.
+                if !hasDerivedAlignment {
+                    alignment = MountAlignment.fromMeasuredGravity(
+                        specificForce: sample.specificForce,
+                        bikeProfileID: alignment.bikeProfileID)
+                    hasDerivedAlignment = true
+                }
                 hasAnchored = true
+                emitAnchor(time: sample.time, gravity: sample.specificForce)
             }
         }
 
@@ -195,6 +252,38 @@ public struct AttitudeESKF {
                                                biasVariance, biasVariance, biasVariance]))
         p.symmetrise()
         covariance = p
+
+        // 1 Hz heartbeat: pitch deg, applied bias deg/s. Keyed on a constant so it
+        // is a pure heartbeat (propagation has no categorical state of its own).
+        let degrees = 180.0 / .pi
+        diag.emit("propagate", time: sample.time,
+                  message: "eskf heartbeat",
+                  values: [
+                    "pitchDeg": pitch * degrees,
+                    "biasXDegPerSec": bias.x * degrees,
+                    "biasYDegPerSec": bias.y * degrees,
+                    "biasZDegPerSec": bias.z * degrees,
+                    "isDegraded": isDegraded ? 1 : 0,
+                  ])
+    }
+
+    /// Emit the anchor milestone: the gravity vector that fixed the world frame
+    /// and the alignment axes it derived. Never coalesced.
+    private func emitAnchor(time: TimeInterval, gravity f: Vector3) {
+        diag.always(time: time, level: .info,
+                    message: "eskf anchor acquired",
+                    values: [
+                        "gravityX": f.x,
+                        "gravityY": f.y,
+                        "gravityZ": f.z,
+                        "gravityMag": f.magnitude,
+                        "forwardX": alignment.forwardInBody.x,
+                        "forwardY": alignment.forwardInBody.y,
+                        "forwardZ": alignment.forwardInBody.z,
+                        "upX": alignment.upInBody.x,
+                        "upY": alignment.upInBody.y,
+                        "upZ": alignment.upInBody.z,
+                    ])
     }
 
     // MARK: - Measurement 1: gravity
@@ -246,9 +335,24 @@ public struct AttitudeESKF {
         case .open:
             inflation = 1.0
         case .dwellNotMet:
-            // Quasi-static but unproven. Still refuse if the magnitude says real
-            // acceleration is present, since then the error is systematic again.
-            let deviation = abs(sample.specificForce.magnitude - Conventions.g)
+            // Quasi-static but unproven. `.dwellNotMet` NO LONGER IMPLIES the
+            // magnitude is in band: `Config.gateCloseConfirm` deliberately lets a
+            // violation shorter than ~60 ms report `.dwellNotMet` instead of closing
+            // the gate, so that engine buzz cannot reset the calibration dwell. The
+            // band test therefore has to be applied here, by the consumer.
+            //
+            // It is applied against the GATE's band, not against
+            // `accelDynamicThreshold` alone — that threshold is 0.1 g (0.981 m/s^2),
+            // 3.3x looser than the gate's +/-0.03 g (0.294 m/s^2). A sustained 0.3 g
+            // thrust sits at 1.044 g, i.e. 0.432 m/s^2 off gravity: outside the gate's
+            // band but inside the looser one, so it passed as "quasi-static" and six
+            // early updates at inflation 100 dragged a fresh filter the whole way to
+            // the phantom 16.7 deg — with every later sample refused, nothing pulled
+            // it back. `AttitudeESKFTests` pins exactly this.
+            let magnitude = sample.specificForce.magnitude
+            guard magnitude >= config.gateSpecificForceLow,
+                  magnitude <= config.gateSpecificForceHigh else { return false }
+            let deviation = abs(magnitude - Conventions.g)
             guard deviation <= config.accelDynamicThreshold else { return false }
             inflation = config.accelNoiseInflation
         case .specificForceOutOfBand, .rotating, .saturated, .noData:
@@ -328,7 +432,19 @@ public struct AttitudeESKF {
         let variance = accelerationSigma * accelerationSigma
                      + config.accelNoiseDensity * config.accelNoiseDensity
                      * config.nominalSampleRate
-        return applyScalarUpdate(hVector: hVector, residual: residual, noise: variance)
+        let applied = applyScalarUpdate(hVector: hVector, residual: residual, noise: variance)
+        if applied {
+            let degrees = 180.0 / .pi
+            diag.always(time: time ?? 0, level: .debug,
+                        message: "eskf bias applied",
+                        values: [
+                            "biasXDegPerSec": bias.x * degrees,
+                            "biasYDegPerSec": bias.y * degrees,
+                            "biasZDegPerSec": bias.z * degrees,
+                            "residual": residual,
+                        ])
+        }
+        return applied
     }
 
     // MARK: - Readout

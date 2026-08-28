@@ -54,6 +54,10 @@ struct SettingsView: View {
                 NavigationLink("Data Integrity") {
                     IntegrityReportView()
                 }
+
+                NavigationLink("Diagnostics") {
+                    DiagnosticsView()
+                }
             }
         }
         .scrollContentBackground(.hidden)

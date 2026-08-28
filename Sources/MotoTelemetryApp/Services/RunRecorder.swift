@@ -56,6 +56,10 @@ final class RunRecorder: @unchecked Sendable {
     /// began (a wheelie 85 s into a session displayed 85 s).
     private var eventOnsetTime: TimeInterval?
 
+    /// Id of the calibration currently reflected in the pipeline's anchor. When a new
+    /// estimate is adopted this changes, which is how a completed re-zero is detected.
+    private var lastCalibrationID: UUID?
+
     private var collectedSamples: [TelemetrySample] = []
     private var sessionStartDate: Date?
     private var sessionStartMonotonic: TimeInterval?
@@ -71,6 +75,18 @@ final class RunRecorder: @unchecked Sendable {
     private let processLock = NSLock()
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "RunRecorder")
+
+    // MARK: - Diagnostics ("rec")
+
+    private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "rec")
+
+    /// Records the raw, unprocessed sensor stream for desk replay. Behind a flag,
+    /// default ON — the user needs data for the TestFlight bugs. Set false to skip.
+    var rawRecordingEnabled = true
+    private var rawRecorder: RawSampleRecorder?
+    /// Current raw-log size in bytes, surfaced for the UI.
+    private(set) var rawLogSizeBytes: UInt64 = 0
+    private var batchCount = 0
 
     // MARK: - Init
 
@@ -101,13 +117,25 @@ final class RunRecorder: @unchecked Sendable {
         self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
         self.collectedSamples = []
         self.sampleCount = 0
+        // Seed from the existing estimate so only a calibration adopted DURING this
+        // session counts as a re-zero; the fresh filter anchors on its own anyway.
+        self.lastCalibrationID = calibrationService.currentEstimate?.id
 
         // Initialize pipeline with current calibration
         pipeline = Pipeline(
             config: config,
             alignment: mountAlignment,
-            initialBias: calibrationService.currentEstimate
+            initialBias: calibrationService.currentEstimate,
+            sink: DiagnosticLog.shared
         )
+
+        // Raw recorder — full-rate unprocessed trace for desk replay (default ON).
+        if rawRecordingEnabled {
+            let rec = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID)
+            rawRecorder = rec
+            diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
+                        level: .info, message: "raw recorder started", values: [:])
+        }
 
         // Initialize downstream stages
         cueEngine = CueEngine(
@@ -153,6 +181,9 @@ final class RunRecorder: @unchecked Sendable {
 
         recordingState = .running
         log.info("Recording session started for bike \(bikeProfileID)")
+        diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
+                    level: .info, message: "session started",
+                    values: ["hasInitialBias": calibrationService.currentEstimate == nil ? 0 : 1])
 
         // Watchdog: if no sample has arrived shortly after starting, the sensor
         // path is genuinely broken — denied permission, missing hardware, or a
@@ -166,6 +197,8 @@ final class RunRecorder: @unchecked Sendable {
             // a screen with no way out. Never contradict evidence either: if an IMU
             // sample has EVER arrived in this process the sensors demonstrably
             // exist, so claiming otherwise is a false negative, not a diagnosis.
+            self?.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                              message: "watchdog armed (2×2.5s)", values: [:])
             for _ in 0..<2 {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 guard let self, self.recordingState == .running else { return }
@@ -175,6 +208,9 @@ final class RunRecorder: @unchecked Sendable {
                   self.recordingState == .running,
                   self.sampleCount == 0,
                   !self.calibrationService.hasSeenSample else { return }
+            self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
+                             message: "watchdog FIRED — reporting sensors unavailable",
+                             values: ["sampleCount": Double(self.sampleCount)])
             self.calibrationService.reportSensorsUnavailable(
                 reason: "no IMU samples 5 s after starting motion updates")
         }
@@ -182,6 +218,18 @@ final class RunRecorder: @unchecked Sendable {
 
     func stopSession() {
         guard recordingState != .idle else { return }
+
+        // Cancelling the consuming Task is what actually kills the AsyncStream —
+        // `MotionService.stop()` deliberately leaves its continuation live. This is the
+        // suspected mechanism behind "the angle stops responding after leaving Live",
+        // so the death is recorded explicitly with a machine-readable flag rather than
+        // left to be inferred from message prose.
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "consuming Tasks cancelled — sensor streams die here",
+                    values: ["streamEnded": 1,
+                             "motionTaskLive": motionTask == nil ? 0 : 1,
+                             "speedTaskLive": speedTask == nil ? 0 : 1,
+                             "sampleCount": Double(sampleCount)])
 
         motionTask?.cancel()
         speedTask?.cancel()
@@ -202,7 +250,14 @@ final class RunRecorder: @unchecked Sendable {
         segmenter = nil
         scorer = nil
         recordingState = .idle
+        rawRecorder?.finish()
+        rawLogSizeBytes = rawRecorder?.fileSizeBytes ?? rawLogSizeBytes
+        rawRecorder = nil
         log.info("Recording session stopped. Total samples: \(self.sampleCount)")
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "session stopped",
+                    values: ["totalSamples": Double(sampleCount),
+                             "rawLogBytes": Double(rawLogSizeBytes)])
     }
 
     // MARK: - Sample processing
@@ -210,9 +265,32 @@ final class RunRecorder: @unchecked Sendable {
     private func processSample(_ sample: Sample) {
         guard var pipe = pipeline else { return }
 
+        // Raw trace FIRST — record the unprocessed sample exactly as it arrived,
+        // before any pipeline transformation. The recorder only buffers (no inline
+        // I/O), so this stays off the sensor thread's critical path.
+        rawRecorder?.record(sample)
+
         // Feed raw IMU to calibration service for ongoing zeroing
         if case .imu(let imu) = sample, let bikeID = bikeProfileID {
             calibrationService.feedIMU(imu, bikeProfileID: bikeID)
+        }
+
+        // A COMPLETED calibration re-establishes the zero reference. The rider has
+        // just held the bike still and, in doing so, declared this pose to be level,
+        // so the angle must read 0 afterwards. Anchoring is one-shot per filter
+        // otherwise, which left the reported angle referenced to whenever the session
+        // first saw a still sample — zeroing the instrument changed nothing.
+        // Adopting a new estimate is the completion signal: `tracker.adopt` only runs
+        // on `.done`, giving `currentEstimate` a fresh id.
+        let calibrationID = calibrationService.currentEstimate?.id
+        if calibrationID != lastCalibrationID {
+            lastCalibrationID = calibrationID
+            if calibrationID != nil {
+                pipe.requestReanchor()
+                log.info("Calibration adopted — re-anchoring attitude and bike axes")
+                diag.always(time: sample.time, level: .info,
+                            message: "re-anchor requested (calibration adopted)", values: [:])
+            }
         }
 
         // Run through pipeline
@@ -223,6 +301,19 @@ final class RunRecorder: @unchecked Sendable {
         pipeline = pipe
 
         sampleCount += 1
+        batchCount += 1
+
+        // 1 Hz processing heartbeat (gated on output time), carrying cumulative
+        // sample count, per-heartbeat batch size, live pitch and the raw-log size.
+        if rawRecorder != nil { rawLogSizeBytes = rawRecorder!.fileSizeBytes }
+        let emitted = diag.emit("processing", time: output.time, level: .info,
+                                message: "rec heartbeat",
+                                values: ["samples": Double(sampleCount),
+                                         "batch": Double(batchCount),
+                                         "pitchDeg": output.pitch * 180 / .pi,
+                                         "gateOpen": output.gateOpen ? 1 : 0,
+                                         "rawLogBytes": Double(rawLogSizeBytes)])
+        if emitted { batchCount = 0 }
 
         // Update live state (rad → deg, m/s → km/h)
         livePitch = output.pitch * 180 / .pi
@@ -238,15 +329,21 @@ final class RunRecorder: @unchecked Sendable {
             calibrationService.process(output, bikeProfileID: bikeID)
         }
 
-        // Cue engine
+        // Cue engine — drives liveCueState for the UI only. Its loopOut/urgency
+        // are pitch-RATE derived and deliberately do not reach the audio: a fast
+        // flick up at a low angle is not a steep wheelie, and hearing the tone
+        // during the run-up reads as a false alarm.
         if var cue = cueEngine {
             let cueState = cue.process(pitch: output.pitch,
                                        pitchRate: output.pitchRate,
                                        time: output.time)
             cueEngine = cue
             liveCueState = cueState
-            cueRenderer?.update(cueState)
         }
+
+        // Warning tone: beep rate, carrier pitch and volume all rise with the
+        // live ANGLE alone; solid tone past the limit angle.
+        cueRenderer?.update(pitchDegrees: livePitch)
 
         // Event segmenter
         if var seg = segmenter {
@@ -293,6 +390,8 @@ final class RunRecorder: @unchecked Sendable {
         switch transition.kind {
         case .onset(let onsetTime):
             log.info("Event onset at \(onsetTime, format: .fixed(precision: 3))s")
+            diag.always(time: onsetTime, level: .info, message: "event onset",
+                        values: ["onset": onsetTime, "speed": speed ?? -1])
             scorer?.beginEvent(onset: onsetTime, entrySpeed: speed)
             eventOnsetTime = onsetTime
             currentEventDuration = 0
@@ -300,6 +399,9 @@ final class RunRecorder: @unchecked Sendable {
 
         case .end(let endTime):
             log.info("Event end at \(endTime, format: .fixed(precision: 3))s")
+            diag.always(time: endTime, level: .info, message: "event end",
+                        values: ["end": endTime,
+                                 "duration": eventOnsetTime.map { endTime - $0 } ?? -1])
             pipeline?.lastEventEndTime = endTime
             finalizeCurrentEvent(at: endTime)
             eventActive = false
@@ -308,6 +410,8 @@ final class RunRecorder: @unchecked Sendable {
 
         case .discarded(let duration):
             log.info("Event discarded (duration: \(duration, format: .fixed(precision: 3))s)")
+            diag.always(time: time, level: .info, message: "event discarded",
+                        values: ["duration": duration])
             eventActive = false
             eventOnsetTime = nil
             currentEventDuration = 0
@@ -364,6 +468,11 @@ final class RunRecorder: @unchecked Sendable {
         )
 
         repository.save(run)
+        diag.always(time: endTime, level: .info, message: "event finalized — windowed & saved",
+                    values: ["collected": Double(collectedSamples.count),
+                             "windowed": Double(windowed.count),
+                             "onsetElapsed": onsetElapsed,
+                             "endElapsed": endElapsed])
         collectedSamples.removeAll(keepingCapacity: true)
 
         // Reset scorer for next event

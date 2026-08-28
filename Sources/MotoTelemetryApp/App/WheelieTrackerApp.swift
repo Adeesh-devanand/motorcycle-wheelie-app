@@ -22,11 +22,14 @@ struct WheelieTrackerApp: App {
 
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
+        DiagnosticLog.shared.log(.info, "app", "app launch — configuring audio session")
         do {
             try session.setCategory(.playback, options: .mixWithOthers)
             try session.setActive(true)
         } catch {
             // Audio cues will be unavailable; non-fatal.
+            DiagnosticLog.shared.log(.warn, "app", "audio session config failed",
+                                     ["code": Double((error as NSError).code)])
         }
     }
 }

@@ -1,5 +1,17 @@
 import SwiftUI
 
+/// Two short vertical rounded bars — the Live tab glyph from the mockup (M-UI7).
+/// Rendered as a template image so the tab bar tints it for selected/unselected.
+struct TwinMeterGlyph: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Capsule().frame(width: 4, height: 15)
+            Capsule().frame(width: 4, height: 20)
+        }
+        .frame(width: 24, height: 24)
+    }
+}
+
 /// Owns the service graph for the whole app. `RunRecorder` is the live data
 /// source — it owns the pipeline, feeds `CalibrationService` every raw IMU
 /// sample, and persists a completed run to `RunRepository` when an attempt ends
@@ -7,25 +19,39 @@ import SwiftUI
 /// pipeline, so the meters read zero and Past Runs stays empty forever.
 struct RootTabView: View {
     @State private var services = ServiceGraph()
+    @State private var selectedTab = 0
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             LiveWheelieView(
                 calibrationService: services.calibration,
                 preferences: services.preferences,
                 recorder: services.recorder,
                 bikeStore: services.bikeStore
             )
+            .tag(0)
             .tabItem {
-                Label("Live", systemImage: "gauge")
+                Label {
+                    Text("Live")
+                } icon: {
+                    TwinMeterGlyph()
+                }
             }
 
             PastRunsView(repository: services.repository)
+                .tag(1)
                 .tabItem {
                     Label("Runs", systemImage: "list.bullet")
                 }
         }
+        .tint(AppColors.accent)
         .preferredColorScheme(.dark)
+        .onChange(of: selectedTab) { _, newValue in
+            // BUG 2 context: leaving Live and returning is the reproduction. Logging
+            // the tab change gives the sensor stream lifecycle a timeline anchor.
+            DiagnosticLog.shared.log(.info, "app", "tab changed",
+                                     ["tab": Double(newValue)])
+        }
     }
 }
 
@@ -52,7 +78,12 @@ final class ServiceGraph {
             motionService: MotionService(),
             speedService: SpeedService(),
             calibrationService: calibration,
-            repository: repository
+            repository: repository,
+            cueRenderer: CueAudioRenderer()
         )
+        DiagnosticLog.shared.log(.info, "app", "ServiceGraph constructed",
+                                 ["motion": 1, "speed": 1, "calibration": 1,
+                                  "repository": 1, "bikeStore": 1, "recorder": 1,
+                                  "cueRenderer": 1])
     }
 }

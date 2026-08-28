@@ -6,8 +6,12 @@ import Observation
 @Observable
 final class PastRunsViewModel {
 
+    /// Four independent sort fields. `recency` sorts on when the run happened;
+    /// `time` sorts on the run's *duration*, which is what the TIME column shows
+    /// — previously `time` meant recency, so the TIME column was unsortable and
+    /// there was no way to find your longest wheelie.
     enum SortKey: String, CaseIterable {
-        case time, angle, speed
+        case recency, time, angle, speed
     }
 
     struct Filters: Equatable {
@@ -29,71 +33,80 @@ final class PastRunsViewModel {
 
     // MARK: - Public State
 
-    var sortKey: SortKey = .time { didSet { recompute() } }
-    var sortDescending: Bool = true { didSet { recompute() } }
-    var filters = Filters() { didSet { recompute() } }
+    /// Default sort is most recent first, per ui-spec §8.2 — the `recency` chip,
+    /// descending.
+    var sortKey: SortKey = .recency
+    var sortDescending: Bool = true
+    var filters = Filters()
 
-    private(set) var filteredRuns: [WheelieRun] = []
-    private(set) var fieldAnchors = FieldAnchors()
+    /// Derived on read rather than cached, so the list tracks the repository the
+    /// instant a run is saved or deleted. The previous cached array was only
+    /// refreshed by an explicit `recompute()`, so a run recorded *after* this
+    /// view model was built never appeared until the app relaunched — and a
+    /// delete could only be reflected by remembering to call it by hand.
+    var filteredRuns: [WheelieRun] { sorted(applyMetricFilters(scopedRuns)) }
+
+    /// §8.4: anchors come from the full date scope BEFORE row-level metric
+    /// filters, so colours do not jump while filtering.
+    var fieldAnchors: FieldAnchors { computeAnchors(scopedRuns) }
+
     private(set) var isLoading = false
+
+    /// Date/bike scope only — the input to both anchors and the filtered list.
+    private var scopedRuns: [WheelieRun] { applyDateAndBikeFilters(repository.allRuns) }
 
     let colorScale = RelativeMetricColorScale()
     let repository: RunRepository
 
     // MARK: - Computed
 
+    var hasRuns: Bool { !repository.allRuns.isEmpty }
+
     var hasActiveFilters: Bool {
         filters != Filters()
     }
 
     var subtitleText: String {
-        let count = filteredRuns.count
-        let noun = count == 1 ? "run" : "runs"
         if hasActiveFilters {
+            let count = filteredRuns.count
+            let noun = count == 1 ? "attempt" : "attempts"
             return "\(count) \(noun) (filtered)"
         }
-        return "\(count) \(noun)"
+        // Default scope: count only runs started today (rider's local day).
+        let todayCount = repository.allRuns.filter {
+            Calendar.current.isDateInToday($0.startedAt)
+        }.count
+        let noun = todayCount == 1 ? "attempt" : "attempts"
+        return "\(todayCount) \(noun) today"
     }
 
     // MARK: - Init
 
     init(repository: RunRepository) {
         self.repository = repository
-        recompute()
     }
 
     // MARK: - Actions
 
+    /// Delete one run. The list is derived, so it updates without a refresh call.
     func deleteRun(id: UUID) {
         repository.delete(id: id)
-        recompute()
     }
 
-    func applyFilters() {
-        recompute()
+    /// Delete every stored run. Irreversible — callers must confirm first.
+    func deleteAllRuns() {
+        repository.deleteAll()
     }
+
+    /// Retained for `RunFiltersSheet`'s completion callback. Filters are observed
+    /// directly now, so applying them needs no work here.
+    func applyFilters() {}
 
     func resetFilters() {
         filters = Filters()
     }
 
     // MARK: - Private
-
-    private func recompute() {
-        let allRuns = repository.allRuns
-
-        // 1. Scope by date for anchor calculation (before row-level metric filters).
-        let scoped = applyDateAndBikeFilters(allRuns)
-
-        // 2. Compute anchors from the full date scope.
-        fieldAnchors = computeAnchors(scoped)
-
-        // 3. Apply row-level metric filters.
-        let filtered = applyMetricFilters(scoped)
-
-        // 4. Sort.
-        filteredRuns = sorted(filtered)
-    }
 
     private func applyDateAndBikeFilters(_ runs: [WheelieRun]) -> [WheelieRun] {
         var result = runs
@@ -137,21 +150,27 @@ final class PastRunsViewModel {
     }
 
     private func sorted(_ runs: [WheelieRun]) -> [WheelieRun] {
-        let comparator: (WheelieRun, WheelieRun) -> Bool
-        switch sortKey {
-        case .time:
-            comparator = sortDescending
-                ? { $0.startedAt > $1.startedAt }
-                : { $0.startedAt < $1.startedAt }
-        case .angle:
-            comparator = sortDescending
-                ? { $0.maxAngle > $1.maxAngle }
-                : { $0.maxAngle < $1.maxAngle }
-        case .speed:
-            comparator = sortDescending
-                ? { $0.maxSpeed > $1.maxSpeed }
-                : { $0.maxSpeed < $1.maxSpeed }
+        // Ties break on recency, not on whatever order the run files happened to
+        // load in — two 42° runs should still read newest-first.
+        func byMetric(_ value: @escaping (WheelieRun) -> Double) -> (WheelieRun, WheelieRun) -> Bool {
+            { lhs, rhs in
+                let a = value(lhs), b = value(rhs)
+                if a == b { return lhs.startedAt > rhs.startedAt }
+                return self.sortDescending ? a > b : a < b
+            }
         }
-        return runs.sorted(by: comparator)
+
+        switch sortKey {
+        case .recency:
+            return runs.sorted(by: sortDescending
+                ? { $0.startedAt > $1.startedAt }
+                : { $0.startedAt < $1.startedAt })
+        case .time:
+            return runs.sorted(by: byMetric { $0.duration })
+        case .angle:
+            return runs.sorted(by: byMetric { $0.maxAngle })
+        case .speed:
+            return runs.sorted(by: byMetric { $0.maxSpeed })
+        }
     }
 }

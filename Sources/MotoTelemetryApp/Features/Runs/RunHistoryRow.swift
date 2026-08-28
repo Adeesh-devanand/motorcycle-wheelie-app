@@ -72,8 +72,8 @@ struct RunHistoryRow: View {
             // Clock time — e.g. "9:41 AM"
             timeLabel
 
-            // Relative time — e.g. "3 min ago"
-            Text(run.startedAt, style: .relative)
+            // Relative time — "Just now" / "3 min ago" (M-UI6)
+            Text(Self.relativeTimeText(from: run.startedAt))
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(AppColors.textSecondary)
                 .lineLimit(1)
@@ -180,6 +180,22 @@ struct RunHistoryRow: View {
         let rgb = colorScale.color(value: value, fieldMinimum: min, fieldMaximum: max)
         let srgb = rgb.sRGB
         return Color(.sRGB, red: srgb.r, green: srgb.g, blue: srgb.b)
+    }
+
+    // MARK: - Relative time
+
+    /// "Just now" for < 60s, else "N min ago" / "N hr ago"; falls back to a
+    /// short date for older runs. Explicit `ago` suffix + `Just now` floor (M-UI6).
+    static func relativeTimeText(from date: Date, now: Date = Date()) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        if seconds < 60 { return "Just now" }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes) min ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) hr ago" }
+        let days = hours / 24
+        if days < 7 { return "\(days) d ago" }
+        return date.formatted(.dateTime.month().day())
     }
 
     // MARK: - Accessibility

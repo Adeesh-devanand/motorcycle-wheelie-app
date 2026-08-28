@@ -57,6 +57,14 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
     /// gyro and accel handlers may interleave on the same queue.
     private let lock = NSLock()
 
+    // MARK: - Diagnostics ("sensor")
+
+    /// Structured sink for the shared NDJSON log. 1 Hz heartbeat off SAMPLE time.
+    private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "sensor")
+    private var emittedCount = 0
+    private var sawFirstSample = false
+    private var streamGeneration = 0
+
     // MARK: - Init
 
     public init(config: Config = Config()) {
@@ -76,16 +84,31 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         // Hand this session a fresh stream. The previous one is terminal once its
         // consumer Task was cancelled, so reusing it would deliver nothing. Safe to do
         // here because `RunRecorder.startSession` calls `start()` BEFORE it subscribes.
+        let now = ProcessInfo.processInfo.systemUptime
+        // BUG 2 instrumentation: this is the `finish()` half. `start()` finishes the
+        // OLD stream's continuation before making a new one. Logged as a distinct
+        // cause so the log shows unambiguously that a stream ended via finish() here,
+        // separate from the consuming Task being cancelled in RunRecorder.stopSession.
+        diag.always(time: now, level: .info, message: "stream finished (start: replacing old)",
+                    values: ["generation": Double(streamGeneration), "streamEnded": 1])
         continuation.finish()
         var cont: AsyncStream<Sample>.Continuation!
         samples = AsyncStream { cont = $0 }
         continuation = cont
+        streamGeneration += 1
+        sawFirstSample = false
+        emittedCount = 0
+        firstEmitTime = nil
+        diag.always(time: now, level: .info, message: "stream created (start)",
+                    values: ["generation": Double(streamGeneration)])
 
         let interval = 1.0 / config.nominalSampleRate
 
         // Gyroscope
         guard manager.isGyroAvailable else {
             log.error("Gyroscope unavailable")
+            diag.always(time: now, level: .error, message: "gyro unavailable",
+                        values: ["isGyroAvailable": 0])
             return
         }
         manager.gyroUpdateInterval = interval
@@ -103,6 +126,8 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         // Accelerometer
         guard manager.isAccelerometerAvailable else {
             log.error("Accelerometer unavailable")
+            diag.always(time: now, level: .error, message: "accelerometer unavailable",
+                        values: ["isAccelerometerAvailable": 0])
             return
         }
         manager.accelerometerUpdateInterval = interval
@@ -131,6 +156,11 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         }
 
         log.info("MotionService started at \(self.config.nominalSampleRate) Hz")
+        diag.always(time: now, level: .info, message: "started",
+                    values: ["hz": config.nominalSampleRate,
+                             "gyroAvail": manager.isGyroAvailable ? 1 : 0,
+                             "accelAvail": manager.isAccelerometerAvailable ? 1 : 0,
+                             "deviceMotionAvail": manager.isDeviceMotionAvailable ? 1 : 0])
     }
 
     public func stop() {
@@ -146,6 +176,18 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
         // trigger it. The service is long-lived and restartable; the continuation
         // is finished only when it is torn down.
         log.info("MotionService stopped. Unpaired samples: \(self.unpairedCount)")
+        // BUG 2 instrumentation: stop() deliberately does NOT finish the continuation.
+        // Logged so the trace shows the stream is STILL LIVE after stop — if the angle
+        // freezes, the death was the consuming Task being cancelled (RunRecorder.
+        // stopSession → motionTask.cancel()), which puts the stream terminal from the
+        // consumer side, NOT a finish() here. This line is what makes the two causes
+        // distinguishable in the log.
+        diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                    message: "stopped (stream NOT finished — still live)",
+                    values: ["streamEnded": 0,
+                             "generation": Double(streamGeneration),
+                             "unpaired": Double(unpairedCount),
+                             "emitted": Double(emittedCount)])
     }
 
     deinit {
@@ -214,7 +256,30 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
             saturated: saturated
         )
         continuation.yield(.imu(sample))
+
+        // Diagnostics: first sample (one-shot) + 1 Hz heartbeat carrying observed
+        // rate and cumulative count. Rate discipline: NEVER per sample — the
+        // heartbeat is gated on SAMPLE time by DiagnosticEmitter. `emittedCount` is
+        // touched only here (OperationQueue serialises this handler pair) plus in
+        // start/stop logging, which run when no samples flow.
+        emittedCount += 1
+        if !sawFirstSample {
+            sawFirstSample = true
+            diag.always(time: time, level: .info, message: "first sample",
+                        values: ["generation": Double(streamGeneration)])
+        }
+        let observedHz = firstEmitTime.map { t -> Double in
+            let dt = time - t
+            return dt > 0 ? Double(emittedCount) / dt : 0
+        } ?? 0
+        if firstEmitTime == nil { firstEmitTime = time }
+        diag.emit("live", time: time, level: .info, message: "sensor heartbeat",
+                  values: ["hz": observedHz, "count": Double(emittedCount),
+                           "generation": Double(streamGeneration)])
     }
+
+    /// Sample time of the first emitted sample this session, for observed-Hz.
+    private var firstEmitTime: TimeInterval?
 
     private func isSaturated(rate: Vector3, force: Vector3) -> Bool {
         let gyroLimit = config.gyroFullScale * 0.99

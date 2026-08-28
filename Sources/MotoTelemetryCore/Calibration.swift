@@ -189,15 +189,34 @@ public struct BiasEstimator: Stage {
     private var attemptStart: TimeInterval?
     private var lastReason: ValidityGate.Reason = .noData
     private var finished = false
+    /// When the gate's underlying condition was first VIOLATED continuously, or nil
+    /// while it holds. Drives the grace period — see `Config.biasGateGracePeriod`.
+    /// `.dwellNotMet` does not count as a violation and clears this.
+    private var gateClosedSince: TimeInterval?
+    /// Held-still time actually accumulated, excluding paused gaps. This, not wall
+    /// sample time, is compared against `config.biasCalibrationDuration`.
+    private var accumulatedDuration: TimeInterval = 0
+    /// Time of the last accumulated sample, for the duration increment. Nil while
+    /// paused so a gap is never billed as quiet.
+    private var lastAccumulateTime: TimeInterval?
+
+    /// Heartbeat emitter for the `.collecting` phase. Milestones (reset, finish,
+    /// failed, rejected-reason changes) are emitted via `diag.always` so they are
+    /// never coalesced away by the heartbeat cadence.
+    private var diag: DiagnosticEmitter
+    /// Last rejection reason we logged, so a change in it emits exactly once.
+    private var lastLoggedRejection: ValidityGate.Reason?
 
     public init(config: Config,
                 bikeProfileID: UUID,
-                thermalState: Int = 0) {
+                thermalState: Int = 0,
+                sink: DiagnosticSink? = nil) {
         self.config = config
         self.bikeProfileID = bikeProfileID
         self.thermalState = thermalState
         self.gate = ValidityGate(config: config)
         self.vibration = HighFrequencyIndicator(config: config)
+        self.diag = DiagnosticEmitter(sink: sink, category: "bias")
     }
 
     public mutating func process(_ sample: IMUSample) -> Progress? {
@@ -208,8 +227,9 @@ public struct BiasEstimator: Stage {
 
         // A saturated sample never enters a bias estimate.
         guard !sample.saturated else {
-            resetAccumulation()
+            resetAccumulation(reason: "saturated", at: sample.time)
             lastReason = .saturated
+            emitRejection(.saturated, at: sample.time)
             return checkAttemptWindow(at: sample.time)
                 ?? .rejected(.saturated)
         }
@@ -217,48 +237,115 @@ public struct BiasEstimator: Stage {
         guard let verdict = gate.process(sample) else { return nil }
 
         guard verdict.isOpen else {
-            if n > 0 { resetAccumulation() }
             lastReason = verdict.reason
+            emitRejection(verdict.reason, at: sample.time)
 
-            // Explain the rejection when vibration is what caused it. The gate is
-            // instantaneous and its band is +/-0.03 g, so a buzzing mount trips
-            // `specificForceOutOfBand` long before any RMS threshold could fire.
-            // Without this branch the rider is told the bike is not level and
-            // still, which is true and useless.
-            if verdict.reason == .specificForceOutOfBand || verdict.reason == .saturated {
-                let spread = vibration.magnitudeStdDev
-                if spread > config.calibrationVibrationThreshold {
-                    finished = true
-                    return .failed(.vibrationTooHigh(
-                        rms: spread, limit: config.calibrationVibrationThreshold))
+            // A dropout no longer destroys progress outright. Previously ANY single
+            // closed sample called `resetAccumulation()`, so one 10 ms blip — 0.2 deg
+            // of rotation, one lip in the driveway — discarded every sample collected
+            // so far and reset the dwell with it. On a running bike that fired
+            // continuously and the required 8 s of unbroken quiet never assembled:
+            // this is the "stuck at 0%" a rider actually sees. Progress is PAUSED
+            // here instead, and discarded only once the condition has been violated
+            // for longer than the grace period, i.e. long enough that the bike may
+            // genuinely have moved or been re-oriented.
+            //
+            // `.dwellNotMet` is deliberately NOT treated as a violation: it means the
+            // condition is satisfied right now and has simply not held for the dwell
+            // yet. Counting it would make the grace period useless, because the
+            // gate's own 0.5 s dwell always outlasts it — every violation is followed
+            // by a dwell, so progress would still be wiped every time.
+            if verdict.reason == .dwellNotMet {
+                gateClosedSince = nil
+            } else {
+                let violatedSince = gateClosedSince ?? sample.time
+                gateClosedSince = violatedSince
+                if n > 0, sample.time - violatedSince >= config.biasGateGracePeriod {
+                    resetAccumulation(reason: verdict.reason.rawValue, at: sample.time)
                 }
             }
+            // Nothing accumulates while the gate is shut, so the next open sample
+            // must not bill the gap as held-still time.
+            lastAccumulateTime = nil
 
-            return checkAttemptWindow(at: sample.time) ?? .rejected(verdict.reason)
+            if let window = checkAttemptWindow(at: sample.time) {
+                if case .failed(let f) = window { emitFailed(f, at: sample.time) }
+                return window
+            }
+            return .rejected(verdict.reason)
         }
 
-        // Also checked while the gate is OPEN: vibration small enough to stay
-        // inside the band still biases the mean, and a bias averaged over it is
-        // quietly wrong rather than obviously wrong.
+        gateClosedSince = nil
+
+        // Vibration is MEASURED and logged here, never used to fail a zeroing.
         //
-        // Uses magnitudeStdDev, not the high-passed RMS. The bike is stationary
-        // here, so true |f| is a constant g and all spread is vibration — which
-        // makes this detector frequency-agnostic. That matters because the
-        // high-pass is blind to exactly the cases we care about: 83 Hz aliases to
-        // 17 Hz, below its corner, and 100 Hz aliases to DC.
+        // The two hard-fail branches that used to live here (one on the closed path,
+        // one here on the open path) made calibrating on a running bike impossible
+        // and mid-ride recalibration impossible outright, and the reasoning behind
+        // them does not survive inspection. The estimate is the MEAN of the gyro, and
+        // averaging is precisely the operation that removes zero-mean vibration; what
+        // survives is the standard error, `std/sqrt(n)`, which `biasSigmaLimit`
+        // already bounds directly. Only two mechanisms turn vibration into a DC error
+        // that a mean cannot reject — SATURATION, whose non-linear rail rectifies AC
+        // into DC and which is still a hard reject on its own flag above, and
+        // ALIASING, which a spread test cannot detect at all (as the old comment here
+        // conceded). So the check never guarded the case that can hurt, and blocked
+        // the case that cannot.
         let spread = vibration.magnitudeStdDev
-        if spread > config.calibrationVibrationThreshold {
-            finished = true
-            return .failed(.vibrationTooHigh(
-                rms: spread, limit: config.calibrationVibrationThreshold))
+
+        // A sample can sit inside an OPEN gate and still be untrustworthy: the gate
+        // deliberately does not close on a violation shorter than
+        // `config.gateCloseConfirm`, because engine excitation is exactly that. Such
+        // a sample must not enter the mean — one 20 deg/s spike among 600 quiet
+        // samples moves the bias by 0.033 deg/s, most of the whole budget. Skipping
+        // it is a one-sample PAUSE, not a discard: accumulated progress survives.
+        guard gate.sampleWithinBand(sample) else {
+            lastAccumulateTime = nil
+            return .collecting(elapsed: accumulatedDuration,
+                               required: config.biasCalibrationDuration)
         }
 
         accumulate(sample.rotationRate)
-        let start = firstSampleTime ?? sample.time
-        firstSampleTime = start
-        let elapsed = sample.time - start
+        if firstSampleTime == nil { firstSampleTime = sample.time }
+        // Held-still time EXCLUDING paused gaps. Using wall sample time here would
+        // let a long dropout be billed as quiet: with progress now surviving a brief
+        // closure, `sample.time - firstSampleTime` would count the gap toward the
+        // 8 s and complete a zeroing built from fewer samples than it claims.
+        if let previous = lastAccumulateTime {
+            // The credited interval is CAPPED. Billing the raw gap lets a STALL count
+            // as held-still time: if the sensor stops for 300 ms and resumes in band,
+            // that 300 ms is credited even though nothing was collected. A device log
+            // caught this completing an "8 s" zeroing from 25 samples (sqrtN=5, SEM
+            // 0.08 deg/s) across a session restart — precisely the quietly-wrong
+            // estimate this type exists to prevent.
+            let nominalInterval = config.nominalSampleRate > 0
+                ? 1 / config.nominalSampleRate
+                : 0.01
+            accumulatedDuration += min(max(0, sample.time - previous), nominalInterval * 3)
+        }
+        lastAccumulateTime = sample.time
+        let elapsed = accumulatedDuration
 
-        guard elapsed >= config.biasCalibrationDuration else {
+        // Completion requires BOTH enough held-still TIME and enough SAMPLES. Time
+        // alone is forgeable by a stalled stream even with the cap above; sample count
+        // alone would accept a dense burst that spans no real duration. And n is the
+        // quantity the reported uncertainty actually depends on, since the standard
+        // error falls as 1/sqrt(n) — a 25-sample zeroing has sqrt(n) of 5 rather than
+        // 28, so it reports four to five times the uncertainty of a real one.
+        let requiredSamples = Int(config.biasCalibrationDuration
+                                  * config.nominalSampleRate * 0.5)
+        guard elapsed >= config.biasCalibrationDuration, n >= requiredSamples else {
+            // Heartbeat the collecting phase at 1 Hz: n / elapsed / required, plus
+            // vibration.magnitudeStdDev against its threshold on EVERY heartbeat.
+            diag.emit("collecting", time: sample.time,
+                      message: "bias collecting",
+                      values: [
+                        "n": Double(n),
+                        "elapsed": elapsed,
+                        "required": config.biasCalibrationDuration,
+                        "vibrationStdDev": spread,
+                        "calibrationVibrationThreshold": config.calibrationVibrationThreshold,
+                      ])
             return .collecting(elapsed: elapsed,
                                required: config.biasCalibrationDuration)
         }
@@ -282,16 +369,31 @@ public struct BiasEstimator: Stage {
         m2 = m2 + Vector3(delta.x * delta2.x, delta.y * delta2.y, delta.z * delta2.z)
     }
 
-    private mutating func resetAccumulation() {
+    private mutating func resetAccumulation(reason: String = "reset",
+                                            at time: TimeInterval = 0) {
+        // Log EVERY resetAccumulation with n discarded, elapsedBeforeReset, reason.
+        // Only meaningful when something was actually accumulated.
+        if n > 0 {
+            let elapsedBeforeReset = firstSampleTime.map { time - $0 } ?? 0
+            diag.always(time: time, level: .debug,
+                        message: "bias reset accumulation",
+                        values: [
+                            "nDiscarded": Double(n),
+                            "elapsedBeforeReset": elapsedBeforeReset,
+                        ])
+        }
         n = 0
         mean = .zero
         m2 = .zero
         firstSampleTime = nil
+        accumulatedDuration = 0
+        lastAccumulateTime = nil
         gate.reset()
     }
 
-    private func finish(at time: TimeInterval) -> Progress {
+    private mutating func finish(at time: TimeInterval) -> Progress {
         guard n > 1 else {
+            emitFailed(.gateNeverOpened(lastReason: lastReason), at: time)
             return .failed(.gateNeverOpened(lastReason: lastReason))
         }
         // Sample standard deviation, then the standard error of the mean. The
@@ -304,19 +406,84 @@ public struct BiasEstimator: Stage {
                             variance.y.squareRoot() / root,
                             variance.z.squareRoot() / root)
 
+        // PER AXIS: raw sample standard deviation, standard error of the mean, and
+        // mean bias — all in deg/s — plus n, sqrt(n), biasSigmaLimit. Reported
+        // sigma is the SEM; keeping the raw std and n separate is what tells the
+        // sensor noise floor apart from real motion behind a "gyro too noisy"
+        // failure. Emitted BEFORE the sigma threshold check so a failing axis is
+        // still fully described.
+        let degrees = 180.0 / .pi
+        let rawStd = Vector3(variance.x.squareRoot(),
+                             variance.y.squareRoot(),
+                             variance.z.squareRoot())
+        diag.always(time: time, level: .info,
+                    message: "bias finish",
+                    values: [
+                        "n": Double(n),
+                        "sqrtN": root,
+                        "biasSigmaLimit": config.biasSigmaLimit * degrees,
+                        "rawStdX": rawStd.x * degrees,
+                        "rawStdY": rawStd.y * degrees,
+                        "rawStdZ": rawStd.z * degrees,
+                        "semX": sigma.x * degrees,
+                        "semY": sigma.y * degrees,
+                        "semZ": sigma.z * degrees,
+                        "meanBiasX": mean.x * degrees,
+                        "meanBiasY": mean.y * degrees,
+                        "meanBiasZ": mean.z * degrees,
+                    ])
+
         let limit = config.biasSigmaLimit
         for (axis, value) in [(Axis.x, sigma.x), (.y, sigma.y), (.z, sigma.z)] {
             if value > limit {
+                emitFailed(.sigmaTooHigh(axis: axis, sigma: value, limit: limit), at: time)
                 return .failed(.sigmaTooHigh(axis: axis, sigma: value, limit: limit))
             }
         }
 
-        return .done(BiasEstimate(bias: mean,
-                                  sigma: sigma,
-                                  sampleCount: n,
-                                  monotonicTime: time,
-                                  bikeProfileID: bikeProfileID,
-                                  thermalStateAtCapture: thermalState))
+        let estimate = BiasEstimate(bias: mean,
+                                    sigma: sigma,
+                                    sampleCount: n,
+                                    monotonicTime: time,
+                                    bikeProfileID: bikeProfileID,
+                                    thermalStateAtCapture: thermalState)
+        return .done(estimate)
+    }
+
+    // MARK: - Diagnostics helpers
+
+    /// Emit each `.rejected` reason CHANGE exactly once. Numbers are the gate's,
+    /// available on the gate channel; here the categorical reason is the signal.
+    private mutating func emitRejection(_ reason: ValidityGate.Reason,
+                                        at time: TimeInterval) {
+        guard reason != lastLoggedRejection else { return }
+        lastLoggedRejection = reason
+        diag.always(time: time, level: .debug,
+                    message: "bias rejected " + reason.rawValue,
+                    values: ["reason": 1])
+    }
+
+    /// Emit a `.failed` with the failure's numbers at error level.
+    private func emitFailed(_ failure: CalibrationFailure, at time: TimeInterval) {
+        let degrees = 180.0 / .pi
+        switch failure {
+        case .sigmaTooHigh(let axis, let sigma, let limit):
+            diag.always(time: time, level: .error,
+                        message: "bias failed sigmaTooHigh",
+                        values: [
+                            "axis": Double(Axis.allCases.firstIndex(of: axis) ?? -1),
+                            "sigmaDegPerSec": sigma * degrees,
+                            "limitDegPerSec": limit * degrees,
+                        ])
+        case .vibrationTooHigh(let rms, let limit):
+            diag.always(time: time, level: .error,
+                        message: "bias failed vibrationTooHigh",
+                        values: ["rms": rms, "limit": limit])
+        case .gateNeverOpened(let reason):
+            diag.always(time: time, level: .error,
+                        message: "bias failed gateNeverOpened " + reason.rawValue,
+                        values: ["lastReason": 1])
+        }
     }
 
     /// Abandon and restart, e.g. the rider tapped retry.
@@ -326,6 +493,7 @@ public struct BiasEstimator: Stage {
         attemptStart = nil
         lastReason = .noData
         finished = false
+        gateClosedSince = nil
     }
 }
 
@@ -335,22 +503,36 @@ public struct BiasEstimator: Stage {
 public struct CalibrationTracker: Sendable {
     private let config: Config
     public private(set) var status: CalibrationStatus
+    private var diag: DiagnosticEmitter
 
-    public init(config: Config, status: CalibrationStatus = .unavailable) {
+    public init(config: Config, status: CalibrationStatus = .unavailable,
+                sink: DiagnosticSink? = nil) {
         self.config = config
         self.status = status
+        self.diag = DiagnosticEmitter(sink: sink, category: "caltrack")
     }
 
     public mutating func adopt(_ estimate: BiasEstimate) {
         status = .calibrated(estimate)
+        diag.always(time: estimate.monotonicTime, level: .info,
+                    message: "caltrack adopt",
+                    values: [
+                        "biasStaleAfter": config.biasStaleAfter,
+                        "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
+                        "sampleCount": Double(estimate.sampleCount),
+                    ])
     }
 
     public mutating func invalidate(_ reason: CalibrationStaleReason) {
+        let age = status.estimate?.monotonicTime
         if let estimate = status.estimate {
             status = .stale(estimate, reason: reason)
         } else {
             status = .unavailable
         }
+        diag.always(time: age ?? 0, level: .info,
+                    message: "caltrack invalidate " + reason.rawValue,
+                    values: ["biasStaleAfter": config.biasStaleAfter])
     }
 
     /// Re-evaluates freshness at monotonic time `now`. Returns the current status.
@@ -359,13 +541,34 @@ public struct CalibrationTracker: Sendable {
                                thermalState: Int? = nil) -> CalibrationStatus {
         guard let estimate = status.estimate else { return status }
 
+        let wasStale = { if case .stale = status { return true } else { return false } }()
+
         if let thermalState, thermalState > estimate.thermalStateAtCapture + 1 {
             status = .stale(estimate, reason: .thermalShift)
+            if !wasStale {
+                diag.always(time: now, level: .info,
+                            message: "caltrack stale thermalShift",
+                            values: [
+                                "age": now - estimate.monotonicTime,
+                                "biasStaleAfter": config.biasStaleAfter,
+                                "thermalState": Double(thermalState),
+                                "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
+                            ])
+            }
             return status
         }
         let age = now - estimate.monotonicTime
         if age > config.biasStaleAfter {
             status = .stale(estimate, reason: .aged)
+            if !wasStale {
+                diag.always(time: now, level: .info,
+                            message: "caltrack stale aged",
+                            values: [
+                                "age": age,
+                                "biasStaleAfter": config.biasStaleAfter,
+                                "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
+                            ])
+            }
         }
         return status
     }

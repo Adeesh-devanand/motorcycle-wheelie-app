@@ -17,8 +17,21 @@ import Foundation
 /// v1 -> v2: `eventExitPitch` 4 deg -> 5 deg to match docs/ui-spec.md 7.6;
 /// added the entry/exit dwells the ui spec required but which had no home here;
 /// added the estimator, smoother, cue, quality, writer and display parameters.
+///
+/// v2 -> v3: calibration made survivable on a running bike, after every one of
+/// its guards was found to reject a usable zeroing in favour of none at all.
+/// `biasSigmaLimit` 0.01 -> 0.05 deg/s: the old value sat on the gyro's own noise
+/// floor, so a zeroing passed or failed on luck rather than on anything the rider
+/// controlled, and 0.05 deg/s is the error budget the README already states.
+/// Added `gateCloseConfirm`, so a band violation must persist ~60 ms before the
+/// gate closes and a single buzz sample can no longer slam it shut — duration, not
+/// amplitude, is what separates engine excitation from real acceleration. Added
+/// `biasGateGracePeriod`, so a transient dropout no longer discards seconds of
+/// accumulation. `calibrationVibrationThreshold` no longer FAILS a zeroing -- it
+/// only decides whether an out-of-band rejection is reported as vibration, which is
+/// all its own doc comment ever claimed it did.
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 2
+    public var version: Int = 3
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -30,6 +43,32 @@ public struct Config: Codable, Sendable, Equatable {
     public var gateSpecificForceHigh: Double = 1.03 * 9.80665  // m/s^2
     public var gateMaxRotationRate: Double = 3.0 * .pi / 180   // rad/s, per axis
     public var gateDwell: TimeInterval = 0.5                   // must hold this long
+    /// How long a band violation must PERSIST before the gate actually closes.
+    ///
+    /// The gate compares the raw instantaneous sample, as it always did — but a
+    /// single violating sample no longer slams it. That instantaneous closure is
+    /// what made the gate an accidental vibration detector: on an idling bike one
+    /// buzz sample leaves the +/-0.03 g window, closes the gate, resets the dwell
+    /// and discards accumulated calibration, so 8 s of unbroken quiet never
+    /// assembles and calibration sticks at 0% forever.
+    ///
+    /// Duration is the right discriminator, not amplitude. Engine excitation
+    /// violates the band for at most half a cycle — 83 Hz aliases to 17 Hz at a
+    /// 100 Hz sampler, so ~30 ms — while acceleration, braking and lean violate it
+    /// for as long as they last. 60 ms therefore rejects buzz and still catches
+    /// anything real.
+    ///
+    /// A LOW-PASS was tried here first and is the wrong mechanism: it delays closure
+    /// by its time constant AND attenuates, so a 0.5 g onset reaches only 63% of its
+    /// value after one tau and the filter keeps taking contaminated gravity updates
+    /// deep into the ramp. `AccuracyMatrixTests` catches that as live error past 2
+    /// deg. A confirmation window is exact and bounded: full amplitude, closed after
+    /// 60 ms, no attenuation.
+    ///
+    /// This does NOT address aliasing: a twin at 6000 rpm folds to DC and looks like
+    /// a steady tilt at any window length. That is attenuated mechanically, at the
+    /// mount.
+    public var gateCloseConfirm: TimeInterval = 0.06            // seconds
 
     // MARK: - Zero / baseline
     // Blend slowly so a brief false gate-open cannot yank the reference. Road
@@ -60,10 +99,16 @@ public struct Config: Codable, Sendable, Equatable {
 
     // MARK: - Event segmentation
     public var eventEntryPitchRate: Double = 15.0 * .pi / 180  // rad/s
-    public var eventEntryPitch: Double = 8.0 * .pi / 180       // rad
-    /// 5 deg, per docs/ui-spec.md 7.6. Entry is 8 deg, so there is 3 deg of
-    /// hysteresis between onset and end.
-    public var eventExitPitch: Double = 5.0 * .pi / 180        // rad
+    /// 10 deg. Nothing below this counts as a wheelie and nothing below this is
+    /// clocked: in the 0-10 deg band the reported angle is dominated by
+    /// suspension travel, driveway lips and mount slop rather than by riding, so
+    /// counting it inflates both the attempt count and every duration.
+    public var eventEntryPitch: Double = 10.0 * .pi / 180      // rad
+    /// 7 deg, preserving 3 deg of hysteresis below entry. Duration is therefore
+    /// "time above 10 deg" plus the 10->7 deg tail on the way down; setting exit
+    /// equal to entry would chatter one wheelie into several at 100 Hz, so the
+    /// tail is the price of a stable segment boundary.
+    public var eventExitPitch: Double = 7.0 * .pi / 180        // rad
     public var eventEntryDwell: TimeInterval = 0.15
     public var eventExitDwell: TimeInterval = 0.25
     public var eventMinDuration: TimeInterval = 0.4
@@ -81,10 +126,35 @@ public struct Config: Codable, Sendable, Equatable {
     /// How long a zeroing attempt may fail to open the gate before it gives up
     /// and tells the rider why, rather than spinning indefinitely.
     public var biasAttemptWindow: TimeInterval = 30.0
-    /// A zeroing whose per-axis sigma exceeds this FAILS, naming the axis, rather
-    /// than being accepted. Expected sigma after 10 s at 100 Hz is ~0.0014 deg/s,
-    /// so a breach here is real signal, not a tight threshold.
-    public var biasSigmaLimit: Double = 0.01 * .pi / 180       // rad/s
+    /// A zeroing whose per-axis sigma exceeds this FAILS, naming the axis.
+    ///
+    /// This is the STANDARD ERROR OF THE MEAN, `std/sqrt(n)`, not the raw spread:
+    /// at 100 Hz over 8 s, n is ~800 and sqrt(n) ~28, so this limit demands a raw
+    /// gyro spread under 1.4 deg/s. The previous 0.01 deg/s demanded under
+    /// 0.28 deg/s, which is the noise floor of the sensor itself -- a zeroing then
+    /// passed or failed on luck rather than on anything the rider could change,
+    /// and the observed failures were 0.02-0.09 deg/s.
+    ///
+    /// What a breach actually costs is the point: bias error integrates linearly
+    /// into angle, so 0.05 deg/s is 0.5 deg over a 10 s hold, which is exactly the
+    /// budget stated in the README. Refusing a 0.02 deg/s estimate leaves the
+    /// filter with NO bias at all, and an uncalibrated consumer gyro sits at
+    /// 1-5 deg/s -- 10-50 deg over the same hold. The old limit therefore traded a
+    /// 0.2 deg error for a 20 deg one. This limit is kept only as a ceiling
+    /// against a zeroing taken while the bike was genuinely moving.
+    public var biasSigmaLimit: Double = 0.05 * .pi / 180       // rad/s
+    /// How long the validity gate may be CONTINUOUSLY closed before accumulated
+    /// progress is discarded.
+    ///
+    /// Previously any single closed sample called `resetAccumulation()`, throwing
+    /// away every sample collected so far and resetting the dwell. One 10 ms blip
+    /// -- 0.2 deg of rotation, or one bump in the road -- cost 8 s of work, which
+    /// on a running bike meant the 8 s never completed. Progress is now PAUSED
+    /// across a dropout shorter than this and only discarded once the gate has
+    /// been closed long enough that the bike may genuinely have moved or been
+    /// re-oriented. Paused time does not count toward the required duration, so
+    /// the estimate is still built from a full 8 s of quiet samples.
+    public var biasGateGracePeriod: TimeInterval = 0.25         // seconds
     /// Bias process-noise multiplier by ProcessInfo.ThermalState raw value
     /// (nominal, fair, serious, critical).
     public var thermalBiasNoiseScale: [Double] = [1.0, 2.0, 4.0, 8.0]
@@ -160,6 +230,18 @@ public struct Config: Codable, Sendable, Equatable {
     /// still", which is true but useless. So: the gate remains the detector, and
     /// this threshold decides whether an out-of-band rejection is REPORTED as
     /// vibration. It must sit below the gate's window to be reachable.
+    ///
+    /// As of v3 this is REPORTING ONLY and can no longer fail a zeroing. It used to,
+    /// which made calibrating on a running bike impossible and mid-ride
+    /// recalibration impossible outright. The justification does not survive
+    /// inspection: the bias estimate is the MEAN of the gyro, and averaging is
+    /// precisely the operation that removes zero-mean vibration -- its uncertainty
+    /// falls as `std/sqrt(n)`, which `biasSigmaLimit` already bounds. Only two paths
+    /// turn vibration into a DC error that a mean cannot reject: SATURATION, whose
+    /// non-linear rail rectifies AC into DC and which is still a hard reject on its
+    /// own flag, and ALIASING, which a spread test cannot see at all. So this
+    /// measurement never defended against the case that can actually hurt, and
+    /// blocked the case that cannot.
     public var calibrationVibrationThreshold: Double = 0.1  // m/s^2
     /// Runs whose reported uncertainty exceeds these are marked lowConfidence and
     /// excluded from personal bests.
@@ -222,6 +304,7 @@ public struct Config: Codable, Sendable, Equatable {
         gateSpecificForceHigh = try get(.gateSpecificForceHigh, d.gateSpecificForceHigh)
         gateMaxRotationRate   = try get(.gateMaxRotationRate, d.gateMaxRotationRate)
         gateDwell             = try get(.gateDwell, d.gateDwell)
+        gateCloseConfirm      = try get(.gateCloseConfirm, d.gateCloseConfirm)
 
         baselineTimeConstant  = try get(.baselineTimeConstant, d.baselineTimeConstant)
         accelLowPassCutoff    = try get(.accelLowPassCutoff, d.accelLowPassCutoff)
@@ -243,6 +326,7 @@ public struct Config: Codable, Sendable, Equatable {
         biasStaleAfter          = try get(.biasStaleAfter, d.biasStaleAfter)
         biasAttemptWindow       = try get(.biasAttemptWindow, d.biasAttemptWindow)
         biasSigmaLimit          = try get(.biasSigmaLimit, d.biasSigmaLimit)
+        biasGateGracePeriod     = try get(.biasGateGracePeriod, d.biasGateGracePeriod)
         thermalBiasNoiseScale   = try get(.thermalBiasNoiseScale, d.thermalBiasNoiseScale)
 
         gyroNoiseDensity     = try get(.gyroNoiseDensity, d.gyroNoiseDensity)

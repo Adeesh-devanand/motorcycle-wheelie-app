@@ -427,12 +427,16 @@ an artefact of what the filter knew at the time.
 speed bumps, so that my run list matches what actually happened.
 
 1. Onset is declared when the calibrated angle remains above
-   `Config.eventEntryPitch` (8°) for `Config.eventEntryDwell` (150 ms).
+   `Config.eventEntryPitch` (10°) for `Config.eventEntryDwell` (150 ms). 10° is
+   also the floor for clocking duration: below it the reported angle is
+   suspension travel and mount slop, not riding.
 2. End is declared when the angle remains below `Config.eventExitPitch` for
-   `Config.eventExitDwell` (250 ms). `eventExitPitch` is set to **5°** to match
-   UI spec §7.6, superseding the current 4.0° default; `eventEntryDwell` and
-   `eventExitDwell` are new `Config` fields and the change bumps
-   `Config.version`.
+   `Config.eventExitDwell` (250 ms). `eventExitPitch` is set to **7°**, keeping
+   3° of hysteresis below entry (it was 5° against an 8° entry, and 4.0° before
+   that); `eventEntryDwell` and `eventExitDwell` are new `Config` fields and
+   that addition bumped `Config.version`. Later threshold *value* changes do not
+   bump the version — a log header stores its own thresholds, so it replays
+   under the ones that produced it either way.
 3. Events shorter than `Config.eventMinDuration` (0.4 s) are discarded unless
    debug mode is enabled (UI spec §7.6).
 4. Pitch rate crossing `Config.eventEntryPitchRate` (15 °/s) is the primary
@@ -884,10 +888,12 @@ specified normatively in the requirement named.
    decimated display series + a `SessionSpan` reference into the raw NDJSON,
    specified in full in R19.4 with the on-demand hydration path and the
    raw-deleted fallback. R17.2 is aligned to it.
-4. **Event exit threshold — RESOLVED.** `Config.eventExitPitch` becomes 5°,
-   `eventEntryDwell = 0.15` and `eventExitDwell = 0.25` are added, and
-   `Config.version` bumps to 2 (R10.2). Entry stays at
-   `Config.eventEntryPitch` = 8°, giving 3° of hysteresis between onset and end.
+4. **Event exit threshold — RESOLVED.** `eventEntryDwell = 0.15` and
+   `eventExitDwell = 0.25` were added and `Config.version` bumped to 2 (R10.2).
+   The threshold pair is now `Config.eventEntryPitch` = 10° and
+   `Config.eventExitPitch` = 7°, giving 3° of hysteresis between onset and end
+   (previously 8°/5°, and 4° exit in v1). Raising entry to 10° raises the floor
+   for counting a wheelie at all and for clocking its duration.
    Per R1.9 the older `version: 1` header must still decode and replay, so the
    `Config` decoder supplies the new dwell fields as defaults for a v1 log —
    which means a pre-change recording re-scores under v1 thresholds only if the

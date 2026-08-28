@@ -4,6 +4,9 @@ import SwiftUI
 struct PastRunsView: View {
     @State private var viewModel: PastRunsViewModel
     @State private var showingFilters = false
+    @State private var runPendingDelete: WheelieRun?
+    @State private var showingDeleteRunConfirm = false
+    @State private var showingDeleteAllConfirm = false
     @Environment(\.dismiss) private var dismiss
 
     init(repository: RunRepository) {
@@ -29,8 +32,52 @@ struct PastRunsView: View {
                     viewModel.applyFilters()
                 }
             }
+            .confirmationDialog(
+                "Delete this run?",
+                isPresented: $showingDeleteRunConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Run", role: .destructive) {
+                    if let run = runPendingDelete {
+                        viewModel.deleteRun(id: run.id)
+                    }
+                    runPendingDelete = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    runPendingDelete = nil
+                }
+            } message: {
+                if let run = runPendingDelete {
+                    Text(Self.deleteSummary(for: run))
+                } else {
+                    Text("This cannot be undone.")
+                }
+            }
+            .confirmationDialog(
+                "Delete all runs?",
+                isPresented: $showingDeleteAllConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete All \(viewModel.repository.allRuns.count) Runs",
+                       role: .destructive) {
+                    viewModel.deleteAllRuns()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Every recorded run is permanently deleted, including runs "
+                     + "hidden by the current filters. This cannot be undone.")
+            }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// One line identifying the run being deleted, so the dialog confirms a
+    /// specific run rather than an anonymous one.
+    private static func deleteSummary(for run: WheelieRun) -> String {
+        let when = run.startedAt.formatted(date: .abbreviated, time: .shortened)
+        let seconds = String(format: "%.1f", run.duration)
+        let angle = String(format: "%.0f", run.maxAngle)
+        return "\(when) · \(seconds)s · \(angle)° max. This cannot be undone."
     }
 
     // MARK: - Nav Row
@@ -47,6 +94,23 @@ struct PastRunsView: View {
             .accessibilityLabel("Back")
 
             Spacer()
+
+            if viewModel.hasRuns {
+                Menu {
+                    Button(role: .destructive) {
+                        showingDeleteAllConfirm = true
+                    } label: {
+                        Label("Delete All Runs", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppColors.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .background(AppColors.surfaceButton, in: Circle())
+                }
+                .accessibilityLabel("More run actions")
+            }
 
             Button {
                 // Settings placeholder
@@ -108,13 +172,20 @@ struct PastRunsView: View {
 
     // MARK: - Sort Chip Row
 
+    /// Four sort chips plus the filter control. Four no longer fit across a
+    /// 390 pt screen, so the chips scroll horizontally while the filter button
+    /// stays pinned at the trailing edge.
     private var sortChipRow: some View {
         HStack(spacing: AppSpacing.sm) {
-            sortChip(key: .time, label: "TIME")
-            sortChip(key: .angle, label: "ANGLE")
-            sortChip(key: .speed, label: "SPEED")
-
-            Spacer()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppSpacing.sm) {
+                    sortChip(key: .recency, label: "RECENT")
+                    sortChip(key: .time, label: "TIME")
+                    sortChip(key: .angle, label: "ANGLE")
+                    sortChip(key: .speed, label: "SPEED")
+                }
+            }
+            .frame(height: 44)
 
             Button {
                 showingFilters = true
@@ -142,8 +213,13 @@ struct PastRunsView: View {
             HStack(spacing: AppSpacing.xs) {
                 Text(label)
                     .font(.system(size: 15, weight: .medium))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 11, weight: .medium))
+                // The arrow shows the ACTIVE direction, and only on the selected
+                // chip: a static up/down glyph on three inactive chips says
+                // nothing, and dropping it is part of what lets four chips fit.
+                if isSelected {
+                    Image(systemName: viewModel.sortDescending ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11, weight: .semibold))
+                }
             }
             .foregroundStyle(isSelected ? AppColors.chipSelectedText : AppColors.chipText)
             .padding(.horizontal, AppSpacing.md)
@@ -161,6 +237,10 @@ struct PastRunsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Sort by \(label.lowercased())")
+        .accessibilityValue(isSelected
+            ? (viewModel.sortDescending ? "selected, descending" : "selected, ascending")
+            : "not selected")
     }
 
     // MARK: - Caption
@@ -205,11 +285,23 @@ struct PastRunsView: View {
                         run: run,
                         colorScale: viewModel.colorScale,
                         fieldAnchors: viewModel.fieldAnchors,
-                        isLatest: index == 0 && viewModel.sortKey == .time && viewModel.sortDescending,
+                        isLatest: index == 0 && viewModel.sortKey == .recency && viewModel.sortDescending,
                         isLongest: run.duration == viewModel.fieldAnchors.durationMax && viewModel.filteredRuns.count > 1
                     )
                 }
                 .buttonStyle(.plain)
+                // Long-press to delete. These rows are cards in a LazyVStack, not
+                // List rows, so `.swipeActions` is unavailable here; a context
+                // menu is the affordance that works without rebuilding the list
+                // as a List and losing the card layout.
+                .contextMenu {
+                    Button(role: .destructive) {
+                        runPendingDelete = run
+                        showingDeleteRunConfirm = true
+                    } label: {
+                        Label("Delete Run", systemImage: "trash")
+                    }
+                }
             }
         }
     }

@@ -104,23 +104,39 @@ public struct Pipeline {
     public private(set) var gnssAidingApplied = 0
     public private(set) var gnssAidingSuppressed = 0
 
+    // MARK: - Diagnostics state
+    private var diag: DiagnosticEmitter
+    /// Sample-time epoch and running counts for the observed-rate heartbeat.
+    private var firstSampleTime: TimeInterval?
+    private var samplesSeen: Int = 0
+    private var missingVerdictCount: Int = 0
+    private var lastSampleTime: TimeInterval?
+
     public init(config: Config,
                 alignment: MountAlignment,
                 initialBias: BiasEstimate?,
-                gravityAnchor: Vector3? = nil) {
+                gravityAnchor: Vector3? = nil,
+                sink: DiagnosticSink? = nil) {
         self.config = config
         self.filter = AttitudeESKF(config: config,
                                    alignment: alignment,
                                    initialBias: initialBias,
-                                   gravityAnchor: gravityAnchor)
-        self.gate = ValidityGate(config: config)
-        self.baseline = GradeBaseline(config: config)
+                                   gravityAnchor: gravityAnchor,
+                                   sink: sink)
+        self.gate = ValidityGate(config: config, sink: sink)
+        self.baseline = GradeBaseline(config: config, sink: sink)
         self.vibration = HighFrequencyIndicator(config: config)
         self.delayed = DelayedStateBuffer(config: config)
         self.groundAcceleration = GroundAccelerationEstimator(config: config)
+        self.diag = DiagnosticEmitter(sink: sink, category: "pipe")
     }
 
     public mutating func setThermalState(_ state: Int) { thermalState = state }
+
+    /// Re-arms the attitude/alignment anchor — see `AttitudeESKF.requestReanchor()`.
+    /// The host calls this when a calibration completes so the pose the rider just
+    /// held still becomes the new zero.
+    public mutating func requestReanchor() { filter.requestReanchor() }
 
     /// Returns output on `.imu` samples — the 100 Hz spine. Other cases update
     /// internal state and return nil, per `Stage`'s documented nil convention.
@@ -146,9 +162,11 @@ public struct Pipeline {
             lastSpecificForce = imu.specificForce
         }
 
-        let verdict = gate.process(imu) ?? ValidityGate.Verdict(isOpen: false,
-                                                               heldFor: 0,
-                                                               reason: .noData)
+        let rawVerdict = gate.process(imu)
+        let verdict = rawVerdict ?? ValidityGate.Verdict(isOpen: false,
+                                                         heldFor: 0,
+                                                         reason: .noData)
+        if rawVerdict == nil { missingVerdictCount += 1 }
         filter.propagate(imu, thermalState: thermalState)
         filter.updateWithGravity(imu, verdict: verdict)
 
@@ -178,7 +196,12 @@ public struct Pipeline {
         let baselineMayAdapt = verdict.isOpen && !eventActive && nearLevel
         let corrected = baseline.process(GradeBaseline.Input(pitch: rawPitch,
                                                             gateOpen: baselineMayAdapt,
-                                                            time: imu.time)) ?? rawPitch
+                                                            time: imu.time,
+                                                            verdictOpen: verdict.isOpen,
+                                                            eventActive: eventActive,
+                                                            nearLevel: nearLevel)) ?? rawPitch
+
+        emitPipeDiagnostics(time: imu.time, pitch: corrected, gateOpen: verdict.isOpen)
 
         return PipelineOutput(time: imu.time,
                               attitude: filter.attitude,
@@ -196,8 +219,7 @@ public struct Pipeline {
                               flags: flags)
     }
 
-    private mutating func processGNSS(_ fix: GNSSFix) {
-        if fix.isSpeedValid { lastSpeed = fix.speed }
+    private mutating func processGNSS(_ fix: GNSSFix) {        if fix.isSpeedValid { lastSpeed = fix.speed }
 
         guard let estimate = groundAcceleration.process(fix) else { return }
 
@@ -230,8 +252,53 @@ public struct Pipeline {
         if applied { gnssAidingApplied += 1 }
     }
 
-    // MARK: - Introspection
+    // MARK: - Diagnostics
 
+    /// Observed input-rate heartbeat plus low-rate / gap warnings. Rate is
+    /// samples-seen over elapsed SAMPLE time, so it reflects what the pipeline
+    /// actually received, not a wall clock.
+    private mutating func emitPipeDiagnostics(time: TimeInterval, pitch: Double, gateOpen: Bool) {
+        samplesSeen += 1
+        let epoch = firstSampleTime ?? time
+        firstSampleTime = epoch
+
+        // Gap warning: no sample for > 0.5 s of sample time. Checked against the
+        // PREVIOUS sample time before we overwrite it.
+        if let last = lastSampleTime {
+            let gap = time - last
+            if gap > 0.5 {
+                diag.always(time: time, level: .warn,
+                            message: "pipe sample gap",
+                            values: ["gap": gap, "limit": 0.5])
+            }
+        }
+        lastSampleTime = time
+
+        let elapsed = time - epoch
+        let observedRate = elapsed > 0 ? Double(samplesSeen - 1) / elapsed : 0
+        let degrees = 180.0 / .pi
+
+        // Low-rate warning: observed rate below 50 Hz once enough elapsed time
+        // exists to measure it (avoid a spurious warn on the first fraction of a
+        // second when the estimate is meaningless).
+        if elapsed >= 1.0 && observedRate < 50 {
+            diag.always(time: time, level: .warn,
+                        message: "pipe low input rate",
+                        values: ["observedRate": observedRate, "limit": 50])
+        }
+
+        diag.emit("pipe", time: time,
+                  message: "pipe heartbeat",
+                  values: [
+                    "observedRate": observedRate,
+                    "pitchDeg": pitch * degrees,
+                    "gateOpen": gateOpen ? 1 : 0,
+                    "missingVerdictCount": Double(missingVerdictCount),
+                    "samplesSeen": Double(samplesSeen),
+                  ])
+    }
+
+    // MARK: - Introspection
     public var currentFlags: QualityFlags { flags }
     public var lateFixesDiscarded: Int { delayed.discardedTooOld }
     public var gradeEstimate: Double? { baseline.grade }

@@ -139,14 +139,11 @@ struct TelemetryChart: View {
                     }
                 }
 
-                // Scrubber vertical rule
-                if let time = selectedTime {
-                    RuleMark(x: .value("Scrubber", time))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineStyle(StrokeStyle(lineWidth: 1))
-                }
+                // NOTE: the vertical scrubber line is NOT drawn here — a single
+                // shared line spanning both charts is drawn by the parent
+                // (RunDetailsView) so it reads as one continuous line (M-UI8).
 
-                // Scrubber value dot
+                // Scrubber value dot (stays inside this chart's plot area)
                 if let time = selectedTime {
                     let val = valueAt(time)
                     PointMark(
@@ -187,7 +184,7 @@ struct TelemetryChart: View {
                 }
             }
             .chartOverlay { proxy in
-                GeometryReader { _ in
+                GeometryReader { geo in
                     Rectangle()
                         .fill(Color.clear)
                         .contentShape(Rectangle())
@@ -204,14 +201,13 @@ struct TelemetryChart: View {
                                 selectedTime = max(0, min(runDuration, time))
                             }
                         }
+                        .preference(
+                            key: ScrubberGeometryKey.self,
+                            value: scrubberGeometry(proxy: proxy, geo: geo).map { [$0] } ?? []
+                        )
                 }
             }
             .frame(height: 180)
-
-            // Scrubber time bubble (only on angle chart)
-            if metric == .angle, let time = selectedTime {
-                scrubberTimeBubble(time: time)
-            }
 
             // Target band label at right edge inside the band
             targetBandLabel
@@ -220,23 +216,18 @@ struct TelemetryChart: View {
         .accessibilityHint("Drag horizontally to scrub through time")
     }
 
-    // MARK: - Scrubber Time Bubble
+    // MARK: - Shared scrubber geometry
 
-    private func scrubberTimeBubble(time: TimeInterval) -> some View {
-        HStack {
-            Spacer()
-                .frame(maxWidth: .infinity)
-            Text(String(format: "%.1fs", time))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(AppColors.textPrimary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(hex: 0x1A1A20).opacity(0.95))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            Spacer()
-                .frame(maxWidth: .infinity)
+    /// Report this chart's plot rect (global coords) and the x of the current
+    /// scrubber time, so the parent can draw ONE line spanning both charts (M-UI8).
+    private func scrubberGeometry(proxy: ChartProxy, geo: GeometryProxy) -> ScrubberFrame? {
+        guard metric == .angle || metric == .speed else { return nil }
+        let plot = geo.frame(in: .global)
+        var scrubX: CGFloat?
+        if let time = selectedTime, let localX = proxy.position(forX: time) {
+            scrubX = plot.minX + localX
         }
-        .allowsHitTesting(false)
+        return ScrubberFrame(metric: metric, plotRect: plot, scrubberX: scrubX)
     }
 
     // MARK: - Target Band Label
@@ -314,5 +305,22 @@ struct TelemetryChart: View {
         } else {
             return String(format: "%.1fs", t)
         }
+    }
+}
+
+
+/// Plot geometry a `TelemetryChart` publishes so the parent can draw one shared
+/// scrubber line spanning both charts (M-UI8). Rects are in the `.global` space.
+struct ScrubberFrame: Equatable {
+    let metric: MetricKind
+    let plotRect: CGRect
+    let scrubberX: CGFloat?
+}
+
+/// Collects the per-chart `ScrubberFrame`s reported up to the parent.
+struct ScrubberGeometryKey: PreferenceKey {
+    static var defaultValue: [ScrubberFrame] = []
+    static func reduce(value: inout [ScrubberFrame], nextValue: () -> [ScrubberFrame]) {
+        value.append(contentsOf: nextValue())
     }
 }
