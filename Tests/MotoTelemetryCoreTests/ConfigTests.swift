@@ -31,7 +31,7 @@ final class ConfigTests: XCTestCase {
         // there feeds the 16.7 deg phantom angle into the gravity update. Rotation
         // ceiling 3 -> 5 deg/s, shared. Added `anchorLevelCosine`, since a
         // magnitude-only anchor test cannot reject a tilt at all.
-        XCTAssertEqual(Config().version, 4)
+        XCTAssertEqual(Config().version, 5)
     }
 
     func testExitThresholdMatchesTheUISpec() {

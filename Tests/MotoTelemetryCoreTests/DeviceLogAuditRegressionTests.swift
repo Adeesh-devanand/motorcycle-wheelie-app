@@ -156,9 +156,11 @@ final class DeviceLogAuditRegressionTests: XCTestCase {
             XCTFail("a 19 s stream gap forged a short finish — the exact device defect")
         }
         // And the window must have RESTARTED, not merely failed to complete.
-        if case .collecting(let elapsed, _) = afterGap {
+        if case .collecting(let elapsed, _, let samples, _) = afterGap {
             XCTAssertLessThan(elapsed, 0.5,
                               "post-gap accumulation must begin afresh, not resume near 8 s")
+            XCTAssertLessThan(samples, 5,
+                              "the sample count must restart with the window, not carry across the gap")
         }
     }
 

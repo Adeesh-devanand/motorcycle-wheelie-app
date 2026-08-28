@@ -42,13 +42,16 @@ import Foundation
 /// verdict also gates the ESKF's gravity update, where 0.3 g of thrust gives
 /// |f| = 1.044 g — inside a +/-0.10 g band — and admitting it converges the filter on
 /// the phantom angle atan(0.3) = 16.7 deg, which is the single failure this project
-/// exists to prevent. `gateMaxRotationRate` 3 -> 5 deg/s is shared, since it bounds
-/// real rotation for both consumers. Added `anchorLevelCosine`: specific-force
+/// exists to prevent. `gateMaxRotationRate` was ALSO tried as a shared 3 -> 5 deg/s
+/// and reverted: the estimator keeps 3 and calibration gets
+/// `calibrationMaxRotationRate` = 5, because a wider shared limit kept the gate open
+/// into the start of a lift and pinned the live angle at zero until it snapped.
+/// Added `anchorLevelCosine`: specific-force
 /// MAGNITUDE is orientation-invariant at rest, so the anchor's old magnitude-only test
 /// could not reject a tilt, and a 29.3 deg hand-held pose became the definition of
 /// level for 12 s.
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 4
+    public var version: Int = 5
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -68,10 +71,21 @@ public struct Config: Codable, Sendable, Equatable {
     /// Per-axis rotation ceiling, rad/s. Widened 3 -> 5 deg/s in v4 and NO further:
     /// unlike the specific-force band this bounds real rotation during the 8-second
     /// gyro mean, so a sustained rotation admitted here is averaged straight into
-    /// the bias. 5 deg/s widens the admit window ~1.7x and cuts the `rotating`
-    /// thrash while `biasSigmaLimit` (0.05 deg/s on the SEM) still rejects a
-    /// zeroing that actually was contaminated.
-    public var gateMaxRotationRate: Double = 5.0 * .pi / 180   // rad/s, per axis
+    /// the bias.
+    ///
+    /// This is the ESTIMATOR's limit and it stays at 3 deg/s. Calibration gets the
+    /// wider `calibrationMaxRotationRate` — the same split already applied to the
+    /// specific-force band, and for the same reason: the two consumers of this verdict
+    /// want different things. Raising the SHARED value to 5 deg/s was tried and
+    /// reverted. The 17:52 device log shows why: the verdict also gates the ESKF's
+    /// gravity update, so during the slow start of a lift the gate stayed open longer,
+    /// the filter kept treating a thrust-contaminated specific force as pure gravity,
+    /// and it pinned the reported angle near zero until rotation finally breached the
+    /// limit — then the gate closed, gyro integration took over, and the angle raced to
+    /// catch up. Measured: pitch 3.59 -> 0.66 -> 0.09 deg with gateOpen=1 while the bike
+    /// was already being lifted, then 3.75 -> 19.6 -> 35.3 -> 45.7 once gateOpen=0. The
+    /// rider sees "it doesn't move at all and then suddenly shoots up".
+    public var gateMaxRotationRate: Double = 3.0 * .pi / 180   // rad/s, per axis
     public var gateDwell: TimeInterval = 0.5                   // must hold this long
     /// How long a band violation must PERSIST before the gate actually closes.
     ///
@@ -118,10 +132,24 @@ public struct Config: Codable, Sendable, Equatable {
     /// recorded 933 `specificForceOutOfBand` rejections in 197 s from a phone being
     /// handled on a desk; on an idling bike the tight band made an 8-second window of
     /// unbroken quiet essentially unassemblable, which is the whole reason calibration
-    /// never finished. `gateMaxRotationRate` is deliberately NOT split — it bounds
-    /// real rotation, which matters to both.
+    /// never finished. `gateMaxRotationRate` IS now split too — see
+    /// `calibrationMaxRotationRate` below and the device evidence on
+    /// `gateMaxRotationRate` itself. Dwell remains shared.
     public var calibrationSpecificForceLow: Double = 0.90 * 9.80665   // m/s^2 (-0.10 g)
     public var calibrationSpecificForceHigh: Double = 1.10 * 9.80665  // m/s^2 (+0.10 g)
+    /// Calibration's rotation ceiling, rad/s. 5 deg/s against the estimator's 3.
+    ///
+    /// Split for the same reason as the band above, though the argument is different:
+    /// here 5 deg/s DOES enter the 8-second gyro mean, but `biasSigmaLimit` (0.05 deg/s
+    /// on the SEM) is the real backstop on a contaminated zeroing, and a measured
+    /// healthy SEM of 0.0018 deg/s leaves 28x of margin. Widening it cuts the
+    /// `rotating` rejections that stopped an 8-second window from ever assembling on an
+    /// idling bike — the 17:52 log took 60 s to finish one 8-second calibration.
+    ///
+    /// The estimator must NOT inherit this: see `gateMaxRotationRate` for the device
+    /// evidence that a wider shared limit makes the live angle stick at zero during a
+    /// lift and then jump.
+    public var calibrationMaxRotationRate: Double = 5.0 * .pi / 180   // rad/s, per axis
 
     /// How much the gyro bias must MOVE before adopting a new estimate re-anchors
     /// the attitude, rad/s. 0.01 deg/s.
@@ -391,6 +419,7 @@ public struct Config: Codable, Sendable, Equatable {
         anchorLevelCosine     = try get(.anchorLevelCosine, d.anchorLevelCosine)
         calibrationSpecificForceLow  = try get(.calibrationSpecificForceLow, d.calibrationSpecificForceLow)
         calibrationSpecificForceHigh = try get(.calibrationSpecificForceHigh, d.calibrationSpecificForceHigh)
+        calibrationMaxRotationRate   = try get(.calibrationMaxRotationRate, d.calibrationMaxRotationRate)
         reanchorBiasDelta     = try get(.reanchorBiasDelta, d.reanchorBiasDelta)
 
         baselineTimeConstant  = try get(.baselineTimeConstant, d.baselineTimeConstant)

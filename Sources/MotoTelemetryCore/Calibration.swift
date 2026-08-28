@@ -156,8 +156,14 @@ public struct BiasEstimator: Stage {
     public typealias Input = IMUSample
 
     public enum Progress: Sendable, Equatable {
-        /// Collecting; `elapsed` of `required` seconds of continuous quiet.
-        case collecting(elapsed: TimeInterval, required: TimeInterval)
+        /// Collecting; `elapsed` of `required` seconds of continuous quiet, and
+        /// `samples` of `requiredSamples` admitted samples. Completion needs BOTH, so
+        /// both are carried: `elapsed` credits up to 3x nominal per admitted sample, so
+        /// on a gate that admits sparsely it reaches `required` well before the sample
+        /// floor is met. Reporting time alone made the UI read "104%", and clamping it
+        /// alone made the bar sit at 100% for ~50 s on an idling bike.
+        case collecting(elapsed: TimeInterval, required: TimeInterval,
+                        samples: Int, requiredSamples: Int)
         /// Progress was reset by a gate closure. Carries the reason.
         case rejected(ValidityGate.Reason)
         case done(BiasEstimate)
@@ -165,8 +171,15 @@ public struct BiasEstimator: Stage {
 
         public var fraction: Double {
             switch self {
-            case .collecting(let elapsed, let required):
-                return required > 0 ? min(1, max(0, elapsed / required)) : 0
+            case .collecting(let elapsed, let required, let samples, let requiredSamples):
+                // The LESSER of the two ratios, because completion needs both. Reporting
+                // only the time ratio overstates progress whenever the gate admits
+                // sparsely — and since it is clamped, it parks at 100% while the sample
+                // floor is still filling, which reads as a hang.
+                let byTime = required > 0 ? elapsed / required : 0
+                let bySamples = requiredSamples > 0
+                    ? Double(samples) / Double(requiredSamples) : 0
+                return min(1, max(0, min(byTime, bySamples)))
             case .done:     return 1
             default:        return 0
             }
@@ -214,17 +227,22 @@ public struct BiasEstimator: Stage {
         self.config = config
         self.bikeProfileID = bikeProfileID
         self.thermalState = thermalState
-        // Calibration's gate runs on the WIDER specific-force band. See
-        // `Config.calibrationSpecificForceLow` for the full argument: that band is an
-        // accelerometer proxy for stillness here and never enters the gyro mean, so
-        // widening it costs the estimate under 0.001 deg/s — whereas widening the
-        // estimator's copy would let 0.3 g of thrust pass as "at rest" and feed
-        // 16.7 deg of phantom tilt into the ESKF's gravity update. The rotation-rate
-        // ceiling and dwell are shared unchanged, and `biasSigmaLimit` remains the
-        // real accuracy backstop on the finished mean.
+        // Calibration's gate runs on the WIDER specific-force band AND the wider
+        // rotation ceiling. See `Config.calibrationSpecificForceLow` for the band
+        // argument: it is an accelerometer proxy for stillness here and never enters the
+        // gyro mean, so widening it costs the estimate under 0.001 deg/s — whereas
+        // widening the estimator's copy would let 0.3 g of thrust pass as "at rest" and
+        // feed 16.7 deg of phantom tilt into the ESKF's gravity update.
+        //
+        // The rotation ceiling is now split too. It DOES enter the gyro mean, but
+        // `biasSigmaLimit` is the real backstop there (28x margin measured), whereas the
+        // estimator cannot afford a wider limit at all: the same verdict gates its
+        // gravity update, and 5 deg/s kept the gate open into the start of a lift and
+        // pinned the reported angle at zero until it snapped. Dwell stays shared.
         var gateConfig = config
         gateConfig.gateSpecificForceLow = config.calibrationSpecificForceLow
         gateConfig.gateSpecificForceHigh = config.calibrationSpecificForceHigh
+        gateConfig.gateMaxRotationRate = config.calibrationMaxRotationRate
         self.gate = ValidityGate(config: gateConfig)
         self.vibration = HighFrequencyIndicator(config: config)
         self.diag = DiagnosticEmitter(sink: sink, category: "bias")
@@ -313,7 +331,9 @@ public struct BiasEstimator: Stage {
         guard gate.sampleWithinBand(sample) else {
             lastAccumulateTime = nil
             return .collecting(elapsed: accumulatedDuration,
-                               required: config.biasCalibrationDuration)
+                               required: config.biasCalibrationDuration,
+                               samples: n,
+                               requiredSamples: requiredSampleCount)
         }
 
         // A gap far larger than a nominal interval is not a pause, it is a
@@ -332,7 +352,8 @@ public struct BiasEstimator: Stage {
             accumulate(sample.rotationRate)
             firstSampleTime = sample.time
             lastAccumulateTime = sample.time
-            return .collecting(elapsed: 0, required: config.biasCalibrationDuration)
+            return .collecting(elapsed: 0, required: config.biasCalibrationDuration,
+                               samples: n, requiredSamples: requiredSampleCount)
         }
 
         accumulate(sample.rotationRate)
@@ -362,8 +383,7 @@ public struct BiasEstimator: Stage {
         // quantity the reported uncertainty actually depends on, since the standard
         // error falls as 1/sqrt(n) — a 25-sample zeroing has sqrt(n) of 5 rather than
         // 28, so it reports four to five times the uncertainty of a real one.
-        let requiredSamples = Int(config.biasCalibrationDuration
-                                  * config.nominalSampleRate * 0.5)
+        let requiredSamples = requiredSampleCount
         guard elapsed >= config.biasCalibrationDuration, n >= requiredSamples else {
             // Heartbeat the collecting phase at 1 Hz: n / elapsed / required, plus
             // vibration.magnitudeStdDev against its threshold on EVERY heartbeat.
@@ -377,7 +397,9 @@ public struct BiasEstimator: Stage {
                         "calibrationVibrationThreshold": config.calibrationVibrationThreshold,
                       ])
             return .collecting(elapsed: elapsed,
-                               required: config.biasCalibrationDuration)
+                               required: config.biasCalibrationDuration,
+                               samples: n,
+                               requiredSamples: requiredSamples)
         }
 
         finished = true
@@ -397,8 +419,16 @@ public struct BiasEstimator: Stage {
         config.nominalSampleRate > 0 ? 30.0 / config.nominalSampleRate : 0.3
     }
 
-    private mutating func accumulate(_ v: Vector3) {
-        n += 1
+    /// Sample floor for completion: half the nominal count for the configured
+    /// duration (8 s x 100 Hz x 0.5 = 400). Half, not all, because `elapsed` already
+    /// bounds real held-still time and some sample loss is tolerable; the floor exists
+    /// so a stalled stream cannot bill time it never sampled. Also reported in
+    /// `Progress.collecting` so the UI can show the binding constraint.
+    private var requiredSampleCount: Int {
+        Int(config.biasCalibrationDuration * config.nominalSampleRate * 0.5)
+    }
+
+    private mutating func accumulate(_ v: Vector3) {        n += 1
         let delta = v - mean
         mean = mean + delta / Double(n)
         let delta2 = v - mean

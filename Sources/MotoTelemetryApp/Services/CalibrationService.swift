@@ -386,22 +386,19 @@ final class CalibrationService: @unchecked Sendable {
 
     private func handleProgress(_ progress: BiasEstimator.Progress) {
         switch progress {
-        case .collecting(let elapsed, let required):
-            // Use Progress.fraction, which clamps to 0...1. Dividing by hand here let
-            // the overlay render "Collecting data… 104%": the estimator completes on
-            // BOTH `elapsed >= required` AND `n >= requiredSamples`, and `elapsed`
-            // credits the gap between ADMITTED samples (capped at 3x nominal). When the
-            // gate admits under half the samples — measured at ~0.022 s per admitted
-            // sample against a 0.01 s nominal in the 17:36 device log — `elapsed`
-            // crosses `required` while `n` is still climbing, so the raw ratio exceeds
-            // 1. Clamping is correct: the bar plateaus for the sub-second tail while
-            // the sample floor is met, rather than reporting an impossible percentage.
+        case .collecting(let elapsed, let required, let samples, let requiredSamples):
+            // Progress.fraction reports the LESSER of the time and sample ratios, since
+            // completion needs both. Dividing elapsed/required by hand here rendered
+            // "Collecting data… 104%", and merely clamping that parked the bar at 100%
+            // for ~50 s while the sample floor filled — which reads as a hang.
             state = .calibrating(progress: progress.fraction)
             // Heartbeat only — collecting fires ~100 Hz, so gate on the "collecting"
             // key + sample-time heartbeat rather than per sample.
             diag.emit("collecting", time: ProcessInfo.processInfo.systemUptime,
                       level: .trace, message: "collecting",
                       values: ["elapsed": elapsed, "required": required,
+                               "samples": Double(samples),
+                               "requiredSamples": Double(requiredSamples),
                                "fraction": progress.fraction])
 
         case .rejected(let reason):
