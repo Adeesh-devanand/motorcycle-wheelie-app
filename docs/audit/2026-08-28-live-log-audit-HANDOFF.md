@@ -295,7 +295,46 @@ them; read them.
 | `02-calibrationservice-autostart-loop.md` (4 ln, **truncated**) | 1 | `estimator = nil` after `.done`, and `canAutoStart` is a pure cooldown check that ignores the calibrated state. See §3.1. Patch missing — report was cut off |
 | `03-eskf-anchor-and-yaw-bias.md` (212 ln) | 3 | `AttitudeESKF.propagate` lines 168–198 accept the anchor on **specific-force magnitude alone**. Magnitude is **orientation-invariant at rest** — it is `g` at *every* orientation — so a magnitude test is structurally incapable of rejecting a tilt. The 29.3° pose had `gravityMag=9.817`, squarely in band, so it passed. The real `ValidityGate` (which does test rotation rate and dwell) is **never consulted on this path**; the estimator reimplements a weaker magnitude-only check. Patch: thread the gate `Verdict` (already computed upstream) into `propagate`, anchor only when the gate is `.open` **and** the pose is near-level — `f_z/|f| ≥ cos(20°) ≈ 0.94`, which rejects the 29° pose (`8.507/9.817 = 0.867`) while tolerating a generous cradle angle. Adds one deliberately loose predicate; tightens nothing |
 | `04-calibration-sample-count-and-gate-thresholds.md` (272 ln) | 6, 7 | The 19 s-gap short finish, plus a **quantified** old-vs-new threshold table (see §3.9 update below). Confirms `gateMaxRotationRate` is stored in **rad/s** (`3.0 * .pi/180`) and displayed as deg/s. Also answers whether `resetAccumulation()` can still wipe 8 s on one out-of-band sample |
-| `05-log-volume-and-watchdog.md` (47 ln, **truncated**) | 2 | The sink's coalescer *is* per-key on `category+"|"+message` with a 0.05 s (20/s) window at `DiagnosticLog.swift:130–139`. The **caller** defeats it: `CalibrationService.feedIMU:262` passes a discriminator key encoding `estimator == nil`, which flips constantly during the auto-start churn, so the emitter fires on a large fraction of samples. Confirms there is **no separate `*logging-contract*` file** — the contract is inline in `Diagnostics.swift`. Note an unresolved discrepancy: 10,480 lines / 197 s ≈ 53/s still exceeds the 20/s per-key window, so the **sink may have a second defect the report had not isolated** when it stopped |
+| `05-log-volume-and-watchdog.md` (47 ln, **truncated**) | 2 | The sink's coalescer *is* per-key on `category+"|"+message` with a 0.05 s (20/s) window at `DiagnosticLog.swift:128–134`. The **caller** defeats the emitter's own transition check: `CalibrationService.feedIMU:~264` passes a discriminator key embedding `estimator == nil`, which flips constantly during the auto-start churn. Confirms there is **no separate `*logging-contract*` file** — the contract is inline in `Diagnostics.swift`. The report stalled unresolved on why 53/s got past a 20/s coalescer; **answered in §3.12** |
+
+### §3.12 The 53/s-vs-20/s puzzle, resolved — bug 2 is THREE layers
+
+Report 05 stopped while circling this. Resolved by reading `DiagnosticLog.emit()`:
+
+```swift
+116  func emit(_ event: DiagnosticEvent) {
+117      let line = encode(event)
+120      if event.level.osLogEligible {
+121          mirror(event)          // ← OSLog mirror, BEFORE any coalescing
+122      }
+125      bufferLock.lock()
+127      let key = event.category + "|" + event.message
+128      if let last = lastEmitByKey[key], event.time - last < coalesceWindow, … {
+130          droppedCount += 1
+132          return                 // ← only the ON-DISK buffer is protected
+```
+
+**The OSLog mirror at line 121 runs before the coalescing return at line 132.** The on-disk
+NDJSON is correctly coalesced to 20/s; every `.info`-and-above event reaches the Xcode
+console unthrottled. **The log committed under `docs/device-logs/` is the OSLog stream**,
+which is why it measures ~100/s against a coalescer that is working. The two numbers were
+never in conflict — they are two different sinks.
+
+So the flood has three layers:
+
+1. **Caller** — the oscillating `estimator == nil` discriminator key defeats the emitter's
+   transition check, so it fires on most samples.
+2. **OSLog mirror** — unguarded by the coalescer, so console volume equals raw emitter rate.
+3. **The churn itself** — bug 1 is what makes that key flip.
+
+**Fix bug 1 first; all three collapse together.** Then take a fresh log and decide whether
+layers 1 and 2 still need work. Moving `mirror(event)` below the coalescing check is a
+one-line candidate for layer 2, but not blind: `.warn`/`.error` are deliberately exempt from
+coalescing and the mirror must keep receiving them.
+
+**Not verified:** the ordering is unambiguous in source, but nobody has re-run the app to
+confirm the on-disk NDJSON is at 20/s while the console is at 100/s. Prove it from a fresh
+log before declaring the disk sink healthy.
 
 ### §3.9 update — the quantified threshold answer
 
@@ -547,6 +586,43 @@ agents to **disjoint file sets** and keep them **read-only** returning text diff
 concurrent edits would collide. Apply patches yourself, in §4 order.
 
 ## 9. Definition of done
+
+### Pending action: open a PR (requested, BLOCKED)
+
+Adeesh asked for a **pull request rather than a bare push**. It could not be done from the
+machine this audit ran on, and this is the first thing to resolve:
+
+- `git push` fails. SSH authenticates as `cloudtrov`, the HTTPS keychain as
+  `vinothini-raju`; **both get 403** on `Adeesh-devanand/motorcycle-wheelie-app`. No fork
+  exists under either account. Read access works, which is why nothing surfaced this
+  earlier — `staging/core-pipeline` had already been 3 commits ahead of origin for three
+  sessions.
+- `gh` CLI is **not installed** on that machine, so there was no PR path even with
+  credentials.
+
+To unblock, any one of:
+1. Grant `vinothini-raju` (or `cloudtrov`) push access, then
+   `git push -u origin audit/live-log-2026-08-28` and open the PR.
+2. Fork to an account that can push, add it as a second remote, push the branch there and
+   open a cross-fork PR into `Adeesh-devanand/motorcycle-wheelie-app`.
+3. Import the offline bundle (below), then push from wherever it lands.
+
+**Offline bundle:** `~/Documents/Adeesh/handoff/audit-live-log-2026-08-28.bundle`
+(~841 KB, `git bundle verify` reports a complete history). Restore with:
+
+```bash
+git clone /path/to/audit-live-log-2026-08-28.bundle restored
+# or into an existing clone:
+git fetch /path/to/audit-live-log-2026-08-28.bundle audit/live-log-2026-08-28:audit/live-log-2026-08-28
+```
+
+Suggested PR title (under 70 chars):
+`Live-device log audit: 10 confirmed bugs, evidence, and handoff`
+
+The PR body should lead with §0 and §3.11 — the log-is-older-than-source caveat is the
+thing a reviewer most needs to know, since it retired one bug outright.
+
+### Actual definition of done
 
 1. Bugs 1–3 fixed together, core tests green **including `AccuracyMatrixTests`**, app
    typecheck clean across all 50 files.
