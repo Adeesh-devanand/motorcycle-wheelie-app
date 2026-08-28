@@ -387,13 +387,22 @@ final class CalibrationService: @unchecked Sendable {
     private func handleProgress(_ progress: BiasEstimator.Progress) {
         switch progress {
         case .collecting(let elapsed, let required):
-            state = .calibrating(progress: elapsed / required)
+            // Use Progress.fraction, which clamps to 0...1. Dividing by hand here let
+            // the overlay render "Collecting data… 104%": the estimator completes on
+            // BOTH `elapsed >= required` AND `n >= requiredSamples`, and `elapsed`
+            // credits the gap between ADMITTED samples (capped at 3x nominal). When the
+            // gate admits under half the samples — measured at ~0.022 s per admitted
+            // sample against a 0.01 s nominal in the 17:36 device log — `elapsed`
+            // crosses `required` while `n` is still climbing, so the raw ratio exceeds
+            // 1. Clamping is correct: the bar plateaus for the sub-second tail while
+            // the sample floor is met, rather than reporting an impossible percentage.
+            state = .calibrating(progress: progress.fraction)
             // Heartbeat only — collecting fires ~100 Hz, so gate on the "collecting"
             // key + sample-time heartbeat rather than per sample.
             diag.emit("collecting", time: ProcessInfo.processInfo.systemUptime,
                       level: .trace, message: "collecting",
                       values: ["elapsed": elapsed, "required": required,
-                               "fraction": required > 0 ? elapsed / required : 0])
+                               "fraction": progress.fraction])
 
         case .rejected(let reason):
             // R6.2: a gate closure resets progress AND the UI reports WHY. Keeping
