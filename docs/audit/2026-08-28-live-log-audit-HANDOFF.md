@@ -25,6 +25,13 @@ angle. Every spurious re-calibration fired a re-anchor that reset the bad angle 
 self-correcting and the app gets **worse** on device. Fix the anchor validity (§4, bug 3)
 in the same change set as the loop (bug 1).
 
+**Update — root causes are CONFIRMED, not hypothesised.** Five parallel code
+investigations ran before this handoff was written. Their full reports are committed under
+`docs/audit/investigations/` (758 lines). Read those before writing any code: they carry
+exact line numbers and proposed diffs for bugs 1, 3, 4, 6, 7, 8 and 11. Two of the five
+were cut off mid-write, so §8 lists precisely which questions remain open. The confirmed
+mechanisms are summarised in §3.10.
+
 ---
 
 ## 1. The evidence, and how to regenerate it
@@ -103,11 +110,19 @@ attempts=0 recalRequested=0 hasEstimator=0 canAutoStart=1 cooldownRemaining=0
 attempts=1 recalRequested=0 hasEstimator=1 canAutoStart=0 cooldownRemaining=1.98999
 ```
 
-**Leading hypothesis (verify, don't assume):** on success the service consumes/nils the
-estimator, so "no estimator exists" becomes true again and the auto-start predicate
-re-fires. The `attempts < maxAttempts` cap evidently guards only the *failure* path.
-Adeesh reports the **manual recalibrate button works fine** — find what the manual path
-does that the auto path doesn't; that asymmetry is the shortest road to the bug.
+**CONFIRMED root cause** (investigation 02): in `CalibrationService.feedIMU`, after the
+estimator reports `.done` the service sets `estimator = nil`, and `canAutoStart` is
+**purely a cooldown check that never consults the calibrated state**. So "no estimator
+exists" becomes true again the instant a calibration succeeds, the cooldown expires a
+moment later, and auto-start re-fires. The `attempts < maxAttempts` cap guards only the
+*failure* path, which is why `attempt` sails past 3 to 4 and 5. This also explains why
+Adeesh's **manual recalibrate button works fine** — it goes through the explicit
+recalibration path, which resets generation and attempts properly.
+
+Note: report 02 was cut off just after stating the root cause, so its *proposed patch* is
+missing. The fix direction is unambiguous though: make `canAutoStart` false when the
+current state is `.calibrated` and the bias is fresh, and latch until user request, stale
+bias (`biasStaleAfter=300`), or genuine sensor loss.
 
 The bias measured essentially identically every single time
 (`meanBiasX≈−0.097`, `meanBiasY≈0.013`, `meanBiasZ≈0.111`), so 6 of the 7 re-anchors it
@@ -267,9 +282,44 @@ the angle impact of each threshold quantified in numbers, not adjectives.
 
 ---
 
+## 3.10 Confirmed root causes — read the full reports before coding
+
+Five parallel read-only investigations produced these. **Full text, with exact line numbers
+and proposed diffs, is committed under `docs/audit/investigations/`.** Do not re-derive
+them; read them.
+
+| Report | Bug | Confirmed mechanism |
+| --- | --- | --- |
+| `01-motionservice-pairing-and-servicegraph.md` (223 ln) | 4 | `stop()` never clears `pendingGyro` / `pendingAccel` / `latestAttitude` / `unpairedCount`. A half-sample left stashed puts the next `start()` into an overwrite phase relation that timestamp-pairing **never self-heals from**, so the whole session emits zero. Patch: clear the stash in `stop()` under the existing lock, **and** evict an opposite-channel stash older than `pairTolerance` so a bad phase relation cannot live-lock. Risk: low |
+| `01-…` (same report) | 8 | `RootTabView.swift:21` is `@State private var services = ServiceGraph()`. The `@State` **default-value autoclosure re-runs `ServiceGraph()` on every `RootTabView.init`**. SwiftUI keeps only the first instance but the throwaways are *fully constructed first*, and `ServiceGraph.init` eagerly starts `SpeedService` location authorization — so the side effects fire before the object is discarded. Twice at launch (identity pass + first body pass); twice more on save, because saving mutates the observable `RunRepository` that `RootTabView.body` depends on, invalidating the view and re-running `init`. Patch: move ownership to `WheelieTrackerApp` (instantiated once) and inject as a **plain `let`** — wrapping it in `@State` again reintroduces the trap. **Bonus:** this also fixes a latent split-brain where the environment's `CalibrationService` / `RunRepository` were *different objects* from the ones inside `ServiceGraph` |
+| `02-calibrationservice-autostart-loop.md` (4 ln, **truncated**) | 1 | `estimator = nil` after `.done`, and `canAutoStart` is a pure cooldown check that ignores the calibrated state. See §3.1. Patch missing — report was cut off |
+| `03-eskf-anchor-and-yaw-bias.md` (212 ln) | 3 | `AttitudeESKF.propagate` lines 168–198 accept the anchor on **specific-force magnitude alone**. Magnitude is **orientation-invariant at rest** — it is `g` at *every* orientation — so a magnitude test is structurally incapable of rejecting a tilt. The 29.3° pose had `gravityMag=9.817`, squarely in band, so it passed. The real `ValidityGate` (which does test rotation rate and dwell) is **never consulted on this path**; the estimator reimplements a weaker magnitude-only check. Patch: thread the gate `Verdict` (already computed upstream) into `propagate`, anchor only when the gate is `.open` **and** the pose is near-level — `f_z/|f| ≥ cos(20°) ≈ 0.94`, which rejects the 29° pose (`8.507/9.817 = 0.867`) while tolerating a generous cradle angle. Adds one deliberately loose predicate; tightens nothing |
+| `04-calibration-sample-count-and-gate-thresholds.md` (272 ln) | 6, 7 | The 19 s-gap short finish, plus a **quantified** old-vs-new threshold table (see §3.9 update below). Confirms `gateMaxRotationRate` is stored in **rad/s** (`3.0 * .pi/180`) and displayed as deg/s. Also answers whether `resetAccumulation()` can still wipe 8 s on one out-of-band sample |
+| `05-log-volume-and-watchdog.md` (47 ln, **truncated**) | 2 | The sink's coalescer *is* per-key on `category+"|"+message` with a 0.05 s (20/s) window at `DiagnosticLog.swift:130–139`. The **caller** defeats it: `CalibrationService.feedIMU:262` passes a discriminator key encoding `estimator == nil`, which flips constantly during the auto-start churn, so the emitter fires on a large fraction of samples. Confirms there is **no separate `*logging-contract*` file** — the contract is inline in `Diagnostics.swift`. Note an unresolved discrepancy: 10,480 lines / 197 s ≈ 53/s still exceeds the 20/s per-key window, so the **sink may have a second defect the report had not isolated** when it stopped |
+
+### §3.9 update — the quantified threshold answer
+
+Report 04 delivers what was asked, and it **partly disagrees with a blanket "raise
+everything"**, with a reason worth respecting:
+
+| Threshold | Old | Proposed | Why |
+| --- | --- | --- | --- |
+| `gateSpecificForceLow` | 0.97 g (−0.03 g) | **0.90 g (−0.10 g)** | ~0 effect on the bias mean — it is an accel-based stillness *proxy* and never enters the gyro mean. Degradation < 0.001 °/s |
+| `gateSpecificForceHigh` | 1.03 g (+0.03 g) | **1.10 g (+0.10 g)** | Same. +0.10 g ⇒ ~24° lean edge before the accel test fires; the rotation limit fires first for anything genuinely rotating |
+| `gateMaxRotationRate` | 3.0 °/s | **5.0 °/s only** | **This one genuinely matters** — a DC rotation admitted here enters the 8-second mean *directly*. 3→5 widens the admit window ~1.7× and cuts `rotating` flaps, with the sigma gate (0.05 °/s) still backstopping. Report is explicit: **do not raise this to double digits** |
+| `gateDwell` | 0.5 s | unchanged | Lowering admits sooner with no accuracy benefit |
+| `gateCloseConfirm` | 0.06 s | unchanged, or 0.08 s | Already does the engine-buzz rejection; 80 ms would cut more flaps with no mean impact. Optional |
+
+So: the specific-force band can open up **3.3×** exactly as Adeesh expected, but the
+rotation-rate ceiling is the one threshold where "much higher" would cost real accuracy.
+Flag that trade-off to him rather than silently capping it at 5.
+
+---
+
 ## 4. The task list, in the order to do it
 
 Ordered by user-visible value ÷ risk. Bugs 1 and 3 **ship together** (see §0).
+"Patch ready" = a concrete diff exists in `docs/audit/investigations/`.
 
 | # | Bug | Where | Priority |
 | --- | --- | --- | --- |
@@ -371,53 +421,47 @@ Note: `UserInterfaceState.xcuserstate` is both listed in `.gitignore` and tracke
 
 ---
 
-## 8. Five investigation prompts — re-run these
+## 8. What the investigations left open
 
-Five read-only sub-agent investigations were dispatched and were still mid-flight when the
-laptop closed; their partial output lived in `~/.kiro/crew/subagents/` on that machine and
-**is not available to you**. The prompts are reproduced below so you can re-run them
-cleanly. They are scoped to **disjoint file sets** so they can run in parallel without
-conflicting, and all five are **read-only** — they return text diffs, they do not edit.
-That was deliberate: `Config.swift` and `RunRecorder.swift` are each touched by two
-investigations, so concurrent edits would collide. Apply the patches yourself afterwards,
-in the §4 order.
+All five investigations **ran** and their reports are committed under
+`docs/audit/investigations/` — see §3.10 for the summary table. Start there, not from
+scratch. Three finished; two were stopped mid-write when the laptop closed.
 
-Dispatch with `spawn_run` and a `tasks` array. **Do not pass `cwd`** — it is rejected
-unless it sits under `~/workspace`; use absolute paths inside the prompt instead. Set
-`include_memory=false` and `include_project=false` (the prompts are fully specified);
-keep `include_lessons=true`.
+**Reports 01, 03 and 04 are complete.** Treat their diffs as ready to apply and review,
+covering bugs 3, 4, 6, 7 and 8.
 
-1. **`MotionService.swift`, `WheelieTrackerApp.swift`, `RootTabView.swift`** — zero-sample
-   sessions (§3.2) + 3× ServiceGraph (§3.7). Ask: what is the accel/gyro pairing key and
-   tolerance; why instant success on gen 3/5/6 and never on 1/2/4 (look for state not
-   cleared in `stop()`, a reused or cancelled `OperationQueue`, `start()` before the prior
-   `stop()` drained, only one CoreMotion stream restarting); is `unpaired` reset per
-   session; and for the graph, how it is held (`@State`/`@StateObject`/plain `let`) and why
-   *saving a run* rebuilds it. If the code hand-pairs raw accel+gyro, require it to state
-   what switching to `deviceMotion` would **lose** (raw uncorrected gyro for the bias
-   calibrator) before recommending it.
-2. **`CalibrationService.swift`** — the loop (§3.1). Give it the full state-transition
-   quote, the `hasEstimator=0 → canAutoStart=1` hint, and the fact that the **manual button
-   works while auto doesn't**; make it explain that asymmetry. Ask for the terminal-latch
-   logic and the material-change re-anchor threshold.
-3. **`AttitudeESKF.swift`, `MountAlignment.swift`** — anchor validity (§3.3), pre-anchor
-   publication, yaw-bias runaway (§3.4). Tell it thresholds are being **loosened, not
-   tightened**, and to find the loosest test that still rejects a 29° tilt. Require it to
-   prove whether bias-Z leaks into pitch. Also ask about `forwardX=0.0`/`-5.4e-20` — forward
-   is forced into the YZ plane, which looks like a baked-in portrait-mount assumption.
-4. **`Calibration.swift`, `Config.swift`, `ValidityGate.swift`** — the 25-sample finish
-   (§3.5) and the threshold table (§3.9). Require unit confirmation for
-   `gateMaxRotationRate` first. Ask it to verify the claim that `resetAccumulation()` no
-   longer wipes 8 s on one out-of-band sample, and to name every test asserting these
-   thresholds.
-5. **`Diagnostics/DiagnosticLog.swift`, `Diagnostics/RawSampleRecorder.swift`,
-   `Core/Diagnostics.swift`, `RunRecorder.swift` (watchdog only)** — log volume (§3.6),
-   watchdog conclusion (§3.8), raw-recorder disk cap (§4 bug 11). Ask which layer to fix
-   (caller vs sink) and explicitly warn it **not to destroy the load-bearing heartbeats**.
+**Two gaps to close — these are the only investigations worth re-running:**
 
-Each prompt must stay under 5,000 characters or `spawn_run` rejects the batch.
+1. **Report 02 (`CalibrationService`, bug 1)** — stopped immediately after naming the root
+   cause, so it has **no patch**. The mechanism is certain (`estimator = nil` after `.done`
+   + `canAutoStart` ignoring the calibrated state), so you may not need a sub-agent at all;
+   just write the latch. Still needed from it: the **material-change threshold for
+   re-anchor** (bug 5), which was never answered. Measured bias was
+   `meanBiasX ≈ −0.097`, `meanBiasY ≈ 0.013`, `meanBiasZ ≈ 0.111` on *every* run, so
+   anything above a few thousandths of a °/s would have suppressed 6 of the 7 re-anchors.
+2. **Report 05 (logging, bug 2)** — identified the caller-side defect
+   (`CalibrationService.feedIMU:262` passing a discriminator key that encodes
+   `estimator == nil`, which flips constantly) and the sink's per-key 20/s coalescer at
+   `DiagnosticLog.swift:130–139`. **Unresolved:** 10,480 lines / 197 s ≈ 53/s still exceeds
+   a 20/s per-key window, so there is likely a **second defect in the sink** that the report
+   had not isolated. Also unanswered: the `RawSampleRecorder` size cap (bug 11) and the
+   watchdog fix (bug 9). Note it confirmed there is **no separate `*logging-contract*`
+   file** — the contract lives inline in `Diagnostics.swift`, so don't hunt for one.
 
----
+Fixing bug 1's auto-start churn will itself collapse most of the log spam, since the
+oscillating `estimator == nil` discriminator is what defeats the emitter's own key check.
+**Do bug 1 first, re-measure the log, then decide how much of bug 2 is left.** That
+ordering may save the entire logging change.
+
+### Re-dispatch notes, if you do spawn agents
+
+Use `spawn_run` with a `tasks` array. **Do not pass `cwd`** — it is rejected unless it sits
+under `~/workspace`; put absolute paths in the prompt instead. Set `include_memory=false`
+and `include_project=false` (write fully-specified prompts); keep `include_lessons=true`.
+Each prompt must stay under **5,000 characters** or the whole batch is rejected. Scope
+agents to **disjoint file sets** and keep them **read-only** returning text diffs —
+`Config.swift` and `RunRecorder.swift` are each touched by two investigations, so
+concurrent edits would collide. Apply patches yourself, in §4 order.
 
 ## 9. Definition of done
 
