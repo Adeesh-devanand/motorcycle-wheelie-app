@@ -13,6 +13,8 @@ final class RunRecorder: @unchecked Sendable {
 
     enum RecordingState: Sendable, Equatable {
         case idle
+        /// Sensor stream live, feeding calibration, but no recording pipeline yet.
+        case sensing
         case running
         case paused
     }
@@ -27,8 +29,6 @@ final class RunRecorder: @unchecked Sendable {
     /// `liveSpeed` stays 0 for compatibility; consult this before displaying it.
     private(set) var liveSpeedAvailable: Bool = false
     private(set) var liveVibration: Double = 0       // m/s²
-    private(set) var liveGateOpen: Bool = false
-    private(set) var liveCueState: CueState = CueState()
     private(set) var eventActive: Bool = false
     private(set) var currentEventDuration: TimeInterval = 0
     private(set) var sampleCount: Int = 0
@@ -45,7 +45,6 @@ final class RunRecorder: @unchecked Sendable {
     // MARK: - Pipeline internals
 
     private var pipeline: Pipeline?
-    private var cueEngine: CueEngine?
     private var segmenter: EventSegmenter?
     private var scorer: RunScorer?
 
@@ -60,7 +59,6 @@ final class RunRecorder: @unchecked Sendable {
     private var lastCalibrationID: UUID?
     /// Bias vector the attitude anchor was last established against — the reference
     /// for the material-change test in `processSample`.
-    private var lastAnchoredBias: Vector3?
 
     private var collectedSamples: [TelemetrySample] = []
     private var sessionStartDate: Date?
@@ -108,62 +106,21 @@ final class RunRecorder: @unchecked Sendable {
 
     // MARK: - Session lifecycle
 
-    func startSession(bikeProfileID: UUID,
-                      mountAlignment: MountAlignment,
-                      angleTarget: MetricRange) {
-        guard recordingState == .idle else { return }
-
-        self.bikeProfileID = bikeProfileID
-        self.angleTarget = angleTarget
-        self.sessionStartDate = Date()
-        self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
-        self.collectedSamples = []
-        self.sampleCount = 0
-        // Seed from the existing estimate so only a calibration adopted DURING this
-        // session counts as a re-zero; the fresh filter anchors on its own anyway.
-        self.lastCalibrationID = calibrationService.currentEstimate?.id
-        self.lastAnchoredBias = calibrationService.currentEstimate?.bias
-
-        // Initialize pipeline with current calibration
-        pipeline = Pipeline(
-            config: config,
-            alignment: mountAlignment,
-            initialBias: calibrationService.currentEstimate,
-            sink: DiagnosticLog.shared
-        )
-
-        // Raw recorder — full-rate unprocessed trace for desk replay (default ON).
-        if rawRecordingEnabled {
-            let rec = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID)
-            rawRecorder = rec
-            diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
-                        level: .info, message: "raw recorder started", values: [:])
-        }
-
-        // Initialize downstream stages
-        cueEngine = CueEngine(
-            angleTargetUpper: angleTarget.upper * .pi / 180,
-            timeToThresholdWarn: config.timeToThresholdWarn,
-            audioLatencyCompensation: config.audioLatencyCompensation,
-            loopOutPitchRate: config.loopOutPitchRate,
-            cueReleaseTime: config.cueReleaseTime
-        )
-        segmenter = EventSegmenter(config: config)
-        scorer = RunScorer(config: config)
-
-        // Start sensor consumption
+    /// Starts CoreMotion + GPS and the two consuming Tasks. Shared by `startSensing`
+    /// (calibration phase) and `startSession` (recording), so the stream is wired the
+    /// same way in both and never started twice.
+    ///
+    /// Both sensor streams funnel through `processSample`, which mutates the
+    /// value-type `EventSegmenter` with a read-modify-write. These are two
+    /// independent Tasks on the cooperative pool, so without serialisation two
+    /// resumptions can each read the SAME pre-write segmenter state, both satisfy the
+    /// `.arming` guard, and both emit `.onset` — the "multiple wheelies start at once"
+    /// symptom. The lock makes the read-modify-write atomic; the critical section is
+    /// ~200 µs against a 10 ms sample budget.
+    private func startSensorTasks() {
         motionService.start()
         speedService.start()
-        cueRenderer?.start()
 
-        // Both sensor streams funnel through `processSample`, which mutates the
-        // value-type `EventSegmenter` with a read-modify-write. These are two
-        // independent Tasks on the cooperative pool, so without serialisation two
-        // resumptions can each read the SAME pre-write segmenter state, both
-        // satisfy the `.arming` guard, and both emit `.onset` — which is the
-        // "multiple wheelies start at the same time" symptom. The lock makes the
-        // read-modify-write atomic; the critical section is ~200 µs against a
-        // 10 ms sample budget.
         motionTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.motionService.samples {
@@ -181,12 +138,73 @@ final class RunRecorder: @unchecked Sendable {
                 self.processLock.unlock()
             }
         }
+    }
+
+    /// Start the sensor stream WITHOUT a recording pipeline, so calibration (and the
+    /// swipe that follows) can run before an alignment exists. `processSample` feeds
+    /// every raw IMU sample to `CalibrationService` and then early-returns on the nil
+    /// pipeline, so nothing is scored or stored yet. `startSession` later promotes
+    /// this same running stream to a full recording session — the stream is never
+    /// started twice.
+    func startSensing(bikeProfileID: UUID) {
+        guard recordingState == .idle else { return }
+        self.bikeProfileID = bikeProfileID
+        self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
+        startSensorTasks()
+        recordingState = .sensing
+        log.info("Sensing started (calibration phase) for bike \(bikeProfileID)")
+    }
+
+    func startSession(bikeProfileID: UUID,
+                      mountAlignment: MountAlignment,
+                      angleTarget: MetricRange) {
+        // Reachable from .idle (no prior sensing) OR .sensing (calibration ran
+        // first, the normal path). Refuse only if already recording.
+        guard recordingState != .running else { return }
+
+        self.bikeProfileID = bikeProfileID
+        self.angleTarget = angleTarget
+        self.sessionStartDate = Date()
+        self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
+        self.collectedSamples = []
+        self.sampleCount = 0
+        self.lastCalibrationID = calibrationService.estimate?.id
+
+        // Initialize pipeline with the calibration result. In the beta flow the
+        // rider cannot reach this screen until calibration has completed and the
+        // swipe alignment is captured, so both are present.
+        pipeline = Pipeline(
+            config: config,
+            alignment: mountAlignment,
+            initialBias: calibrationService.estimate,
+            gravityAnchor: calibrationService.estimate?.measuredGravity,
+            sink: DiagnosticLog.shared
+        )
+
+        // Raw recorder — full-rate unprocessed trace for desk replay (default ON).
+        if rawRecordingEnabled {
+            let rec = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID)
+            rawRecorder = rec
+            diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
+                        level: .info, message: "raw recorder started", values: [:])
+        }
+
+        // Initialize downstream stages
+        segmenter = EventSegmenter(config: config)
+        scorer = RunScorer(config: config)
+
+        // Start the sensor stream only if sensing did not already start it during
+        // the calibration phase — otherwise the tasks are already draining.
+        if recordingState != .sensing {
+            startSensorTasks()
+        }
+        cueRenderer?.start()
 
         recordingState = .running
         log.info("Recording session started for bike \(bikeProfileID)")
         diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
                     level: .info, message: "session started",
-                    values: ["hasInitialBias": calibrationService.currentEstimate == nil ? 0 : 1])
+                    values: ["hasInitialBias": calibrationService.estimate == nil ? 0 : 1])
 
         // Watchdog: if no sample has arrived shortly after starting, the sensor
         // path is genuinely broken — denied permission, missing hardware, or a
@@ -269,7 +287,6 @@ final class RunRecorder: @unchecked Sendable {
         }
 
         pipeline = nil
-        cueEngine = nil
         segmenter = nil
         scorer = nil
         recordingState = .idle
@@ -286,57 +303,23 @@ final class RunRecorder: @unchecked Sendable {
     // MARK: - Sample processing
 
     private func processSample(_ sample: Sample) {
+        // Raw trace and calibration run BEFORE the pipeline guard, so they work
+        // during the sensing-only phase (calibration + swipe) when `pipeline` is
+        // still nil. The rider is calibrating precisely when there is no pipeline yet.
+        rawRecorder?.record(sample)
+        if case .imu(let imu) = sample {
+            calibrationService.feedIMU(imu)
+        }
+
+        // No pipeline until the swipe is confirmed and `startSession` builds it.
+        // During calibration + swipe this is the normal, expected early return.
         guard var pipe = pipeline else { return }
 
-        // Raw trace FIRST — record the unprocessed sample exactly as it arrived,
-        // before any pipeline transformation. The recorder only buffers (no inline
-        // I/O), so this stays off the sensor thread's critical path.
-        rawRecorder?.record(sample)
-
-        // Feed raw IMU to calibration service for ongoing zeroing
-        if case .imu(let imu) = sample, let bikeID = bikeProfileID {
-            calibrationService.feedIMU(imu, bikeProfileID: bikeID)
-        }
-
-        // A COMPLETED calibration re-establishes the zero reference. The rider has
-        // just held the bike still and, in doing so, declared this pose to be level,
-        // so the angle must read 0 afterwards. Anchoring is one-shot per filter
-        // otherwise, which left the reported angle referenced to whenever the session
-        // first saw a still sample — zeroing the instrument changed nothing.
-        // Adopting a new estimate is the completion signal: `tracker.adopt` only runs
-        // on `.done`, giving `currentEstimate` a fresh id.
-        let calibrationID = calibrationService.currentEstimate?.id
-        if calibrationID != lastCalibrationID {
-            lastCalibrationID = calibrationID
-            if let estimate = calibrationService.currentEstimate {
-                // ...but a re-anchor is not free: it resets the rider's reported
-                // angle to zero. A device log shows seven calibrations in one session
-                // all measuring the SAME bias to three decimals, so six of the seven
-                // re-anchors changed nothing except to yank the angle back to 0
-                // mid-ride. Adopt-and-re-anchor only when the rider asked (the pill
-                // is a statement about the zero reference) or when the bias actually
-                // moved by more than its own repeatability.
-                let userAsked = calibrationService.adoptedEstimateWasUserRequested
-                let delta = lastAnchoredBias.map { (estimate.bias - $0).magnitude }
-                let material = delta.map { $0 > config.reanchorBiasDelta } ?? true
-                let degPerSec = 180.0 / Double.pi
-                if userAsked || material {
-                    lastAnchoredBias = estimate.bias
-                    pipe.requestReanchor()
-                    log.info("Calibration adopted — re-anchoring attitude and bike axes")
-                    diag.always(time: sample.time, level: .info,
-                                message: "re-anchor requested (calibration adopted)",
-                                values: ["userAsked": userAsked ? 1 : 0,
-                                         "biasDeltaDegPerSec": (delta ?? .infinity) * degPerSec,
-                                         "thresholdDegPerSec": config.reanchorBiasDelta * degPerSec])
-                } else {
-                    diag.always(time: sample.time, level: .info,
-                                message: "re-anchor suppressed (bias unchanged)",
-                                values: ["biasDeltaDegPerSec": (delta ?? 0) * degPerSec,
-                                         "thresholdDegPerSec": config.reanchorBiasDelta * degPerSec])
-                }
-            }
-        }
+        // No mid-ride re-anchor block: in the calibrate-once flow calibration
+        // COMPLETES before the pipeline is built, and the pipeline is born anchored
+        // from the estimate's gravity vector (see `startSession`). There is no
+        // adopt-a-new-estimate-mid-session path to react to, so the seven-re-anchors
+        // -in-one-session bug that block guarded against cannot occur.
 
         // Run through pipeline
         guard let output = pipe.process(sample) else {
@@ -356,7 +339,6 @@ final class RunRecorder: @unchecked Sendable {
                                 values: ["samples": Double(sampleCount),
                                          "batch": Double(batchCount),
                                          "pitchDeg": output.pitch * 180 / .pi,
-                                         "gateOpen": output.gateOpen ? 1 : 0,
                                          "rawLogBytes": Double(rawLogSizeBytes)])
         if emitted { batchCount = 0 }
 
@@ -367,27 +349,16 @@ final class RunRecorder: @unchecked Sendable {
         liveSpeedAvailable = output.speed != nil
         liveSpeed = (output.speed ?? 0) * 3.6
         liveVibration = output.vibration
-        liveGateOpen = output.gateOpen
 
-        // Feed calibration pipeline-level tracking
-        if let bikeID = bikeProfileID {
-            calibrationService.process(output, bikeProfileID: bikeID)
-        }
-
-        // Cue engine — drives liveCueState for the UI only. Its loopOut/urgency
-        // are pitch-RATE derived and deliberately do not reach the audio: a fast
-        // flick up at a low angle is not a steep wheelie, and hearing the tone
-        // during the run-up reads as a false alarm.
-        if var cue = cueEngine {
-            let cueState = cue.process(pitch: output.pitch,
-                                       pitchRate: output.pitchRate,
-                                       time: output.time)
-            cueEngine = cue
-            liveCueState = cueState
-        }
+        // No calibrationService.process(output): the beta pipeline has no live gate,
+        // and calibration is driven directly by feedIMU above. Pipeline output no
+        // longer carries a gate verdict to track.
 
         // Warning tone: beep rate, carrier pitch and volume all rise with the
-        // live ANGLE alone; solid tone past the limit angle.
+        // live ANGLE alone; solid tone past the limit angle. The predictive
+        // CueEngine that once also drove a UI badge was removed — it read pitch
+        // RATE, never reached the speaker, and was dead weight once the cue was
+        // decided as angle-only.
         cueRenderer?.update(pitchDegrees: livePitch)
 
         // Event segmenter
@@ -470,7 +441,7 @@ final class RunRecorder: @unchecked Sendable {
               let onset = eventOnsetTime,
               let angleTarget = angleTarget,
               let bikeID = bikeProfileID,
-              let calibID = calibrationService.currentEstimate?.id else {
+              let calibID = calibrationService.estimate?.id else {
             log.warning("Cannot finalize event — missing session context")
             return
         }
@@ -483,14 +454,28 @@ final class RunRecorder: @unchecked Sendable {
         let onsetElapsed = onset - sessionStart
         let endElapsed = endTime - sessionStart
 
-        let windowed = collectedSamples
+        var windowed = collectedSamples
             .filter { $0.elapsed >= onsetElapsed && $0.elapsed <= endElapsed }
             .map { sample in
                 TelemetrySample(id: sample.id,
                                 elapsed: sample.elapsed - onsetElapsed,
                                 angleDegrees: sample.angleDegrees,
+                                blurredAngleDegrees: nil,
                                 speedKPH: sample.speedKPH)
             }
+
+        // Jitter blur: the recorded-run cleaner. Zero-phase, so it removes vibration
+        // wiggle without shifting the curve in time. It does NOT correct drift — see
+        // JitterBlur — and cannot fail destructively; a run too short to blur simply
+        // keeps raw values and is flagged so it is never shown as if it were cleaned.
+        var flags: QualityFlags = []
+        let rawAngles = windowed.map(\.angleDegrees)
+        switch JitterBlur(config: config).blur(rawAngles) {
+        case .success(let blurred):
+            for i in windowed.indices { windowed[i].blurredAngleDegrees = blurred[i] }
+        case .failure:
+            flags.insert(.smoothingUnavailable)
+        }
 
         // Both dates now share the onset origin, so `WheelieRun.duration` is the
         // ATTEMPT length. Previously `startedAt` was the session start while `endedAt`
@@ -509,7 +494,8 @@ final class RunRecorder: @unchecked Sendable {
                 speedTarget: MetricRange(lower: 0, upper: 100),
                 speedGaugeMaximum: 100,
                 calibrationID: calibID
-            )
+            ),
+            qualityFlags: flags
         )
 
         repository.save(run)

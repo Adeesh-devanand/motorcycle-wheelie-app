@@ -50,8 +50,25 @@ import Foundation
 /// MAGNITUDE is orientation-invariant at rest, so the anchor's old magnitude-only test
 /// could not reject a tilt, and a 29.3 deg hand-held pose became the definition of
 /// level for 12 s.
+///
+/// v5 -> v6: the estimator was REPLACED, not made switchable. The gated ESKF, the
+/// RTS smoother, the delayed-state GNSS correction and the grade baseline are gone
+/// from this branch; the live path is raw gyro debiased by a constant measured once
+/// at calibration. There is deliberately no mode flag: a switch with one live case
+/// is the dead code path this deletion existed to remove, and `version` already
+/// tells a log which estimator produced it. Added `calibrationVibrationLimit`,
+/// which unlike the reporting-only `calibrationVibrationThreshold` actually REJECTS
+/// a sample: specific-force magnitude is AC-blind, so engine buzz swings |f|
+/// direction violently while its mean stays at 1 g, and a vibration-corrupted
+/// gravity anchor would otherwise become the permanent reference for a whole
+/// session. Added `alignmentConfidenceMin` for the swipe capture's degeneracy test,
+/// the cue's enter/exit pair and deadband (a single threshold with no latch chatters
+/// at exactly the angle every wheelie starts at), and the jitter-blur window.
+/// Changed defaults: `eventMinDuration` 0.4 -> 1.0 s, `biasCalibrationDuration`
+/// 8.0 -> 2.0 s.
+
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 5
+    public var version: Int = 6
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -167,33 +184,6 @@ public struct Config: Codable, Sendable, Equatable {
     /// not about the bias at all.
     public var reanchorBiasDelta: Double = 0.01 * .pi / 180     // rad/s
 
-
-    /// as `|f.z| / |f|` — i.e. `cos(max tilt)`. 0.94 is about 20 deg.
-    ///
-    /// The anchor used to test specific-force MAGNITUDE alone, which cannot work:
-    /// magnitude at rest is g at *every* orientation, so the test is structurally
-    /// blind to exactly the error it was there to catch. A device log has a 29.3 deg
-    /// hand-held pose (`|f|` = 9.817, squarely inside the band) accepted as level,
-    /// after which the app reported a constant -27.87 deg while standing still.
-    ///
-    /// Deliberately loose: at 20 deg it tolerates any plausible cradle angle and only
-    /// rejects a pose no one would call level. The validity gate supplies the
-    /// quiescence test; this supplies the one thing the gate does not check.
-    public var anchorLevelCosine: Double = 0.94                 // cos(~20 deg)
-
-    // MARK: - Zero / baseline
-    // Blend slowly so a brief false gate-open cannot yank the reference. Road
-    // grade is absorbed by the long time constant. The baseline is FROZEN while
-    // the gate is closed — a 25 s time constant would otherwise eat a 10 s hold.
-    public var baselineTimeConstant: TimeInterval = 25.0
-
-    // MARK: - Accelerometer low-pass
-    // Signal of interest is DC..3 Hz; engine vibration is 30..200 Hz. NOTE: this
-    // does NOT fix aliasing — at 100 Hz sampling a twin at 6000 rpm folds to DC
-    // and the information is already destroyed. Aliasing is attenuated
-    // MECHANICALLY, at the mount.
-    public var accelLowPassCutoff: Double = 5.0                // Hz
-
     // MARK: - Cue engine
     // Fire on time-to-threshold, not on crossing it: angle is a lagging indicator
     // and by the time you cross you are committed.
@@ -207,6 +197,20 @@ public struct Config: Codable, Sendable, Equatable {
     /// A sounding tone persists until its condition has been false this long.
     /// Without it a tone chatters on and off across the boundary at 100 Hz.
     public var cueReleaseTime: TimeInterval = 0.15
+    /// Tone starts at this pitch. Matches `eventEntryPitch` so the audio and the
+    /// segmenter agree on what counts as up.
+    public var cueEnterPitch: Double = 10.0 * .pi / 180        // rad
+    /// Tone stops at this pitch — deliberately BELOW `cueEnterPitch`, so the gate
+    /// latches. `CueAudioRenderer` shipped with one 10 deg comparison and no
+    /// latched state, and 10 deg is exactly where every wheelie begins, so
+    /// vibration toggled the tone on and off through the boundary. This is the
+    /// same defect as `eventExitPitch` solves one layer up.
+    public var cueExitPitch: Double = 7.0 * .pi / 180          // rad
+    /// The tone ignores pitch changes smaller than this, so it tracks the wheelie
+    /// rather than the vibration. Starting guess; owed a number from real ride
+    /// data. The renderer's one-pole audio glides do NOT substitute — they smooth
+    /// the tone, not the decision, so a flapping decision still flaps.
+    public var cueDeadband: Double = 0.5 * .pi / 180           // rad
 
     // MARK: - Event segmentation
     public var eventEntryPitchRate: Double = 15.0 * .pi / 180  // rad/s
@@ -222,7 +226,14 @@ public struct Config: Codable, Sendable, Equatable {
     public var eventExitPitch: Double = 7.0 * .pi / 180        // rad
     public var eventEntryDwell: TimeInterval = 0.15
     public var eventExitDwell: TimeInterval = 0.25
-    public var eventMinDuration: TimeInterval = 0.4
+    /// 1.0 s. An event shorter than this is DISCARDED, not shortened: a curb lip
+    /// or a loft over a crest is not a wheelie and must not reach a leaderboard.
+    /// Raised from 0.4 s deliberately — it rejects more borderline pop-ups at the
+    /// cost of discarding genuine-but-very-short lofts, which is the right trade
+    /// for a leaderboard that should only show real holds. Note this is a REJECT,
+    /// not a delay: samples buffer from the interpolated 10 deg crossing, so the
+    /// committed event's metrics see the entry ramp where a real peak can occur.
+    public var eventMinDuration: TimeInterval = 1.0
     /// Deadband on pitch rate when locating the hold window's boundaries, so
     /// vibration does not produce spurious zero crossings.
     public var holdRateEpsilon: Double = 1.0 * .pi / 180       // rad/s
@@ -232,7 +243,14 @@ public struct Config: Codable, Sendable, Equatable {
     // ~0.002 deg/s, but self-heating walks it ~0.1 deg/s over 30 min, which is a
     // whole degree over a 10 s hold. So: track bias age and degrade reported
     // confidence with it.
-    public var biasCalibrationDuration: TimeInterval = 8.0
+    /// 2.0 s of continuously-clean stillness. Shortened from 8.0 s for the beta,
+    /// and the arithmetic supports it: at `gyroNoiseDensity` 0.004 deg/s/sqrt(Hz)
+    /// and 100 Hz, per-sample sigma is ~0.028 deg/s, so the standard error over
+    /// 200 samples is ~0.002 deg/s — far inside `biasSigmaLimit` (0.05 deg/s).
+    /// It is thinner against low-frequency wander, which is what 8 s was guarding;
+    /// `biasSigmaLimit` still gates the result, so a bad window FAILS rather than
+    /// passing quietly.
+    public var biasCalibrationDuration: TimeInterval = 2.0
     public var biasStaleAfter: TimeInterval = 300.0            // seconds
     /// How long a zeroing attempt may fail to open the gate before it gives up
     /// and tells the rider why, rather than spinning indefinitely.
@@ -271,45 +289,7 @@ public struct Config: Codable, Sendable, Equatable {
     public var thermalBiasNoiseScale: [Double] = [1.0, 2.0, 4.0, 8.0]
 
     // MARK: - Sensor noise
-    // PLACEHOLDERS until `motolog allan` output replaces them (task T2.4).
-    // Read ARW off the -1/2 slope at tau=1 s and bias instability off the flat
-    // minimum divided by 0.664. These are priors for Q/R, never shipped truth:
-    // consumer MEMS varies unit to unit, so bias is still estimated live.
-    public var gyroNoiseDensity: Double = 0.004 * .pi / 180    // rad/s/sqrt(Hz)
     public var gyroBiasInstability: Double = 3.0 * .pi / 180 / 3600 // rad/s
-    public var accelNoiseDensity: Double = 100e-6 * 9.80665    // m/s^2/sqrt(Hz)
-
-    // MARK: - Estimator
-    /// Accelerometer measurement-noise multiplier when the gate is closed but the
-    /// specific-force magnitude is still near g.
-    public var accelNoiseInflation: Double = 100.0
-    /// Multiplier when the magnitude is also out of band. Inflating rather than
-    /// dropping keeps the filter continuous: a hard on/off schedule injects a
-    /// covariance step every time a bump closes the gate, and steps are what make
-    /// an angle readout jump.
-    public var accelNoiseInflationDynamic: Double = 10_000.0
-    /// Linear-acceleration content above which inflation applies.
-    public var accelDynamicThreshold: Double = 0.1 * 9.80665   // m/s^2
-    /// Depth of the delayed-state ring used to apply a GNSS fix at its own
-    /// fixTime and re-propagate forward. A fix older than this is discarded and
-    /// counted.
-    public var delayedStateWindow: TimeInterval = 2.0
-    /// GNSS pitch aiding is suppressed during an event and within this margin of
-    /// one: at 1 Hz it cannot track a 1.2 s ramp, and a Doppler difference
-    /// straddling onset is meaningless. Its job is bias containment before the
-    /// event, not tracking during it.
-    public var gnssAidingEventMargin: TimeInterval = 1.0
-    /// Fixes worse than this are not used for aiding.
-    public var gnssMaxSpeedAccuracy: Double = 0.5              // m/s
-
-    // MARK: - Smoother
-    /// Margin either side of an event for the RTS window. Whole-session smoothing
-    /// would cost ~75 MB of transient state for no benefit: RTS information decays
-    /// over a few filter time constants.
-    public var smootherWindowMargin: TimeInterval = 10.0
-    /// Gate-open samples required AFTER an event before it can be smoothed. The
-    /// backward pass has nothing to propagate without a post-event gravity anchor.
-    public var smootherMinAnchorSamples: Int = 200
 
     // MARK: - Metrics
     /// Below this many GNSS fixes inside an event, distance reports nil rather
@@ -354,17 +334,60 @@ public struct Config: Codable, Sendable, Equatable {
     /// measurement never defended against the case that can actually hurt, and
     /// blocked the case that cannot.
     public var calibrationVibrationThreshold: Double = 0.1  // m/s^2
+    /// Standard deviation of |specific force| above which the gate REJECTS a
+    /// sample, m/s^2. Distinct from `calibrationVibrationThreshold` above, which is
+    /// reporting-only; this one actually closes the gate.
+    ///
+    /// It exists because the note above is right about averaging and wrong about
+    /// this being harmless. Averaging removes zero-mean vibration from the GYRO
+    /// mean, yes — but calibration also produces the GRAVITY anchor, and the
+    /// accelerometer's specific-force magnitude is AC-blind: engine buzz swings the
+    /// force DIRECTION violently while |f| averages to almost exactly 1 g, so
+    /// in-band vibration passes the band test untouched. The resulting tilted
+    /// `gHat` becomes the permanent reference for every pitch reading in the
+    /// session, with no way to detect it afterwards. `magnitudeStdDev` sees it
+    /// regardless of what frequency it aliased down from, including DC.
+    ///
+    /// Set BELOW the calibration band (+/-0.10 g = 0.98 m/s^2) to be reachable.
+    /// Starting value; owed a number from real idle-and-blip data.
+    public var calibrationVibrationLimit: Double = 0.35     // m/s^2
     /// Runs whose reported uncertainty exceeds these are marked lowConfidence and
     /// excluded from personal bests.
     public var liveSigmaLimit: Double = 3.0 * .pi / 180        // rad
-    public var smoothedSigmaLimit: Double = 1.5 * .pi / 180    // rad
 
     // MARK: - Mount alignment
-    /// Gesture (b) must reach this longitudinal acceleration or alignment is
-    /// rejected with a request for a harder pull.
-    public var alignmentMinPullAccel: Double = 0.25 * 9.80665  // m/s^2
-    /// Maximum tolerated non-orthogonality between the solved axes.
-    public var alignmentMaxResidual: Double = 5.0 * .pi / 180  // rad
+
+    /// Minimum |p| for a swipe-derived alignment, where p is the swipe direction
+    /// with its gravity component removed. Below this the swipe carried NO yaw
+    /// information and the naive answer is not noisy but 90 deg WRONG — it returns
+    /// the bike's lateral axis, which puts the entire wheelie angle into the roll
+    /// channel. So the solve refuses and the caller takes the screen-normal branch.
+    ///
+    /// |p| = sin(angle between the swipe and gravity), so 0.35 is about 20 deg of
+    /// separation. It is not an extra calculation: it is the norm of the vector the
+    /// solve already had to compute.
+    public var alignmentConfidenceMin: Double = 0.35
+
+    // MARK: - Jitter blur (beta recorded runs)
+    /// Width of the zero-phase blur window, in samples. Must be ODD so the window
+    /// is centred; an even width would shift the series in time, which is the one
+    /// thing this filter exists not to do.
+    ///
+    /// 9 samples at 100 Hz is 90 ms — comfortably shorter than the fastest real
+    /// pitch dynamics (DC-3 Hz) and long enough to average down vibration jitter.
+    /// Too narrow leaves jitter; too wide starts eating the real peak. Owed a
+    /// number from real ride data.
+    public var blurWindowSamples: Int = 9
+    /// Below this many samples an event is stored RAW with
+    /// `QualityFlags.smoothingUnavailable` set, rather than blurred with a window
+    /// wider than the data.
+    public var blurMinSamples: Int = 25
+
+    // MARK: - Barometer
+    /// Dynamic-pressure coefficient for the barometer channel, calibrated per mount.
+    /// Unused by the estimator — grade is not corrected at all in this build — but the
+    /// channel stays in the wire format, so its coefficient stays with it.
+    public var baroDynamicPressureK: Double = 0.0
 
     // MARK: - Logging and display
     public var nominalSampleRate: Double = 100.0               // Hz
@@ -385,12 +408,6 @@ public struct Config: Codable, Sendable, Equatable {
     public var gyroFullScale: Double = 2000.0 * .pi / 180      // rad/s
     public var accelFullScale: Double = 16.0 * 9.80665         // m/s^2
 
-    // MARK: - Barometer
-    /// Dynamic-pressure coefficient, calibrated per mount position. Unused in
-    /// v1: grade comes from the gate-open pitch baseline instead, because this
-    /// needs a per-mount calibration procedure we do not have. The channel is
-    /// still logged.
-    public var baroDynamicPressureK: Double = 0.0
 
     public init() {}
 
@@ -416,19 +433,18 @@ public struct Config: Codable, Sendable, Equatable {
         gateMaxRotationRate   = try get(.gateMaxRotationRate, d.gateMaxRotationRate)
         gateDwell             = try get(.gateDwell, d.gateDwell)
         gateCloseConfirm      = try get(.gateCloseConfirm, d.gateCloseConfirm)
-        anchorLevelCosine     = try get(.anchorLevelCosine, d.anchorLevelCosine)
         calibrationSpecificForceLow  = try get(.calibrationSpecificForceLow, d.calibrationSpecificForceLow)
         calibrationSpecificForceHigh = try get(.calibrationSpecificForceHigh, d.calibrationSpecificForceHigh)
         calibrationMaxRotationRate   = try get(.calibrationMaxRotationRate, d.calibrationMaxRotationRate)
         reanchorBiasDelta     = try get(.reanchorBiasDelta, d.reanchorBiasDelta)
 
-        baselineTimeConstant  = try get(.baselineTimeConstant, d.baselineTimeConstant)
-        accelLowPassCutoff    = try get(.accelLowPassCutoff, d.accelLowPassCutoff)
-
         timeToThresholdWarn      = try get(.timeToThresholdWarn, d.timeToThresholdWarn)
         audioLatencyCompensation = try get(.audioLatencyCompensation, d.audioLatencyCompensation)
         loopOutPitchRate         = try get(.loopOutPitchRate, d.loopOutPitchRate)
         cueReleaseTime           = try get(.cueReleaseTime, d.cueReleaseTime)
+        cueEnterPitch            = try get(.cueEnterPitch, d.cueEnterPitch)
+        cueExitPitch             = try get(.cueExitPitch, d.cueExitPitch)
+        cueDeadband              = try get(.cueDeadband, d.cueDeadband)
 
         eventEntryPitchRate = try get(.eventEntryPitchRate, d.eventEntryPitchRate)
         eventEntryPitch     = try get(.eventEntryPitch, d.eventEntryPitch)
@@ -445,19 +461,7 @@ public struct Config: Codable, Sendable, Equatable {
         biasGateGracePeriod     = try get(.biasGateGracePeriod, d.biasGateGracePeriod)
         thermalBiasNoiseScale   = try get(.thermalBiasNoiseScale, d.thermalBiasNoiseScale)
 
-        gyroNoiseDensity     = try get(.gyroNoiseDensity, d.gyroNoiseDensity)
         gyroBiasInstability  = try get(.gyroBiasInstability, d.gyroBiasInstability)
-        accelNoiseDensity    = try get(.accelNoiseDensity, d.accelNoiseDensity)
-
-        accelNoiseInflation        = try get(.accelNoiseInflation, d.accelNoiseInflation)
-        accelNoiseInflationDynamic = try get(.accelNoiseInflationDynamic, d.accelNoiseInflationDynamic)
-        accelDynamicThreshold      = try get(.accelDynamicThreshold, d.accelDynamicThreshold)
-        delayedStateWindow         = try get(.delayedStateWindow, d.delayedStateWindow)
-        gnssAidingEventMargin      = try get(.gnssAidingEventMargin, d.gnssAidingEventMargin)
-        gnssMaxSpeedAccuracy       = try get(.gnssMaxSpeedAccuracy, d.gnssMaxSpeedAccuracy)
-
-        smootherWindowMargin     = try get(.smootherWindowMargin, d.smootherWindowMargin)
-        smootherMinAnchorSamples = try get(.smootherMinAnchorSamples, d.smootherMinAnchorSamples)
 
         distanceMinFixes = try get(.distanceMinFixes, d.distanceMinFixes)
 
@@ -468,20 +472,23 @@ public struct Config: Codable, Sendable, Equatable {
         highFreqRMSThreshold = try get(.highFreqRMSThreshold, d.highFreqRMSThreshold)
         calibrationVibrationThreshold = try get(.calibrationVibrationThreshold,
                                                    d.calibrationVibrationThreshold)
+        calibrationVibrationLimit = try get(.calibrationVibrationLimit,
+                                               d.calibrationVibrationLimit)
         liveSigmaLimit       = try get(.liveSigmaLimit, d.liveSigmaLimit)
-        smoothedSigmaLimit   = try get(.smoothedSigmaLimit, d.smoothedSigmaLimit)
 
-        alignmentMinPullAccel = try get(.alignmentMinPullAccel, d.alignmentMinPullAccel)
-        alignmentMaxResidual  = try get(.alignmentMaxResidual, d.alignmentMaxResidual)
+        alignmentConfidenceMin = try get(.alignmentConfidenceMin, d.alignmentConfidenceMin)
+
+        blurWindowSamples = try get(.blurWindowSamples, d.blurWindowSamples)
+        blurMinSamples    = try get(.blurMinSamples, d.blurMinSamples)
 
         nominalSampleRate     = try get(.nominalSampleRate, d.nominalSampleRate)
         displayDecimationRate = try get(.displayDecimationRate, d.displayDecimationRate)
         writerRingCapacity    = try get(.writerRingCapacity, d.writerRingCapacity)
         fsyncInterval         = try get(.fsyncInterval, d.fsyncInterval)
         syncFlashFrames       = try get(.syncFlashFrames, d.syncFlashFrames)
+        baroDynamicPressureK  = try get(.baroDynamicPressureK, d.baroDynamicPressureK)
         gyroFullScale         = try get(.gyroFullScale, d.gyroFullScale)
         accelFullScale        = try get(.accelFullScale, d.accelFullScale)
 
-        baroDynamicPressureK = try get(.baroDynamicPressureK, d.baroDynamicPressureK)
     }
 }

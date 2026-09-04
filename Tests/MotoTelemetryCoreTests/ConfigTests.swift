@@ -22,7 +22,7 @@ final class ConfigTests: XCTestCase {
                        "encode→decode→encode→decode must be stable")
     }
 
-    func testVersionIsFour() {
+    func testVersionIsCurrent() {
         // v4: calibration's validity gate got its own, wider specific-force band
         // (+/-0.03 g -> +/-0.10 g) so the gate stops flapping ~25x/s on a handled or
         // idling bike; the bias mean is unaffected because that band is an
@@ -31,7 +31,16 @@ final class ConfigTests: XCTestCase {
         // there feeds the 16.7 deg phantom angle into the gravity update. Rotation
         // ceiling 3 -> 5 deg/s, shared. Added `anchorLevelCosine`, since a
         // magnitude-only anchor test cannot reject a tilt at all.
-        XCTAssertEqual(Config().version, 5)
+        //
+        // v5 -> v6: added the beta "calibrate-once" estimator as a selectable mode
+        // (`estimatorMode`, `driftCompensation`), the GATING vibration limit
+        // `calibrationVibrationLimit` — distinct from the reporting-only threshold,
+        // because |f| magnitude is AC-blind and an idling engine passes the band test
+        // untouched — the swipe alignment's `alignmentConfidenceMin`, the cue's
+        // enter/exit pair and deadband, and the jitter-blur window. Two defaults
+        // changed: `eventMinDuration` 0.4 -> 1.0 s and `biasCalibrationDuration`
+        // 8.0 -> 2.0 s.
+        XCTAssertEqual(Config().version, 6)
     }
 
     func testExitThresholdMatchesTheUISpec() {
@@ -87,10 +96,13 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(decoded.eventExitPitch * 180 / .pi, 4.0, accuracy: 1e-9,
                        "a v1 log must re-score under the thresholds that "
                        + "produced it when replayed with its own header config")
-        // Fields it never had take current defaults.
+        // Fields it never had take current defaults. (`accelNoiseInflation` used to
+        // stand here; it was deleted with the ESKF path, so this now checks a
+        // surviving field — the property under test is the fallback, not the field.)
         XCTAssertEqual(decoded.eventEntryDwell, Config().eventEntryDwell)
         XCTAssertEqual(decoded.eventExitDwell, Config().eventExitDwell)
-        XCTAssertEqual(decoded.accelNoiseInflation, Config().accelNoiseInflation)
+        XCTAssertEqual(decoded.calibrationVibrationLimit,
+                       Config().calibrationVibrationLimit)
         XCTAssertEqual(decoded.writerRingCapacity, Config().writerRingCapacity)
         XCTAssertEqual(decoded.thermalBiasNoiseScale, Config().thermalBiasNoiseScale)
     }

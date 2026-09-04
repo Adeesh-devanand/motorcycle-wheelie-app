@@ -61,7 +61,7 @@ struct TargetRangeEditor: View {
     private var speedSlider: some View {
         DualThumbSlider(
             label: "Speed Target",
-            unit: preferences.speedUnit == .kph ? "km/h" : "mph",
+            unit: "km/h",
             lower: Binding(
                 get: { preferences.speedTarget.lower },
                 set: { newLower in

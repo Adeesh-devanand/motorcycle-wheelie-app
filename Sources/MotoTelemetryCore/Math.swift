@@ -62,4 +62,35 @@ public struct Quaternion: Equatable, Codable, Sendable {
         let s = sin(half) / theta
         return Quaternion(w: cos(half), x: r.x*s, y: r.y*s, z: r.z*s)
     }
+
+    /// The minimal rotation taking `from` onto `to`.
+    ///
+    /// This is the gravity anchor: handed a body-frame specific force and world
+    /// gravity, it yields the body->world attitude that makes the two agree. It fixes
+    /// TILT only and leaves heading arbitrary, which is exactly right — heading is
+    /// unobservable from gravity, and pitch is read as the elevation of a single axis,
+    /// which does not depend on which compass direction that axis points.
+    ///
+    /// Moved here from the deleted `LinearAlgebra.swift`, whose Matrix3/Matrix6/
+    /// Symmetric6 types existed only to carry the ESKF's covariance and died with it.
+    /// This function was the one part of that file with a surviving caller.
+    ///
+    /// Both degenerate cases are handled rather than left to produce NaN: parallel
+    /// inputs give identity, and antiparallel ones have no unique axis, so a stable
+    /// perpendicular is chosen instead of normalizing a zero cross product.
+    public static func rotation(from: Vector3, to: Vector3) -> Quaternion {
+        let a = from.normalized
+        let b = to.normalized
+        let dot = max(-1, min(1, a.dot(b)))
+
+        if dot > 1 - 1e-12 { return .identity }
+        if dot < -1 + 1e-12 {
+            var axis = Vector3(1, 0, 0).cross(a)
+            if axis.magnitude < 1e-6 { axis = Vector3(0, 1, 0).cross(a) }
+            return Quaternion.exp(rotationVector: axis.normalized * Double.pi)
+        }
+        let axis = a.cross(b)
+        let angle = acos(dot)
+        return Quaternion.exp(rotationVector: axis.normalized * angle).normalized
+    }
 }

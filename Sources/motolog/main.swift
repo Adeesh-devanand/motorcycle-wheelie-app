@@ -11,9 +11,7 @@ func usage() -> Never {
 
     replay options:
       --config <file>       override Config from a JSON file
-      --stages <out.ndjson> dump per-sample PipelineOutput
-      --cues                print cue timeline
-      --json                output in JSON format
+      --stages <out.ndjson> dump per-sample PipelineOutput      --json                output in JSON format
 
     """.utf8))
     exit(2)
@@ -51,7 +49,6 @@ case "replay":
     // Parse optional flags
     var configOverridePath: String?
     var stagesOutputPath: String?
-    var showCues = false
     var jsonOutput = false
 
     var i = 2
@@ -70,10 +67,7 @@ case "replay":
                 FileHandle.standardError.write(Data("error: --stages requires a path\n".utf8))
                 exit(1)
             }
-            stagesOutputPath = args[i]
-        case "--cues":
-            showCues = true
-        case "--json":
+            stagesOutputPath = args[i]        case "--json":
             jsonOutput = true
         default:
             FileHandle.standardError.write(Data("error: unknown option '\(args[i])'\n".utf8))
@@ -117,20 +111,12 @@ case "replay":
     var segmenter = EventSegmenter(config: effectiveConfig)
     var scorer = RunScorer(config: effectiveConfig)
 
-    // CueEngine: use eventEntryPitch * 2.5 as default angle target upper bound (~25 deg)
+    // Upper bound of the in-range angle band reported by --intervals.
     let angleTargetUpper = effectiveConfig.eventEntryPitch * 2.5
-    var cueEngine = CueEngine(
-        angleTargetUpper: angleTargetUpper,
-        timeToThresholdWarn: effectiveConfig.timeToThresholdWarn,
-        audioLatencyCompensation: effectiveConfig.audioLatencyCompensation,
-        loopOutPitchRate: effectiveConfig.loopOutPitchRate,
-        cueReleaseTime: effectiveConfig.cueReleaseTime
-    )
 
     var source = ReplaySource(samples: items)
     var pipelineOutputs: [PipelineOutput] = []
     var events: [EventMetrics] = []
-    var cueTimeline: [(time: TimeInterval, cue: CueState)] = []
     var eventActive = false
     var lastSpeed: Double?
 
@@ -194,14 +180,6 @@ case "replay":
                             pitchRate: output.pitchRate,
                             roll: output.roll)
         }
-
-        // Cue engine
-        let cue = cueEngine.process(pitch: output.pitch,
-                                    pitchRate: output.pitchRate,
-                                    time: output.time)
-        if showCues && cue.tone != .silent {
-            cueTimeline.append((time: output.time, cue: cue))
-        }
     }
 
     stagesHandle?.closeFile()
@@ -223,12 +201,10 @@ case "replay":
         printJSON(header: header, config: effectiveConfig,
                   configOverride: configOverridePath != nil,
                   summary: summary, events: events,
-                  cueTimeline: showCues ? cueTimeline : nil,
                   intervals: intervals,
                   totalSamples: pipelineOutputs.count)
     } else {
         printText(summary: summary, events: events,
-                  cueTimeline: showCues ? cueTimeline : nil,
                   intervals: intervals,
                   totalSamples: pipelineOutputs.count)
     }
@@ -241,7 +217,6 @@ default:
 
 func printText(summary: SessionSummary,
                events: [EventMetrics],
-               cueTimeline: [(time: TimeInterval, cue: CueState)]?,
                intervals: [IntervalDetector.Interval],
                totalSamples: Int) {
     print("─── Session Summary ───")
@@ -287,20 +262,6 @@ func printText(summary: SessionSummary,
             print("    hold window:    \(e.holdWindowResolved ? "resolved" : "heuristic")")
         }
     }
-
-    if let timeline = cueTimeline, !timeline.isEmpty {
-        print("")
-        print("─── Cue Timeline ───")
-        for entry in timeline {
-            let tttStr: String
-            if let ttt = entry.cue.timeToThreshold {
-                tttStr = String(format: "ttt=%.3fs", ttt)
-            } else {
-                tttStr = "ttt=nil"
-            }
-            print("  \(String(format: "%8.3f", entry.time))s  \(entry.cue.tone.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0))  urgency=\(String(format: "%.2f", entry.cue.urgency))  \(tttStr)")
-        }
-    }
 }
 
 // MARK: - JSON output
@@ -338,13 +299,6 @@ struct ReplayOutput: Codable {
         var holdWindowResolved: Bool
     }
 
-    struct CueEntry: Codable {
-        var time: Double
-        var tone: String
-        var urgency: Double
-        var timeToThreshold: Double?
-    }
-
     struct IntervalInfo: Codable {
         var start: Double
         var end: Double
@@ -354,14 +308,12 @@ struct ReplayOutput: Codable {
     var header: HeaderInfo
     var summary: SummaryInfo
     var events: [EventInfo]
-    var cueTimeline: [CueEntry]?
     var intervals: [IntervalInfo]
 }
 
 func printJSON(header: LogHeader, config: Config,
                configOverride: Bool,
                summary: SessionSummary, events: [EventMetrics],
-               cueTimeline: [(time: TimeInterval, cue: CueState)]?,
                intervals: [IntervalDetector.Interval],
                totalSamples: Int) {
     let output = ReplayOutput(
@@ -394,14 +346,6 @@ func printJSON(header: LogHeader, config: Config,
                 distanceMeters: e.distance,
                 entrySpeedMps: e.entrySpeed,
                 holdWindowResolved: e.holdWindowResolved
-            )
-        },
-        cueTimeline: cueTimeline?.map { entry in
-            .init(
-                time: entry.time,
-                tone: entry.cue.tone.rawValue,
-                urgency: entry.cue.urgency,
-                timeToThreshold: entry.cue.timeToThreshold
             )
         },
         intervals: intervals.map { .init(start: $0.start, end: $0.end, duration: $0.duration) }

@@ -14,33 +14,59 @@ import Foundation
 /// downstream needs a rotation matrix or a frame convention of its own.
 
 public struct MountAlignment: Codable, Sendable, Equatable {
+    /// The only way a swipe capture can fail.
+    ///
+    /// A single case, because the swipe resolves every mount geometry it can be given:
+    /// a horizontal-ish swipe on a flat mount gives the chassis axis directly, and a
+    /// swipe along gravity on a vertical mount classifies the mount and routes to the
+    /// screen normal. What is left is the rider not drawing anything.
+    ///
+    /// This replaced `AlignmentSolver.Failure`. The two-gesture rest-plus-pull solve it
+    /// belonged to was deleted: it existed to handle mounts the swipe could not, and
+    /// once the vertical branch landed there were none, so it was a second capture
+    /// path that nothing would ever call.
+    public enum SwipeFailure: Error, Sendable, Equatable {
+        /// The gesture had no length — a tap, not a line — so there is no direction
+        /// to read. `atan2(0, 0)` would return an arbitrary 0 and silently claim the
+        /// bike faces along device +X.
+        case noSwipeDirection
+
+        public var message: String {
+            switch self {
+            case .noSwipeDirection:
+                return "Draw a line along the length of the bike, front to back."
+            }
+        }
+    }
+
     /// Bike forward, expressed in DEVICE axes.
     public var forwardInBody: Vector3
     /// Bike up, expressed in DEVICE axes.
     public var upInBody: Vector3
     /// Bike left, expressed in DEVICE axes. Stored for the roll channel.
     public var leftInBody: Vector3
-    /// Radians of non-orthogonality between the raw measured axes, before
-    /// Gram-Schmidt fixed it up. Large values mean one of the gestures was poor.
-    public var residual: Double
-    /// Peak longitudinal acceleration reached during the pull, m/s^2. The quality
-    /// of the FORWARD axis is entirely a function of this.
-    public var peakPullAcceleration: Double
     public var capturedAt: Date
     public var bikeProfileID: UUID
+    /// `|p|` from a swipe-derived capture: the fraction of the swipe that survived
+    /// projecting gravity out of it, equal to sin(angle between swipe and gravity).
+    /// 1.0 is a perfectly horizontal swipe; near 0 means the swipe carried no
+    /// heading information and the screen-normal fallback was used instead.
+    ///
+    /// Nil for every other capture path, which is why it is Optional rather than 0:
+    /// a two-gesture solve has no swipe, and 0 would falsely read as a degenerate
+    /// one. Optional also keeps previously-stored alignments decodable.
+    public var swipeConfidence: Double?
 
     public init(forwardInBody: Vector3,
                 upInBody: Vector3,
                 leftInBody: Vector3,
-                residual: Double,
-                peakPullAcceleration: Double,
                 capturedAt: Date = Date(),
-                bikeProfileID: UUID) {
+                bikeProfileID: UUID,
+                swipeConfidence: Double? = nil) {
+        self.swipeConfidence = swipeConfidence
         self.forwardInBody = forwardInBody
         self.upInBody = upInBody
         self.leftInBody = leftInBody
-        self.residual = residual
-        self.peakPullAcceleration = peakPullAcceleration
         self.capturedAt = capturedAt
         self.bikeProfileID = bikeProfileID
     }
@@ -52,39 +78,6 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         MountAlignment(forwardInBody: Conventions.bikeForward,
                        upInBody: Conventions.bikeUp,
                        leftInBody: Conventions.bikeLeft,
-                       residual: 0,
-                       peakPullAcceleration: .infinity,
-                       bikeProfileID: bikeProfileID)
-    }
-
-    /// A phone held or cradled in PORTRAIT with the screen facing the rider — the
-    /// overwhelmingly common case, and a far better default than `identity`.
-    ///
-    /// CoreMotion's device frame is +X across the screen to the right, +Y along the
-    /// screen toward the top, +Z out of the front face. With the screen facing
-    /// backward at the rider:
-    ///
-    /// - bike forward `+X` is out the BACK of the phone → device `−Z`
-    /// - bike up `+Z` is the top of the screen           → device `+Y`
-    /// - bike left `+Y` is                                  device `−X`
-    ///
-    /// Right-handedness holds: `forward × left == (0,1,0) == up`, per Conventions.
-    ///
-    /// Why this matters: `identity` claims bike-forward is device `+X`, which in a
-    /// portrait mount is the LATERAL axis. `AxisElevation.pitch` then reports the
-    /// elevation of the bike's lateral axis — which is lean, not pitch. That is why
-    /// an identity-aligned portrait phone appears to measure only roll, and why its
-    /// angle swings negative as the phone tips either way.
-    ///
-    /// This is still a PRESET, not a measurement: it assumes a square mount. Only
-    /// the two-gesture solve (R7.1) accounts for a crooked one, so a rider whose
-    /// phone is visibly rotated in its cradle still needs the real alignment.
-    public static func portraitMount(bikeProfileID: UUID = UUID()) -> MountAlignment {
-        MountAlignment(forwardInBody: Vector3(0, 0, -1),
-                       upInBody: Vector3(0, 1, 0),
-                       leftInBody: Vector3(-1, 0, 0),
-                       residual: 0,
-                       peakPullAcceleration: 0,
                        bikeProfileID: bikeProfileID)
     }
 
@@ -129,13 +122,143 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         return MountAlignment(forwardInBody: forward,
                               upInBody: up,
                               leftInBody: left,
-                              residual: 0,
-                              peakPullAcceleration: 0,
                               bikeProfileID: bikeProfileID)
     }
 
-    /// Re-levels an EXISTING alignment against a freshly measured gravity vector,
-    /// keeping the forward heading and replacing only what gravity actually observes.
+    // MARK: - Swipe-derived heading (beta)
+
+    /// Derives a full alignment from measured gravity PLUS one swipe along the
+    /// chassis — the beta's one-gesture capture.
+    ///
+    /// Gravity fixes two axes and leaves exactly one degree of freedom: rotation
+    /// about `up`. The swipe supplies it, so the pair is exactly determined — three
+    /// DOF, two measurements, no redundancy. Unlike `fromMeasuredGravity` this does
+    /// not ASSUME which device axis is lateral, and unlike `AlignmentSolver` it does
+    /// not need the bike to move.
+    ///
+    ///   x'      = (cos psi, sin psi, 0)      swipe direction, device frame
+    ///   p       = x' - (x' . gHat) gHat      strip the vertical part
+    ///   forward = p / |p|
+    ///   up      = -gHat
+    ///   left    = up x forward
+    ///
+    /// `|p|` falls out as a free CLASSIFIER — it is the norm of a vector the solve
+    /// already had to compute, and it equals the sine of the angle between the swipe
+    /// and gravity. It is not a quality score to be thresholded; it tells you which
+    /// of two geometries you are in, and both are expected:
+    ///
+    /// - **`|p|` near 1 — flat-ish mount.** Gravity is along the screen normal, so
+    ///   the swipe has no vertical component to strip, the projection is a no-op, and
+    ///   the drawn line IS the chassis direction. Use it.
+    /// - **`|p|` near 0 — vertical mount.** The swipe ran along gravity, which is what
+    ///   a rider on a bar-mounted phone naturally draws when asked for "forward"
+    ///   (bottom-to-top). The screen plane cannot contain the chassis axis at all
+    ///   there, because forward points out THROUGH the screen — so the answer is the
+    ///   screen normal, and `|p| = 0` is precisely the signal that says so.
+    ///
+    /// The one thing that does NOT work itself out is the arithmetic: `p / |p|` at
+    /// `|p| = 0` is `0/0`, and the resulting NaN would propagate through
+    /// `up × forward` into every pitch reading for the rest of the session. Hence the
+    /// explicit branch below — it exists to route, not to refuse.
+    ///
+    /// What neither branch can do is tell a tank-flank mount from a bar mount when
+    /// the rider swipes SIDEWAYS: both give `|p| = 1`, and on the bars that answer is
+    /// the lateral axis, 90 degrees wrong. That is left to the capture screen, which
+    /// draws the resolved bike orientation along the line the rider just drew, so a
+    /// wrong answer is visible rather than silent and the fix is to swipe again.
+    ///
+    /// - Parameter screenYaw: the swipe's direction in the device's XY plane,
+    ///   `atan2(dy, dx)` with **dy measured upward**. UIKit and SwiftUI drag
+    ///   translations grow DOWNWARD, so a caller with raw gesture deltas should use
+    ///   `fromSwipe(specificForce:screenDX:screenDY:...)` below and let it do the
+    ///   flip, rather than negating by hand at the call site.
+    public static func fromMeasuredGravity(
+        specificForce: Vector3,
+        screenYaw: Double,
+        config: Config = Config(),
+        bikeProfileID: UUID = UUID()
+    ) -> MountAlignment {
+        let gHat = specificForce.normalized
+        let swipe = Vector3(cos(screenYaw), sin(screenYaw), 0)
+
+        let p = swipe - gHat * swipe.dot(gHat)
+        let confidence = p.magnitude
+
+        guard confidence >= config.alignmentConfidenceMin else {
+            // Vertical mount: the swipe was along gravity, so heading comes from the
+            // screen normal instead. Not an error — the expected second branch.
+            return fromScreenNormal(specificForce: specificForce,
+                                    bikeProfileID: bikeProfileID)
+        }
+
+        let forward = p / confidence
+        let up = gHat * -1
+        let left = up.cross(forward)
+
+        return MountAlignment(forwardInBody: forward,
+                              upInBody: up,
+                              leftInBody: left,
+                              bikeProfileID: bikeProfileID,
+                              swipeConfidence: confidence)
+    }
+
+    /// As above, from a raw gesture translation.
+    ///
+    /// Does the UIKit/SwiftUI coordinate flip internally, on purpose: screen dy grows
+    /// downward while the device's +Y axis points up the screen, so a bottom-to-top
+    /// swipe arrives as a NEGATIVE dy. Getting that sign wrong reverses the bike's
+    /// forward axis and reports every wheelie as a stoppie — a silent 180-degree
+    /// error that no unit test in the app target could catch, since the app target
+    /// does not build off-device. So the flip lives here, where it is tested.
+    ///
+    /// The only genuine failure is a swipe with no length: the rider tapped instead
+    /// of drawing, so there is no direction to read. Everything else resolves.
+    public static func fromSwipe(
+        specificForce: Vector3,
+        screenDX: Double,
+        screenDY: Double,
+        config: Config = Config(),
+        bikeProfileID: UUID = UUID()
+    ) -> Result<MountAlignment, SwipeFailure> {
+        guard screenDX != 0 || screenDY != 0 else {
+            return .failure(.noSwipeDirection)
+        }
+        return .success(fromMeasuredGravity(specificForce: specificForce,
+                                            screenYaw: atan2(-screenDY, screenDX),
+                                            config: config,
+                                            bikeProfileID: bikeProfileID))
+    }
+
+    /// The vertical-mount branch: heading comes from the screen NORMAL.
+    ///
+    /// Reached when the swipe ran along gravity (`|p|` near 0), which is what a rider
+    /// on a bar-mounted phone naturally draws for "forward". The geometry then tells
+    /// you the answer: the screen plane is vertical and contains `up`, so the bike's
+    /// forward axis points out through the screen. A rider looking at the screen has
+    /// the front wheel BEYOND it, so forward is into the screen, device `−Z`.
+    ///
+    /// This is a disclosed assumption rather than a measurement, and it is wrong in
+    /// one case it cannot detect: a phone mounted with the screen facing FORWARD,
+    /// where forward is `+Z`. Gravity cannot distinguish the two. The capture screen
+    /// draws the resolved orientation so the rider sees which way the app thinks the
+    /// bike faces, which is what turns that into a visible, re-swipeable mistake
+    /// rather than a silent 180-degree error.
+    public static func fromScreenNormal(specificForce: Vector3,
+                                        bikeProfileID: UUID = UUID()) -> MountAlignment {
+        let up = (specificForce * -1).normalized
+        let normalCandidate = Vector3(0, 0, -1)          // into the screen
+        let projected = normalCandidate - up * normalCandidate.dot(up)
+        let forward = projected.normalized
+        let left = up.cross(forward)
+
+        return MountAlignment(forwardInBody: forward,
+                              upInBody: up,
+                              leftInBody: left,
+                              bikeProfileID: bikeProfileID,
+                              swipeConfidence: 0)
+    }
+
+    /// Re-levels an EXISTING alignment against a freshly measured gravity vector,    /// keeping the forward heading and replacing only what gravity actually observes.
     ///
     /// This is what a re-anchor needs, and neither of the two obvious options gives
     /// it. Re-deriving the whole alignment with `fromMeasuredGravity` re-guesses which
@@ -164,8 +287,6 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         return MountAlignment(forwardInBody: forward,
                               upInBody: up,
                               leftInBody: up.cross(forward),
-                              residual: residual,
-                              peakPullAcceleration: peakPullAcceleration,
                               capturedAt: capturedAt,
                               bikeProfileID: bikeProfileID)
     }
@@ -180,148 +301,5 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         AxisElevation.roll(attitude: attitude,
                            forwardInBody: forwardInBody,
                            upInBody: upInBody)
-    }
-}
-
-/// Accumulates the two gestures and solves for the alignment.
-public struct AlignmentSolver {
-
-    public enum Failure: Error, Sendable, Equatable {
-        /// The pull was too gentle to define a forward axis. Below ~0.25 g the
-        /// direction is dominated by noise and the solved axis is meaningless.
-        case pullTooWeak(peak: Double, required: Double)
-        /// The two gestures were not close to perpendicular, so at least one is
-        /// wrong — typically a pull taken while still leaning or braking.
-        case axesNotPerpendicular(residual: Double, limit: Double)
-        case notEnoughRestSamples(count: Int, required: Int)
-        case notEnoughPullSamples(count: Int, required: Int)
-
-        public var message: String {
-            switch self {
-            case .pullTooWeak(let peak, let required):
-                return String(format: "Accelerate harder in a straight line: "
-                              + "reached %.2f g, need %.2f g.",
-                              peak / Conventions.g, required / Conventions.g)
-            case .axesNotPerpendicular(let residual, let limit):
-                return String(format: "Gestures were %.1f deg from perpendicular "
-                              + "(limit %.1f). Pull straight, upright, no braking.",
-                              residual * 180 / .pi, limit * 180 / .pi)
-            case .notEnoughRestSamples:
-                return "Hold the bike still and level for a moment first."
-            case .notEnoughPullSamples:
-                return "Hold the throttle open a little longer."
-            }
-        }
-    }
-
-    private let config: Config
-    private let bikeProfileID: UUID
-    private let minimumRestSamples: Int
-    private let minimumPullSamples: Int
-
-    private var gate: ValidityGate
-    private var restSum = Vector3.zero
-    private var restCount = 0
-
-    private var pullSum = Vector3.zero
-    private var pullCount = 0
-    private var peakDeviation = 0.0
-
-    public init(config: Config,
-                bikeProfileID: UUID,
-                minimumRestSamples: Int = 100,
-                minimumPullSamples: Int = 20) {
-        self.config = config
-        self.bikeProfileID = bikeProfileID
-        self.minimumRestSamples = minimumRestSamples
-        self.minimumPullSamples = minimumPullSamples
-        self.gate = ValidityGate(config: config)
-    }
-
-    /// Gesture (a). Only gate-open, unsaturated samples are admitted, so "at rest
-    /// and level" is proven rather than assumed.
-    @discardableResult
-    public mutating func addRestSample(_ sample: IMUSample) -> Bool {
-        guard !sample.saturated, let verdict = gate.process(sample), verdict.isOpen
-        else { return false }
-        restSum = restSum + sample.specificForce
-        restCount += 1
-        return true
-    }
-
-    /// Gesture (b). Accumulates the deviation from rest, which is the signature of
-    /// the acceleration. Saturated samples are excluded — a saturated axis has no
-    /// usable direction.
-    @discardableResult
-    public mutating func addPullSample(_ sample: IMUSample) -> Bool {
-        guard !sample.saturated, restCount >= minimumRestSamples else { return false }
-        let rest = restSum / Double(restCount)
-        let deviation = sample.specificForce - rest
-        let magnitude = deviation.magnitude
-        // Only samples actually showing acceleration inform the direction.
-        guard magnitude > 0.05 * Conventions.g else { return false }
-        pullSum = pullSum + deviation
-        pullCount += 1
-        peakDeviation = max(peakDeviation, magnitude)
-        return true
-    }
-
-    public var restSampleCount: Int { restCount }
-    public var pullSampleCount: Int { pullCount }
-    public var peakPullAcceleration: Double { peakDeviation }
-
-    public func solve() -> Result<MountAlignment, Failure> {
-        guard restCount >= minimumRestSamples else {
-            return .failure(.notEnoughRestSamples(count: restCount,
-                                                  required: minimumRestSamples))
-        }
-        guard pullCount >= minimumPullSamples else {
-            return .failure(.notEnoughPullSamples(count: pullCount,
-                                                  required: minimumPullSamples))
-        }
-        guard peakDeviation >= config.alignmentMinPullAccel else {
-            return .failure(.pullTooWeak(peak: peakDeviation,
-                                         required: config.alignmentMinPullAccel))
-        }
-
-        // Specific force points ALONG gravity at rest, so its direction is down.
-        let restMean = restSum / Double(restCount)
-        let down = restMean.normalized
-        let up = down * -1
-
-        // Per the sign convention, forward acceleration `a` contributes
-        // -a*cos(theta) to the longitudinal component: the deviation points
-        // BACKWARD. Negate it to get forward.
-        let deviationMean = pullSum / Double(pullCount)
-        let forwardRaw = (deviationMean * -1).normalized
-
-        // How far from perpendicular were the two measured directions? This is the
-        // honest quality number: Gram-Schmidt below will always produce an
-        // orthonormal set, so without this the caller cannot tell a clean
-        // alignment from a fabricated one.
-        let cosine = max(-1, min(1, forwardRaw.dot(up)))
-        let residual = abs(asin(cosine))
-        guard residual <= config.alignmentMaxResidual else {
-            return .failure(.axesNotPerpendicular(residual: residual,
-                                                  limit: config.alignmentMaxResidual))
-        }
-
-        let forward = (forwardRaw - up * forwardRaw.dot(up)).normalized
-        // Right-handed with Z up requires LEFT as the second axis.
-        let left = up.cross(forward)
-
-        return .success(MountAlignment(forwardInBody: forward,
-                                       upInBody: up,
-                                       leftInBody: left,
-                                       residual: residual,
-                                       peakPullAcceleration: peakDeviation,
-                                       bikeProfileID: bikeProfileID))
-    }
-
-    public mutating func restart() {
-        restSum = .zero; restCount = 0
-        pullSum = .zero; pullCount = 0
-        peakDeviation = 0
-        gate.reset()
     }
 }

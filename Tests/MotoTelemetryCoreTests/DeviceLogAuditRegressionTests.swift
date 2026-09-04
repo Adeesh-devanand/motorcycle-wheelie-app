@@ -1,80 +1,40 @@
 import XCTest
 @testable import MotoTelemetryCore
 
-/// Regressions for the 2026-08-28 live-device log audit: the anchor validity test,
-/// the pre-anchor publish guard, the unobservable yaw bias, and the stream-gap reset.
+/// Regressions for the 2026-08-28 live-device log audit: the pre-anchor publish
+/// guard, the stream-gap reset, the two-gate band split, and the re-anchor re-zero.
 /// Every fixture below is taken from numbers the device log actually recorded.
+///
+/// REMOVED in the calibrate-once beta (their subject — `AttitudeESKF` and its
+/// gravity-update path — was deleted with the ESKF, so there is nothing left to pin):
+///   - testAnchorRejectsTheTiltedPoseFromTheDeviceLog / testAnchorStillAcceptsALevelPose
+///     / testAnchorRefusesWhenTheGateIsClosed: the ESKF's magnitude-plus-level anchor
+///     acceptance test. `CalibrateOnceEstimator` takes its anchor from calibration's
+///     already-proven gravity vector and does no in-filter acceptance, so there is no
+///     anchor-acceptance behaviour to regress.
+///   - testYawBiasIsHeldRatherThanEstimatedOnAStationaryPhone: the ESKF's gravity
+///     update and its in-filter bias re-estimation are both gone; bias is measured once
+///     and held constant, so the "yaw bias must not be estimated" property has no
+///     estimator to violate.
+///   - testExplicitReanchorZeroesEvenABeyondLevelPose: its premise was that the filter
+///     had TRACKED a 30 deg tilt (via the ESKF gravity update) before the re-anchor
+///     zeroed it. `CalibrateOnceEstimator` excludes the accelerometer by design, so a
+///     30 deg specific force with zero gyro moves the attitude not at all — the tilt is
+///     never reached, and a re-anchor against it would zero a pose the estimator never
+///     reported as tilted. The scenario is no longer meaningful, so the test is dropped
+///     rather than rewritten to pin the inverted numbers.
+/// The `coldFilter` / `openVerdict` helpers went with them.
 final class DeviceLogAuditRegressionTests: XCTestCase {
 
     private let bike = UUID()
     private func alignment() -> MountAlignment { .identity(bikeProfileID: bike) }
-    private let openVerdict = ValidityGate.Verdict(isOpen: true, heldFor: 1.0, reason: .open)
-
-    private func coldFilter(_ config: Config = Config()) -> AttitudeESKF {
-        AttitudeESKF(config: config,
-                     alignment: alignment(),
-                     initialBias: nil,
-                     gravityAnchor: nil)          // deferred anchor: the live path
-    }
-
-    // MARK: - Bug 3: the anchor must not accept a tilted pose
-
-    /// The exact bad anchor from the log: `gravity=(0.952, -4.805, -8.507)`,
-    /// `|f| = 9.817`. Its magnitude sits squarely inside the +/-0.03 g band, which is
-    /// why a magnitude-only test accepted it — and the app then reported a constant
-    /// -27.87 deg while standing still. `asin(4.805/9.817) = 29.3 deg`.
-    func testAnchorRejectsTheTiltedPoseFromTheDeviceLog() {
-        var filter = coldFilter()
-        let tilted = Vector3(0.952, -4.805, -8.507)
-
-        XCTAssertEqual(tilted.magnitude, 9.817, accuracy: 0.002,
-                       "fixture must keep the log's magnitude, which IS in band")
-        let config = Config()
-        XCTAssertGreaterThanOrEqual(tilted.magnitude, config.gateSpecificForceLow)
-        XCTAssertLessThanOrEqual(tilted.magnitude, config.gateSpecificForceHigh)
-
-        // Gate wide open — the ONLY thing that may reject this is the level test.
-        for i in 1...200 {
-            filter.propagate(IMUSample(time: Double(i) / 100,
-                                       rotationRate: .zero,
-                                       specificForce: tilted),
-                             verdict: openVerdict)
-        }
-        XCTAssertFalse(filter.isAnchored,
-                       "a 29.3 deg pose must never become the definition of level")
-    }
-
-    /// The counterpart: a genuinely level pose still anchors immediately, so the new
-    /// test is not simply refusing everything.
-    func testAnchorStillAcceptsALevelPose() {
-        var filter = coldFilter()
-        filter.propagate(IMUSample(time: 0.01,
-                                   rotationRate: .zero,
-                                   specificForce: Conventions.restSpecificForce),
-                         verdict: openVerdict)
-        XCTAssertTrue(filter.isAnchored)
-        XCTAssertEqual(filter.pitch, 0, accuracy: 1e-9)
-    }
-
-    /// A level pose with the gate CLOSED must not anchor either: the gate carries the
-    /// quiescence proof, and the estimator no longer reimplements a weaker version.
-    func testAnchorRefusesWhenTheGateIsClosed() {
-        var filter = coldFilter()
-        let closed = ValidityGate.Verdict(isOpen: false, heldFor: 0, reason: .rotating)
-        for i in 1...200 {
-            filter.propagate(IMUSample(time: Double(i) / 100,
-                                       rotationRate: .zero,
-                                       specificForce: Conventions.restSpecificForce),
-                             verdict: closed)
-        }
-        XCTAssertFalse(filter.isAnchored)
-    }
 
     // MARK: - Bug 3b: publish nothing before an anchor exists
 
     /// The log has `pitchDeg=-89.7183` published into the pipeline 16 ms BEFORE
     /// `anchor acquired`. Attitude is identity then, so that number is the raw device
-    /// axis, and nothing downstream can tell it from a real -89.7 deg.
+    /// axis, and nothing downstream can tell it from a real -89.7 deg. `Pipeline`
+    /// still guards on `estimator.isAnchored`, so the property survives unchanged.
     func testPipelinePublishesNothingBeforeAnAnchorExists() {
         var pipeline = Pipeline(config: Config(),
                                alignment: alignment(),
@@ -92,38 +52,6 @@ final class DeviceLogAuditRegressionTests: XCTestCase {
         }
         XCTAssertEqual(outputs, 0,
                        "no pitch may be published before the world frame is tied to gravity")
-    }
-
-    // MARK: - Bug 10: yaw bias is unobservable, so it must not be estimated
-
-    /// On a desk, the log's bias-Z climbed monotonically 4.23 -> 5.05 deg/s against a
-    /// measured truth of 0.111 — about 45x off and still rising. Gravity constrains
-    /// only the two tilt axes, so there is no measurement that informs Z at all.
-    func testYawBiasIsHeldRatherThanEstimatedOnAStationaryPhone() {
-        let seeded = BiasEstimate(bias: Vector3(0, 0, 0.111 * .pi / 180),
-                                 sigma: Vector3(1e-4, 1e-4, 1e-4),
-                                 sampleCount: 800,
-                                 monotonicTime: 0,
-                                 bikeProfileID: bike)
-        var filter = AttitudeESKF(config: Config(),
-                                  alignment: alignment(),
-                                  initialBias: seeded,
-                                  gravityAnchor: Conventions.restSpecificForce)
-        let start = filter.bias.z
-
-        for i in 1...6000 {                      // 60 s of stationary gravity updates
-            let sample = IMUSample(time: Double(i) / 100,
-                                   rotationRate: Vector3(0, 0, 0.111 * .pi / 180),
-                                   specificForce: Conventions.restSpecificForce)
-            filter.propagate(sample, verdict: openVerdict)
-            filter.updateWithGravity(sample, verdict: openVerdict)
-        }
-
-        XCTAssertEqual(filter.bias.z, start, accuracy: 1e-12,
-                       "bias.z is unobservable from gravity and must not move")
-        // X and Y stay observable — the fix must not disable the axes gravity does see.
-        XCTAssertLessThan(abs(filter.bias.x), 0.05 * .pi / 180)
-        XCTAssertLessThan(abs(filter.bias.y), 0.05 * .pi / 180)
     }
 
     // MARK: - Bug 6 remnant: a dead stream must not pool across the gap
@@ -181,42 +109,7 @@ final class DeviceLogAuditRegressionTests: XCTestCase {
                           "the calibration band is looser by design — documents the trade-off")
     }
 
-    // MARK: - Bug 3c: an explicit re-anchor zeroes the pose the rider declared level
-
-    /// A cold anchor requires near-level because nobody declared anything. A
-    /// re-anchor is a declaration ("I held the bike still in THIS pose"), so it must
-    /// zero even a nose-down cradle — and it must actually reach 0, which requires
-    /// re-levelling the alignment, not just the attitude.
-    func testExplicitReanchorZeroesEvenABeyondLevelPose() {
-        let config = Config()
-        var pipeline = Pipeline(config: config,
-                               alignment: alignment(),
-                               initialBias: nil,
-                               gravityAnchor: Conventions.restSpecificForce)
-        let force = Conventions.specificForce(pitch: 30 * .pi / 180)
-        var reported = 0.0
-        var t = 0.0
-        let dt = 1.0 / config.nominalSampleRate
-        while t < 2.0 {
-            if let out = pipeline.process(.imu(IMUSample(time: t, rotationRate: .zero,
-                                                         specificForce: force))) {
-                reported = out.pitch * 180 / .pi
-            }
-            t += dt
-        }
-        XCTAssertEqual(reported, 30, accuracy: 2.0, "the real tilt before re-anchor")
-
-        pipeline.requestReanchor()
-        while t < 4.0 {
-            if let out = pipeline.process(.imu(IMUSample(time: t, rotationRate: .zero,
-                                                         specificForce: force))) {
-                reported = out.pitch * 180 / .pi
-            }
-            t += dt
-        }
-        XCTAssertEqual(reported, 0, accuracy: 0.01,
-                       "a re-anchor must zero the pose the rider declared level")
-    }
+    // MARK: - Bug 3c: an explicit re-anchor re-levels while preserving heading
 
     /// Re-levelling keeps the forward HEADING rather than re-guessing it, which is
     /// what stops a re-anchor from silently reassigning which tilt is a wheelie.

@@ -22,7 +22,7 @@ final class LiveWheelieViewModel {
     // MARK: - Display State (30 Hz decimated)
 
     private(set) var currentAngle: Double = 0       // degrees
-    private(set) var currentSpeed: Double = 0       // km/h (or mph per prefs)
+    private(set) var currentSpeed: Double = 0       // km/h
     private(set) var pitchRate: Double = 0          // deg/s
     private(set) var calibrationState: CalibrationState = .unavailable
 
@@ -63,6 +63,9 @@ final class LiveWheelieViewModel {
     private let calibrationService: CalibrationService
     private let recorder: RunRecorder
     private let bikeProfileID: UUID
+    /// The measured phone->bike alignment from calibration + swipe. Required — the
+    /// live screen is only reachable once it exists.
+    private let alignment: MountAlignment
 
     // MARK: - Private
 
@@ -85,10 +88,12 @@ final class LiveWheelieViewModel {
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
+         alignment: MountAlignment,
          bikeProfileID: UUID = UUID()) {
         self.calibrationService = calibrationService
         self.preferences = preferences
         self.recorder = recorder
+        self.alignment = alignment
         self.bikeProfileID = bikeProfileID
     }
 
@@ -119,17 +124,12 @@ final class LiveWheelieViewModel {
         sessionStarted = true
         recorder.startSession(
             bikeProfileID: bikeProfileID,
-            // NOT `.identity`. Identity asserts bike-forward is device +X, which in
-            // a portrait mount is the LATERAL axis, so `AxisElevation.pitch` returned
-            // the elevation of the bike's lateral axis — lean, on the horizontal
-            // axis, swinging negative either way. The portrait preset puts the angle
-            // back on the pitch axis.
-            //
-            // This is a provisional default: a real per-bike alignment comes from the
-            // two-gesture solve (R7.1) captured in bike-profile setup, and once that
-            // is wired this should read the active profile's stored alignment and
-            // fall back to this preset only when none exists.
-            mountAlignment: .portraitMount(bikeProfileID: bikeProfileID),
+            // The measured mount alignment from calibration + the chassis swipe.
+            // There is no preset fallback: the app cannot reach the live screen
+            // without a completed calibration and swipe, so `alignment` is always a
+            // real capture. `.portraitMount` was removed precisely because a guessed
+            // alignment silently swapped lean and pitch.
+            mountAlignment: alignment,
             angleTarget: preferences.angleTarget
         )
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
@@ -138,9 +138,10 @@ final class LiveWheelieViewModel {
 
     // MARK: - User Actions
 
-    /// Tapping the status pill (§7.3) or the failure overlay forces a re-zero.
+    /// Sends the rider back to recalibrate — the live screen has no re-zero of its
+    /// own now, because a re-zero also needs a fresh swipe to rebuild the alignment.
     func requestRecalibration() {
-        calibrationService.requestRecalibration()
+        calibrationService.restart()
     }
 
     // MARK: - Private
@@ -160,7 +161,7 @@ final class LiveWheelieViewModel {
     private func decimateToDisplay() {
         let alpha = 0.3
         calibrationState = calibrationService.state
-        blockingReason = calibrationService.blockingReasonText
+        blockingReason = calibrationService.blockingReason
 
         // BUG 2 heartbeat: the angle CURRENTLY DISPLAYED, at 1 Hz. Cross-referenced
         // against the "sensor heartbeat" lines this shows unambiguously whether a

@@ -30,6 +30,10 @@ public struct ValidityGate: Stage {
         case dwellNotMet
         case saturated
         case noData
+        /// |f| magnitude was in band but its SPREAD was not: the mount is buzzing.
+        /// Distinct from `specificForceOutOfBand` because the two are opposite
+        /// blind spots — the band test sees the mean and cannot see the spread.
+        case vibrating
     }
 
     private let config: Config
@@ -41,14 +45,61 @@ public struct ValidityGate: Stage {
     /// that property for why duration rather than amplitude is the discriminator.
     private var violationSince: TimeInterval?
 
+    // MARK: Rolling spread of |specific force|
+    //
+    // The vibration test needs a SLIDING window, not the tumbling one
+    // `HighFrequencyIndicator` keeps. That type zeroes its accumulator every
+    // `windowDuration` (1 s), so its `magnitudeStdDev` collapses to 0 at each
+    // rollover — and a test that goes blind once a second would let the gate flap
+    // open on exactly the vibration it is meant to reject.
+    //
+    // Sized to the dwell, so the window is full by the time the dwell could elapse.
+    // The test runs on a PARTIAL window too (from 2 samples up) rather than waiting
+    // for a full one: a partial window under-reports variance, but under-reporting
+    // is better than not testing at all, and the case that matters — an idling
+    // engine — swings |f| from sample to sample, so even a few samples catch it.
+    // Waiting for a full window would also make the gate's behaviour depend on the
+    // achieved sample rate matching nominal, which it does not always do.
+    private var magnitudeWindow: [Double] = []
+    private let magnitudeWindowCapacity: Int
+    private var magnitudeWindowNext = 0
+
     public init(config: Config, sink: DiagnosticSink? = nil) {
         self.config = config
         self.diag = DiagnosticEmitter(sink: sink, category: "gate")
+        // At least 2 samples, or a standard deviation is undefined.
+        self.magnitudeWindowCapacity =
+            max(2, Int((config.gateDwell * config.nominalSampleRate).rounded()))
+    }
+
+    /// Spread of |f| over the sliding window, m/s^2. Nil below two samples, where a
+    /// standard deviation is undefined — not a claim of quiet.
+    private var rollingMagnitudeStdDev: Double? {
+        guard magnitudeWindow.count >= 2 else { return nil }
+        let n = Double(magnitudeWindow.count)
+        let mean = magnitudeWindow.reduce(0, +) / n
+        let variance = magnitudeWindow.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / n
+        return variance.squareRoot()
+    }
+
+    private mutating func recordMagnitude(_ magnitude: Double) {
+        if magnitudeWindow.count < magnitudeWindowCapacity {
+            magnitudeWindow.append(magnitude)
+        } else {
+            magnitudeWindow[magnitudeWindowNext] = magnitude
+            magnitudeWindowNext = (magnitudeWindowNext + 1) % magnitudeWindowCapacity
+        }
+    }
+
+    private mutating func clearMagnitudeWindow() {
+        magnitudeWindow.removeAll(keepingCapacity: true)
+        magnitudeWindowNext = 0
     }
 
     public mutating func process(_ sample: IMUSample) -> Verdict? {
         lastTime = sample.time
         let mag = sample.specificForce.magnitude
+        recordMagnitude(mag)
         let r = sample.rotationRate
         let limit = config.gateMaxRotationRate
         let verdict = evaluate(sample, mag: mag, r: r, limit: limit)
@@ -73,6 +124,8 @@ public struct ValidityGate: Stage {
                     "gateDwell": config.gateDwell,
                     "violationHeldFor": violationSince.map { sample.time - $0 } ?? 0,
                     "gateCloseConfirm": config.gateCloseConfirm,
+                    "magnitudeStdDev": rollingMagnitudeStdDev ?? -1,
+                    "calibrationVibrationLimit": config.calibrationVibrationLimit,
                     "saturated": sample.saturated ? 1 : 0,
                   ])
         return verdict
@@ -89,6 +142,15 @@ public struct ValidityGate: Stage {
         }
         if abs(r.x) >= limit || abs(r.y) >= limit || abs(r.z) >= limit {
             return .rotating
+        }
+        // Checked LAST, and deliberately: the magnitude band and this test are
+        // opposite blind spots, and when both fire the band is the bigger problem
+        // and the more useful thing to tell the rider. This catches what the band
+        // structurally cannot — |f| swinging hard while its MEAN stays at 1 g,
+        // which is what an idling engine does. Without it a vibration-corrupted
+        // gravity anchor becomes the session's permanent reference undetected.
+        if let spread = rollingMagnitudeStdDev, spread > config.calibrationVibrationLimit {
+            return .vibrating
         }
         return nil
     }
@@ -120,6 +182,9 @@ public struct ValidityGate: Stage {
         if sample.saturated {
             conditionSince = nil
             violationSince = nil
+            // A clipped sample's magnitude is meaningless, and leaving it in the
+            // window would poison the spread for the next half second.
+            clearMagnitudeWindow()
             return Verdict(isOpen: false, heldFor: 0, reason: .saturated)
         }
 
@@ -154,5 +219,6 @@ public struct ValidityGate: Stage {
     public mutating func reset() {
         conditionSince = nil
         violationSince = nil
+        clearMagnitudeWindow()
     }
 }

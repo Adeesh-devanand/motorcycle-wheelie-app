@@ -28,13 +28,6 @@ public protocol DiagnosticSink: AnyObject, Sendable {
     func emit(_ event: DiagnosticEvent)
 }
 
-/// The default: emit nowhere. Used wherever no sink was supplied, so a stage
-/// never needs to branch on the presence of a sink.
-public final class NoopDiagnosticSink: DiagnosticSink {
-    public init() {}
-    public func emit(_ event: DiagnosticEvent) {}
-}
-
 /// Centralises the one rate-discipline rule the whole package obeys:
 ///
 /// > Emit on **transition** (the categorical outcome changed), plus a **1 Hz

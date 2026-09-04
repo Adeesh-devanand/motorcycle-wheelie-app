@@ -16,12 +16,8 @@ final class RecordingSink: DiagnosticSink, @unchecked Sendable {
 
 final class DiagnosticsTests: XCTestCase {
 
-    /// A gate-open verdict, for tests that only need `propagate` to run.
-    ///
-    /// `propagate` consults the gate because the deferred gravity anchor must not
-    /// accept a sample the gate rejected (a magnitude-only test cannot see a tilt).
-    /// Tests that seed an explicit `gravityAnchor` are already anchored and ignore it.
-    private let openVerdict = ValidityGate.Verdict(isOpen: true, heldFor: 1.0, reason: .open)
+    // NOTE: an `openVerdict` fixture used to live here for AttitudeESKF.propagate;
+    // it was removed along with the ESKF path, as nothing surviving consumes it.
     private let g = 9.80665
 
     private func level(_ t: TimeInterval, saturated: Bool = false) -> IMUSample {
@@ -93,9 +89,14 @@ final class DiagnosticsTests: XCTestCase {
             scenario.gyroBias = Vector3(0.01, -0.02, 0.005)
             scenario.roadGrade = 2.0 * .pi / 180
             var source = SyntheticSource(scenario: scenario)
+            // The rewritten Pipeline publishes NOTHING until gravity anchors the
+            // world frame (the ESKF's implicit anchoring is gone), so seed the
+            // anchor explicitly — same value on both sink/no-sink runs, keeping the
+            // byte-identical comparison honest.
             var pipeline = Pipeline(config: Config(),
                                     alignment: .identity(),
                                     initialBias: nil,
+                                    gravityAnchor: Conventions.restSpecificForce,
                                     sink: sink)
             return runPipeline(source: &source, pipeline: &pipeline)
         }
@@ -114,22 +115,22 @@ final class DiagnosticsTests: XCTestCase {
     func testNilSinkAcrossEveryInstrumentedStageDoesNotCrash() {
         // Exercise each stage with its default (nil) sink — the shipped path when
         // no logging is attached — and assert it simply runs.
+        // NOTE: GradeBaseline and AttitudeESKF were deleted with the ESKF path, and
+        // CalibrationTracker with the staleness model (calibrate-every-launch has no
+        // stored estimate to age), so all three are dropped from this list; the
+        // surviving instrumented stages are ValidityGate, EventSegmenter and
+        // BiasEstimator. The Pipeline (also instrumented) is covered end-to-end by
+        // the nil-sink test above via runPipeline, so it is not re-run here.
         var gate = ValidityGate(config: Config())
-        var baseline = GradeBaseline(config: Config())
         var segmenter = EventSegmenter(config: Config())
         var bias = BiasEstimator(config: Config(), bikeProfileID: UUID())
-        var tracker = CalibrationTracker(config: Config())
-        var eskf = AttitudeESKF(config: Config(), alignment: .identity(), initialBias: nil)
 
         for i in 0..<300 {
             let t = Double(i) / 100.0
             let s = level(t)
             _ = gate.process(s)
-            _ = baseline.process(GradeBaseline.Input(pitch: 0, gateOpen: true, time: t))
             _ = segmenter.process(time: t, pitch: 0, pitchRate: 0)
             _ = bias.process(s)
-            eskf.propagate(s, verdict: openVerdict)
-            _ = tracker.update(now: t)
         }
         // Reaching here without a trap is the assertion.
         XCTAssertEqual(gate.process(level(3.0))?.isOpen, true)
@@ -140,7 +141,8 @@ final class DiagnosticsTests: XCTestCase {
     func testEventTimeAlwaysEqualsSampleTimeNeverWallClock() {
         let sink = RecordingSink()
         var gate = ValidityGate(config: Config(), sink: sink)
-        var baseline = GradeBaseline(config: Config(), sink: sink)
+        // GradeBaseline was deleted with the ESKF path; the surviving sample-timed
+        // stages that emit here are ValidityGate and EventSegmenter.
         var segmenter = EventSegmenter(config: Config(), sink: sink)
 
         // Sample times deliberately in the past relative to any wall clock, so a
@@ -148,7 +150,6 @@ final class DiagnosticsTests: XCTestCase {
         let times = stride(from: 0.0, through: 4.0, by: 0.01)
         for t in times {
             _ = gate.process(level(t))
-            _ = baseline.process(GradeBaseline.Input(pitch: 0, gateOpen: true, time: t))
             _ = segmenter.process(time: t, pitch: 0, pitchRate: 0)
         }
 

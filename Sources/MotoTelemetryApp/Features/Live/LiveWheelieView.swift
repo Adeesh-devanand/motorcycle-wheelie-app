@@ -1,9 +1,74 @@
 import SwiftUI
+import MotoTelemetryCore
 
-/// Live Wheelie screen — header with centered status pill + gear button,
-/// dual vertical meters (angle left, speed right, mirrored), and three
-/// bottom metric cards: ANGLE / WHEELIE TIME / SPEED.
+/// The Live tab's flow container: calibration, then swipe alignment, then the live
+/// screen. Calibration runs on EVERY launch (no persistence), so this sequence is
+/// the front door, not an occasional interruption.
+///
+/// One sensor session spans all three phases. `RunRecorder.startSensing()` begins
+/// CoreMotion updates and feeds `CalibrationService` immediately; the same running
+/// session is promoted to a recording session (with the captured alignment) when the
+/// rider confirms the swipe. That ordering resolves the chicken-and-egg — calibration
+/// needs the sensor stream, and the alignment the live view needs is what calibration
+/// produces — without starting the stream twice.
 struct LiveWheelieView: View {
+    private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment) }
+
+    @State private var phase: Phase = .calibrating
+    private let calibrationService: CalibrationService
+    private let preferences: RiderPreferences
+    private let recorder: RunRecorder
+    private let bikeStore: BikeProfileStore
+    private let bikeProfileID = UUID()
+
+    init(calibrationService: CalibrationService,
+         preferences: RiderPreferences,
+         recorder: RunRecorder,
+         bikeStore: BikeProfileStore) {
+        self.calibrationService = calibrationService
+        self.preferences = preferences
+        self.recorder = recorder
+        self.bikeStore = bikeStore
+    }
+
+    var body: some View {
+        Group {
+            switch phase {
+            case .calibrating:
+                CalibrationScreen(service: calibrationService) { estimate in
+                    phase = .swiping(estimate)
+                }
+                .onAppear { recorder.startSensing(bikeProfileID: bikeProfileID) }
+
+            case .swiping(let estimate):
+                SwipeAlignmentScreen(
+                    gravityAnchor: estimate.measuredGravity ?? Vector3(0, 0, -Conventions.g),
+                    config: Config(),
+                    bikeProfileID: bikeProfileID,
+                    onConfirmed: { alignment in phase = .live(alignment) },
+                    onRecalibrate: {
+                        calibrationService.restart()
+                        phase = .calibrating
+                    }
+                )
+
+            case .live(let alignment):
+                LiveScreen(
+                    calibrationService: calibrationService,
+                    preferences: preferences,
+                    recorder: recorder,
+                    alignment: alignment,
+                    bikeProfileID: bikeProfileID,
+                    bikeStore: bikeStore
+                )
+            }
+        }
+    }
+}
+
+/// The live telemetry screen proper — reached only after calibration and swipe,
+/// and handed a real measured alignment.
+struct LiveScreen: View {
     @State private var viewModel: LiveWheelieViewModel
     @State private var showSettings = false
     /// Which target range the rider asked to edit, or nil for none. An enum
@@ -15,12 +80,16 @@ struct LiveWheelieView: View {
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
+         alignment: MountAlignment,
+         bikeProfileID: UUID,
          bikeStore: BikeProfileStore) {
         self.bikeStore = bikeStore
         _viewModel = State(wrappedValue: LiveWheelieViewModel(
             calibrationService: calibrationService,
             preferences: preferences,
-            recorder: recorder
+            recorder: recorder,
+            alignment: alignment,
+            bikeProfileID: bikeProfileID
         ))
     }
 
@@ -36,17 +105,7 @@ struct LiveWheelieView: View {
                 bottomMetrics
             }
             .padding(AppSpacing.screenPadding)
-
-            if showCalibrationOverlay {
-                CalibrationOverlay(
-                    state: viewModel.calibrationState,
-                    onDismiss: { viewModel.requestRecalibration() },
-                    blockingReason: viewModel.blockingReason
-                )
-                .transition(.opacity)
-            }
         }
-        .animation(.easeInOut(duration: 0.3), value: showCalibrationOverlay)
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
         .sheet(isPresented: $showSettings) {
@@ -130,7 +189,7 @@ struct LiveWheelieView: View {
             value: viewModel.currentSpeed,
             range: 0...viewModel.preferences.speedGaugeMaximum,
             targetBand: viewModel.preferences.speedTarget,
-            unit: viewModel.preferences.speedUnit == .kph ? "km/h" : "mph",
+            unit: "km/h",
             label: "SPEED",
             valueFont: AppTypography.meterValue,
             rangeStatus: viewModel.speedInRange
@@ -179,7 +238,7 @@ struct LiveWheelieView: View {
                         Text("\(Int(viewModel.currentSpeed))")
                             .font(.system(size: 34, weight: .bold, design: .monospaced))
                             .foregroundStyle(AppColors.textPrimary)
-                        Text(viewModel.preferences.speedUnit == .kph ? "km/h" : "mph")
+                        Text("km/h")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(AppColors.accentBright)
                     }
@@ -219,15 +278,6 @@ struct LiveWheelieView: View {
     }
 
     // MARK: - Helpers
-
-    private var showCalibrationOverlay: Bool {
-        switch viewModel.calibrationState {
-        case .calibrating, .unavailable, .failed:
-            return true
-        default:
-            return false
-        }
-    }
 
     private var targetEditDisabled: Bool {
         viewModel.eventActive || !viewModel.isCalibrated

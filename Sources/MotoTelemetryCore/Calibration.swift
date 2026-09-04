@@ -32,6 +32,18 @@ public struct BiasEstimate: Codable, Sendable, Identifiable, Equatable {
     public var bikeProfileID: UUID
     /// ProcessInfo.ThermalState raw value at capture, for drift projection.
     public var thermalStateAtCapture: Int
+    /// Mean specific force over the SAME window, m/s^2 — the gravity anchor.
+    ///
+    /// Specific force points ALONG gravity (a level bike at rest reads `(0,0,-g)`),
+    /// so this is gravity's direction in DEVICE axes, scaled by g. It is the second
+    /// product of a calibration and the input the swipe alignment consumes: gravity
+    /// fixes two of the three axes and the swipe supplies the third.
+    ///
+    /// Optional so estimates persisted before this existed still decode. `nil` means
+    /// "this calibration predates gravity capture", which a caller must treat as
+    /// "cannot build an alignment" rather than substituting a guess — there is no
+    /// preset to fall back to, by design.
+    public var measuredGravity: Vector3?
 
     public init(id: UUID = UUID(),
                 bias: Vector3,
@@ -40,7 +52,9 @@ public struct BiasEstimate: Codable, Sendable, Identifiable, Equatable {
                 monotonicTime: TimeInterval,
                 wallClock: Date = Date(),
                 bikeProfileID: UUID,
-                thermalStateAtCapture: Int = 0) {
+                thermalStateAtCapture: Int = 0,
+                measuredGravity: Vector3? = nil) {
+        self.measuredGravity = measuredGravity
         self.id = id
         self.bias = bias
         self.sigma = sigma
@@ -79,13 +93,6 @@ public struct BiasEstimate: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
-/// Why a previously-good calibration is no longer trusted.
-public enum CalibrationStaleReason: String, Codable, Sendable, Equatable {
-    case aged
-    case bikeProfileChanged
-    case thermalShift
-    case remounted
-}
 
 /// Why a zeroing attempt failed.
 public enum CalibrationFailure: Sendable, Equatable {
@@ -115,6 +122,8 @@ public enum CalibrationFailure: Sendable, Equatable {
                 return "Bike is not level and still."
             case .rotating:
                 return "Bike is still moving."
+            case .vibrating:
+                return "Too much vibration — switch the engine off."
             case .saturated:
                 return "Sensor saturated — vibration is off the scale."
             case .dwellNotMet, .noData, .open:
@@ -122,28 +131,6 @@ public enum CalibrationFailure: Sendable, Equatable {
             }
         }
     }
-}
-
-/// Calibration state as the core sees it. The app maps this onto the ui spec's
-/// `CalibrationState` (unavailable / calibrating / calibrated / stale / failed).
-public enum CalibrationStatus: Sendable, Equatable {
-    case unavailable
-    case calibrating(progress: Double)
-    case calibrated(BiasEstimate)
-    case stale(BiasEstimate, reason: CalibrationStaleReason)
-    case failed(CalibrationFailure)
-
-    public var estimate: BiasEstimate? {
-        switch self {
-        case .calibrated(let e):    return e
-        case .stale(let e, _):      return e
-        default:                    return nil
-        }
-    }
-
-    /// Bias usable for estimation? A stale estimate is still better than none —
-    /// it is used, with inflated uncertainty, rather than discarded.
-    public var usableBias: Vector3? { estimate?.bias }
 }
 
 /// Accumulates a bias estimate from stationary samples.
@@ -197,6 +184,16 @@ public struct BiasEstimator: Stage {
     private var n: Int = 0
     private var mean = Vector3.zero
     private var m2 = Vector3.zero
+    /// Running mean of specific force over the SAME admitted samples that build the
+    /// bias mean. The rider is already holding the bike still to measure `b`; the
+    /// gravity direction is then free, and taking it from the same window means the
+    /// two can never disagree about which instant "still" referred to.
+    ///
+    /// A plain mean is sufficient here where it would not be for `b`: gravity is a
+    /// 1 g DC vector, so averaging attacks the vibration riding on it, and the gate's
+    /// `.vibrating` condition has already rejected the samples where that vibration
+    /// is large enough to have tilted the direction.
+    private var forceMean = Vector3.zero
 
     private var firstSampleTime: TimeInterval?
     private var attemptStart: TimeInterval?
@@ -350,6 +347,7 @@ public struct BiasEstimator: Stage {
         if let previous = lastAccumulateTime, sample.time - previous > discontinuityGap {
             resetAccumulation(reason: "streamGap", at: sample.time)
             accumulate(sample.rotationRate)
+            accumulateForce(sample.specificForce)
             firstSampleTime = sample.time
             lastAccumulateTime = sample.time
             return .collecting(elapsed: 0, required: config.biasCalibrationDuration,
@@ -357,6 +355,7 @@ public struct BiasEstimator: Stage {
         }
 
         accumulate(sample.rotationRate)
+        accumulateForce(sample.specificForce)
         if firstSampleTime == nil { firstSampleTime = sample.time }
         // Held-still time EXCLUDING paused gaps. Using wall sample time here would
         // let a long dropout be billed as quiet: with progress now surviving a brief
@@ -435,6 +434,13 @@ public struct BiasEstimator: Stage {
         m2 = m2 + Vector3(delta.x * delta2.x, delta.y * delta2.y, delta.z * delta2.z)
     }
 
+    /// Called with the SAME sample that fed `accumulate`, so the two means always
+    /// describe the same window. Split into its own function only because the rate
+    /// needs Welford's variance and gravity does not.
+    private mutating func accumulateForce(_ f: Vector3) {
+        forceMean = forceMean + (f - forceMean) / Double(max(1, n))
+    }
+
     private mutating func resetAccumulation(reason: String = "reset",
                                             at time: TimeInterval = 0) {
         // Log EVERY resetAccumulation with n discarded, elapsedBeforeReset, reason.
@@ -451,6 +457,7 @@ public struct BiasEstimator: Stage {
         n = 0
         mean = .zero
         m2 = .zero
+        forceMean = .zero
         firstSampleTime = nil
         accumulatedDuration = 0
         lastAccumulateTime = nil
@@ -512,7 +519,8 @@ public struct BiasEstimator: Stage {
                                     sampleCount: n,
                                     monotonicTime: time,
                                     bikeProfileID: bikeProfileID,
-                                    thermalStateAtCapture: thermalState)
+                                    thermalStateAtCapture: thermalState,
+                                    measuredGravity: forceMean)
         return .done(estimate)
     }
 
@@ -563,95 +571,3 @@ public struct BiasEstimator: Stage {
     }
 }
 
-/// Tracks whether a held estimate is still fresh, and how much confidence it has
-/// lost. Pure function of time and thermal state, so replay reproduces exactly
-/// the confidence the rider saw.
-public struct CalibrationTracker: Sendable {
-    private let config: Config
-    public private(set) var status: CalibrationStatus
-    private var diag: DiagnosticEmitter
-
-    public init(config: Config, status: CalibrationStatus = .unavailable,
-                sink: DiagnosticSink? = nil) {
-        self.config = config
-        self.status = status
-        self.diag = DiagnosticEmitter(sink: sink, category: "caltrack")
-    }
-
-    public mutating func adopt(_ estimate: BiasEstimate) {
-        status = .calibrated(estimate)
-        diag.always(time: estimate.monotonicTime, level: .info,
-                    message: "caltrack adopt",
-                    values: [
-                        "biasStaleAfter": config.biasStaleAfter,
-                        "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
-                        "sampleCount": Double(estimate.sampleCount),
-                    ])
-    }
-
-    public mutating func invalidate(_ reason: CalibrationStaleReason) {
-        let age = status.estimate?.monotonicTime
-        if let estimate = status.estimate {
-            status = .stale(estimate, reason: reason)
-        } else {
-            status = .unavailable
-        }
-        diag.always(time: age ?? 0, level: .info,
-                    message: "caltrack invalidate " + reason.rawValue,
-                    values: ["biasStaleAfter": config.biasStaleAfter])
-    }
-
-    /// Re-evaluates freshness at monotonic time `now`. Returns the current status.
-    @discardableResult
-    public mutating func update(now: TimeInterval,
-                               thermalState: Int? = nil) -> CalibrationStatus {
-        guard let estimate = status.estimate else { return status }
-
-        let wasStale = { if case .stale = status { return true } else { return false } }()
-
-        if let thermalState, thermalState > estimate.thermalStateAtCapture + 1 {
-            status = .stale(estimate, reason: .thermalShift)
-            if !wasStale {
-                diag.always(time: now, level: .info,
-                            message: "caltrack stale thermalShift",
-                            values: [
-                                "age": now - estimate.monotonicTime,
-                                "biasStaleAfter": config.biasStaleAfter,
-                                "thermalState": Double(thermalState),
-                                "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
-                            ])
-            }
-            return status
-        }
-        let age = now - estimate.monotonicTime
-        if age > config.biasStaleAfter {
-            status = .stale(estimate, reason: .aged)
-            if !wasStale {
-                diag.always(time: now, level: .info,
-                            message: "caltrack stale aged",
-                            values: [
-                                "age": age,
-                                "biasStaleAfter": config.biasStaleAfter,
-                                "thermalStateAtCapture": Double(estimate.thermalStateAtCapture),
-                            ])
-            }
-        }
-        return status
-    }
-
-    /// Age in seconds at monotonic time `now`, or nil with no estimate.
-    public func age(at now: TimeInterval) -> TimeInterval? {
-        guard let estimate = status.estimate else { return nil }
-        return now - estimate.monotonicTime
-    }
-
-    /// Reported 1-sigma pitch error for a hypothetical hold, used for the
-    /// confidence the UI shows. Grows with age, thermal state and hold length.
-    public func projectedPitchSigma(at now: TimeInterval,
-                                    holdDuration: TimeInterval) -> Double? {
-        guard let estimate = status.estimate, let age = age(at: now) else { return nil }
-        return estimate.projectedPitchSigma(age: age,
-                                            holdDuration: holdDuration,
-                                            config: config)
-    }
-}

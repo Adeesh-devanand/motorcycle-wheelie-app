@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+/// The app is km/h-only. `mph` is retained ONLY so preferences persisted before the
+/// unit picker was removed still decode (a `RawValue` that vanished would throw on
+/// load). Nothing branches on it — speed is km/h everywhere — and the Settings picker
+/// that once set it is gone, because it changed the label without converting the
+/// value. Remove this enum entirely once no stored prefs can carry `"mph"`, or when a
+/// real unit conversion is wired.
 enum SpeedUnit: String, Codable, Sendable, Equatable {
     case kph
     case mph

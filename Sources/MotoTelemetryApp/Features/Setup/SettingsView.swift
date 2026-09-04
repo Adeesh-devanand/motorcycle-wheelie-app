@@ -15,14 +15,13 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("Speed") {
-                Picker("Unit", selection: $preferences.speedUnit) {
-                    Text("km/h").tag(SpeedUnit.kph)
-                    Text("mph").tag(SpeedUnit.mph)
-                }
-
+                // No unit picker: speed is km/h throughout. An mph option existed but
+                // only changed the LABEL, never the value — it displayed km/h numbers
+                // under an "mph" heading. A fabricated input is worse than a missing
+                // one, so the app is km/h-only until a real conversion is wired.
                 Picker("Gauge Maximum", selection: $preferences.speedGaugeMaximum) {
                     ForEach(gaugeMaxPresets, id: \.self) { value in
-                        Text("\(Int(value)) \(preferences.speedUnit == .kph ? "km/h" : "mph")")
+                        Text("\(Int(value)) km/h")
                             .tag(value)
                     }
                 }
