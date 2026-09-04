@@ -178,14 +178,39 @@ Ordered by risk. If the build breaks, look here first.
 
 ## 4. Next steps, in order
 
-1. **Add the two missing files to the Xcode target** (§2). Blocking.
-2. **Build.** Fix whatever the isolation checker says about `RunRecorder` first — that
-   is the riskiest change and the most likely source of errors.
-3. **Prune the eight stale pbxproj entries** (§2). Housekeeping.
-4. **Re-run the core suite on the Mac** to confirm 163/0 travels (`swift test` — on the
-   Mac the toolchain *is* on PATH).
-5. **Commit the Xcode fixes** as their own commit so the pbxproj repair is separable
-   from the audit pass.
+**STATUS — steps 1-5 are DONE on the Mac (2026-09-04, commits `3eb4808` +
+`209928d`). Only 6 and 7 remain, and both need the bike.** What running the
+checks the Linux box could not run actually found:
+
+- **The app did not compile.** 16 errors, all in `LiveWheelieView.swift`:
+  `struct LiveScreen: View` was left nonisolated while the view model it drives
+  became `@MainActor`. Fixed with one annotation, no cascade. The handoff called
+  `RunRecorder`'s restructuring the likeliest source of errors — right file
+  family, and the breakage surfaced one layer up in its consumer.
+- **The suite was 163/1 here, not 163/0.** `testConfigRoundTripsTheNewFields`
+  asserted bit-exact equality over 63 doubles across a JSON round trip; seven
+  degree→radian constants come back one ULP off on Darwin. Green on Linux, red
+  on macOS. Now compared numerically at 1e-12 with full field breadth kept.
+- **`NSLock` inside two `for await` bodies** — a warning today, a hard error in
+  Swift 6. Hoisted into a synchronous helper.
+- `xcodebuild` cannot run inside the agent's sandbox (`sandbox_apply: Operation
+  not permitted` at manifest loading), so the app target was typechecked
+  directly instead: `xcrun --sdk iphoneos swiftc -typecheck -target
+  arm64-apple-ios17.2 -swift-version 5 -I <iOS-built Core module> -plugin-path
+  <toolchain plugins> <all 44 app sources>` → **exit 0, 0 errors**, 1
+  pre-existing warning. That is a typecheck, not a link — **your Xcode build is
+  still the first real one.**
+
+1. ~~**Add the two missing files to the Xcode target** (§2).~~ **Done** — both
+   added, `plutil -lint` clean, zero sources missing and zero dead refs on
+   re-verification.
+2. ~~**Build.**~~ **Typechecked clean** (0 errors, 44 files). A real Xcode build
+   is still owed — it links, signs, and runs the previews this path skipped.
+3. ~~**Prune the eight stale pbxproj entries** (§2).~~ **Done** — 32 lines.
+4. ~~**Re-run the core suite on the Mac.**~~ **Done** — 163/0 after fixing the
+   one Darwin-only failure above.
+5. ~~**Commit the Xcode fixes** as their own commit.~~ **Done** — `3eb4808` is
+   the pbxproj repair alone; `209928d` is the compile + test fixes.
 6. **Ride it.** Two things no desk can verify:
    - Does the new **hysteresis latch actually stop the flapping tone**? That was the #1
      complaint from the 2026-09-01 test ride ("the active beeper rose and fell
