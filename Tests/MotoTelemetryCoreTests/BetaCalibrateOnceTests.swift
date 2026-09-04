@@ -40,7 +40,71 @@ final class BetaCalibrateOnceTests: XCTestCase {
         config.cueEnterPitch = 12.0 * .pi / 180
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(Config.self, from: data)
-        XCTAssertEqual(decoded, config)
+
+        // Compared numerically, not bit-exactly. `XCTAssertEqual(decoded, config)`
+        // is green on Linux and RED on macOS: Foundation's JSON double formatting
+        // is platform-dependent, and seven of the degree->radian constants come
+        // back one ULP off on Darwin (gateMaxRotationRate 0.05235987755982989 vs
+        // ...88; also calibrationMaxRotationRate, reanchorBiasDelta, cueDeadband,
+        // holdRateEpsilon, biasSigmaLimit, liveSigmaLimit). 1e-12 rad is 6e-11 deg
+        // — below any physical meaning — so the tolerance costs no real strictness
+        // while still catching a field that fails to serialise, lands on the wrong
+        // key, or silently falls back to its default.
+        let before = try Self.numericFields(of: config)
+        let after = try Self.numericFields(of: decoded)
+        XCTAssertEqual(after.keys.sorted(), before.keys.sorted(),
+                       "a field appeared or vanished across the round trip")
+        for (key, expected) in before {
+            let actual = try XCTUnwrap(after[key], "\(key) missing after round trip")
+            XCTAssertEqual(actual.count, expected.count, "\(key) changed arity")
+            for (i, value) in expected.enumerated() where i < actual.count {
+                XCTAssertEqual(actual[i], value, accuracy: 1e-12,
+                               "\(key)[\(i)] did not survive the round trip")
+            }
+        }
+
+        // Stated explicitly, so the round trip is proven to carry non-default
+        // values rather than defaults that happen to agree on both sides.
+        XCTAssertEqual(decoded.version, 7)
+        XCTAssertEqual(decoded.calibrationVibrationLimit, 0.42, accuracy: 1e-12)
+        XCTAssertEqual(decoded.alignmentConfidenceMin, 0.5, accuracy: 1e-12)
+        XCTAssertEqual(decoded.blurWindowSamples, 11)
+        XCTAssertEqual(decoded.cueEnterPitch, 12.0 * .pi / 180, accuracy: 1e-12)
+    }
+
+    /// Flattens a `Config`'s JSON encoding to `key -> [Double]` so two configs can
+    /// be compared field by field with a tolerance. Scalars become one-element
+    /// arrays. Pure `Codable`, so it behaves identically on Darwin and Linux —
+    /// `JSONSerialization` + `NSNumber` casts do not.
+    ///
+    /// Every one of Config's 63 fields is numeric today. If a `Bool` or `String`
+    /// field is ever added, this throws rather than silently skipping it — that is
+    /// the signal to extend `NumericField`, not to drop the field from the check.
+    private static func numericFields(of config: Config) throws -> [String: [Double]] {
+        let data = try JSONEncoder().encode(config)
+        let fields = try JSONDecoder().decode([String: NumericField].self, from: data)
+        return fields.mapValues(\.values)
+    }
+
+    private enum NumericField: Decodable {
+        case scalar(Double)
+        case list([Double])
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(Double.self) {
+                self = .scalar(value)
+            } else {
+                self = .list(try container.decode([Double].self))
+            }
+        }
+
+        var values: [Double] {
+            switch self {
+            case .scalar(let value): return [value]
+            case .list(let values): return values
+            }
+        }
     }
 
     // MARK: - Jitter blur

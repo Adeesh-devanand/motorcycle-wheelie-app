@@ -68,6 +68,13 @@ struct LiveWheelieView: View {
 
 /// The live telemetry screen proper — reached only after calibration and swipe,
 /// and handed a real measured alignment.
+///
+/// `@MainActor` because every property it reads — `LiveWheelieViewModel` and, one
+/// layer down, `RunRecorder`'s display mirrors — is main-actor isolated by the
+/// concurrency fix. SwiftUI's `body` is not itself isolated in Swift 5, so without
+/// this the view reads main-actor state from a nonisolated context and the app
+/// does not compile.
+@MainActor
 struct LiveScreen: View {
     @State private var viewModel: LiveWheelieViewModel
     @State private var showSettings = false

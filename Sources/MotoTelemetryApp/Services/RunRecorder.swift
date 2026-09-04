@@ -187,20 +187,29 @@ final class RunRecorder: @unchecked Sendable {
         motionTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.motionService.samples {
-                self.processLock.lock()
-                self.processSample(sample, epoch: epoch)
-                self.processLock.unlock()
+                self.processLocked(sample, epoch: epoch)
             }
         }
 
         speedTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.speedService.fixes {
-                self.processLock.lock()
-                self.processSample(sample, epoch: epoch)
-                self.processLock.unlock()
+                self.processLocked(sample, epoch: epoch)
             }
         }
+    }
+
+    /// Takes `processLock` around `processSample`. Deliberately **synchronous**:
+    /// `NSLock.lock()` is unavailable from an async context — the compiler cannot
+    /// prove no suspension happens between `lock` and `unlock` inside a `for await`
+    /// body, and in Swift 6 that is a hard error rather than a warning. Nothing on
+    /// this path awaits, so hoisting the critical section into a non-async function
+    /// states that fact in a form the checker accepts. `defer` also makes the unlock
+    /// survive an early return added later.
+    private func processLocked(_ sample: Sample, epoch: UInt64) {
+        processLock.lock()
+        defer { processLock.unlock() }
+        processSample(sample, epoch: epoch)
     }
 
     /// Start the sensor stream WITHOUT a recording pipeline, so calibration (and the
@@ -633,7 +642,10 @@ final class RunRecorder: @unchecked Sendable {
               let sessionStart = sessionStartMonotonic,
               let onset = eventOnsetTime,
               let angleTarget = angleTarget,
-              let bikeID = bikeProfileID,
+              // A bike profile must exist for the event to be valid, but nothing
+              // below consumes it: `WheelieRun` has no bike field, so the value is
+              // required and then discarded. Kept as a requirement, not a binding.
+              bikeProfileID != nil,
               let calibID = calibrationService.estimate?.id else {
             log.warning("Cannot finalize event — missing session context")
             return
