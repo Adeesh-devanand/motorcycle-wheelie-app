@@ -52,6 +52,16 @@ final class ReachabilityTests: XCTestCase {
     /// All non-test Swift source across every target: core, app, and CLI. A core
     /// type is reachable if ANY of these references it — app→core and cli→core edges
     /// count, which is exactly what a Linux linker cannot see.
+    ///
+    /// COMMENTS ARE STRIPPED FIRST, and that is the whole point of this method rather
+    /// than a plain concatenation. The reachability proof is a name match, so a type
+    /// mentioned only inside a comment used to count as a caller — meaning the moment
+    /// someone deleted a type's last real use but left a comment explaining what it
+    /// used to do, this test would keep passing. That is not hypothetical here: names
+    /// of genuinely deleted types (`AttitudeESKF`, `CueEngine`, `AttitudeSmoother`)
+    /// still appear in explanatory comments all over core, precisely because this
+    /// codebase deliberately documents what was removed and why. Any of those names
+    /// coming back as a live public type would be shielded by its own tombstone.
     private func nonTestSourceText() throws -> String {
         let fm = FileManager.default
         var combined = ""
@@ -62,11 +72,73 @@ final class ReachabilityTests: XCTestCase {
             guard let walker = fm.enumerator(at: dir, includingPropertiesForKeys: nil)
             else { continue }
             for case let url as URL in walker where url.pathExtension == "swift" {
-                combined += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+                let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+                combined += Self.strippingComments(raw)
                 combined += "\n"
             }
         }
         return combined
+    }
+
+    /// Removes `//` line comments (including `///` doc comments) and `/* */` blocks,
+    /// including nesting, which Swift permits.
+    ///
+    /// Deliberately naive about one thing: a `//` or `/*` appearing inside a string
+    /// literal is treated as a comment. That direction of error is safe here — it can
+    /// only remove MORE text, so it can only make a type look LESS reachable and
+    /// produce a loud false failure, never a silent false pass. String-literal-aware
+    /// parsing would be the wrong trade for a guard test.
+    static func strippingComments(_ source: String) -> String {
+        var out = ""
+        out.reserveCapacity(source.count)
+        var blockDepth = 0
+        var inLineComment = false
+        var index = source.startIndex
+
+        while index < source.index(before: source.endIndex) {
+            let c = source[index]
+            let next = source[source.index(after: index)]
+
+            if inLineComment {
+                if c == "\n" { inLineComment = false; out.append(c) }
+                index = source.index(after: index)
+                continue
+            }
+            if blockDepth > 0 {
+                if c == "*" && next == "/" {
+                    blockDepth -= 1
+                    index = source.index(index, offsetBy: 2)
+                    continue
+                }
+                if c == "/" && next == "*" {
+                    blockDepth += 1
+                    index = source.index(index, offsetBy: 2)
+                    continue
+                }
+                // Keep newlines so line-oriented reading of the haystack still works.
+                if c == "\n" { out.append(c) }
+                index = source.index(after: index)
+                continue
+            }
+            if c == "/" && next == "/" {
+                inLineComment = true
+                index = source.index(index, offsetBy: 2)
+                continue
+            }
+            if c == "/" && next == "*" {
+                blockDepth = 1
+                index = source.index(index, offsetBy: 2)
+                continue
+            }
+            out.append(c)
+            index = source.index(after: index)
+        }
+        // The loop stops one short so `next` is always valid; append the final char
+        // unless it was consumed by a comment still open at EOF.
+        if index < source.endIndex, !inLineComment, blockDepth == 0 {
+            out.append(source[index])
+        }
+        return out
     }
 
     /// Types that are legitimately referenced by NAME nowhere outside tests, with the
@@ -86,6 +158,15 @@ final class ReachabilityTests: XCTestCase {
         // named at a call site.
         "MeasurementSource": "protocol conformed to by sources, not named at call sites",
         "Stage": "protocol conformed to structurally",
+        // In-memory replay source. Production deliberately does NOT use it: `motolog
+        // replay` moved to `StreamingReplaySource` on 2026-09-04 because that one reads
+        // in chunks and TOLERATES a truncated final line (reporting `endedMidLine`)
+        // where `LogFile.read` throws — and a log truncated mid-line is what a crash
+        // produces, i.e. the ride most worth replaying. This type stays as the in-memory
+        // counterpart `WireFormatTests` uses to prove the log round-trips and that a
+        // source orders on `Sample.time`, which is the replay guarantee itself. Exempt
+        // because the test-only status is a deliberate choice, not an oversight.
+        "ReplaySource": "in-memory source; CLI uses StreamingReplaySource, tests use this to prove wire-format round-trip and time ordering",
     ]
 
     func testEveryPublicCoreTypeHasANonTestCaller() throws {

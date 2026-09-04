@@ -39,7 +39,11 @@ Accuracy is decided during the boring straight-line run-up.
   assumes the long-run mean of the accelerometer is gravity, which is false for
   the whole duration of a wheelie.
 
-## Milestones
+## Milestones (ORIGINAL M0 scaffold roadmap)
+
+> This is the roadmap as written at M0. It is kept for history; it is **not** what
+> the current `beta/calibrate-once` branch does. See "What the beta actually built"
+> below, and `docs/architecture.md` for the as-built picture.
 
 - **M0** this scaffold — package, CI, synthetic source, validity gate, tests
 - **M1** logger app; one filmed ride with side-on tripod ground truth
@@ -50,7 +54,25 @@ Accuracy is decided during the boring straight-line run-up.
 
 Instrument first, feature last.
 
-## Next steps after running the scaffold
+### What the beta actually built (differs from M3/M5 above)
+
+The gated **ESKF attitude filter, the RTS smoother, the delayed-state GNSS
+correction, the grade baseline, and the standalone cue engine were removed.** The
+live estimator is now `CalibrateOnceEstimator`: measure a constant gyro bias once at
+launch, then integrate **raw gyro only** (`rate = rawGyro − b`; `Q = Q·exp(rate·dt)`;
+`pitch = asin` of the rotated forward axis). The accelerometer is calibration-only —
+it anchors gravity and detects rest, and is recorded to disk, but never feeds the
+live angle. Post-run smoothing is a zero-phase display/scoring blur (`JitterBlur`),
+not RTS. Mount alignment is a **one-gesture** swipe (M3 planned a two-gesture solve).
+The cue's angle→tone transfer curve now lives in `Config` (v7) and is rendered by
+`CueAudioRenderer` rather than a separate cue engine. `motolog` ships two subcommands,
+`synth` and `replay` — the M2 FFT tool was not built as a subcommand.
+
+## Next steps after running the scaffold (ORIGINAL bootstrap notes)
+
+> Historical M0 bootstrap steps. The app target, logger, and replay CLI now exist;
+> these are kept because the environment setup (Info.plist keys, background modes)
+> is still accurate for a fresh clone.
 
 1. `swift test` — should pass.
 2. `swift run motolog synth` — runs the synthetic scenario end to end.
@@ -65,8 +87,9 @@ Instrument first, feature last.
 
 ## Calibration screens (two, not one)
 
-- **Bias zero, every session.** Stationary, level, engine idling or off, 8 s.
-  Wants the *least* vibration available — revving here hurts.
+- **Bias zero, every session.** Stationary, level, engine idling or off, 2 s
+  (`Config.biasCalibrationDuration`; was 8 s in the scaffold). Wants the *least*
+  vibration available — revving here hurts.
 - **Vibration profile, once per bike.** Stationary, sweep idle to redline, to
   find where engine excitation aliases and the phantom tilt offset per RPM.
 

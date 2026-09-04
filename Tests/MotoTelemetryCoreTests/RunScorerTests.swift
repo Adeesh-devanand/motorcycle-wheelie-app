@@ -180,8 +180,14 @@ final class RunScorerTests: XCTestCase {
         XCTAssertEqual(metrics.end, 3.0, accuracy: 1e-9)
         XCTAssertEqual(metrics.duration, 2.0, accuracy: 1e-9)
         XCTAssertEqual(metrics.entrySpeed, 18.5)
-        XCTAssertGreaterThan(metrics.liveMaxAngle, 0,
-                            "Max angle should be positive for an event with positive pitch")
+        // The ramp is `peakPitch * min(progress*3, 1)`, so it saturates at exactly
+        // `peakPitch` for the whole back two-thirds of the event — the max is a known
+        // value, not merely "positive". The old assertion was `> 0`, which any single
+        // positive sample satisfies: it would have passed had the ratcheting max
+        // reported the FIRST sample, or half the peak, or any other wrong number. This
+        // is the leaderboard figure, so it is worth pinning exactly.
+        XCTAssertEqual(metrics.liveMaxAngle, peakPitch, accuracy: 1e-9,
+                       "liveMaxAngle must be the true peak of the series")
         XCTAssertLessThan(metrics.rollMin, 0,
                          "Roll oscillation must produce a negative minimum")
         XCTAssertGreaterThan(metrics.rollMax, 0,

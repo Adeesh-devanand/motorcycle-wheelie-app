@@ -5,11 +5,57 @@ import SwiftUI
 /// GNSS quality, drops, battery. Low-confidence flag display.
 struct IntegrityReportView: View {
 
-    // In production, injected from the active session writer / quality monitor.
-    // Placeholder data shown here for structure.
-    @State private var report = IntegrityReport.placeholder
+    // Injected from the active session writer / quality monitor. There is no
+    // default sample: this screen is titled "Data Integrity", so it must never
+    // show numbers it did not measure. When no session has been recorded the
+    // caller passes nil and we render an explicit empty state instead of
+    // fabricating a plausible-looking report.
+    //
+    // Defaulted to nil so SettingsView (which we do not own and which currently
+    // calls `IntegrityReportView()`) keeps compiling; that call resolves to the
+    // honest "no data yet" state until a real report is threaded through.
+    let report: IntegrityReport?
+
+    init(report: IntegrityReport? = nil) {
+        self.report = report
+    }
 
     var body: some View {
+        if let report {
+            reportList(report)
+        } else {
+            emptyState
+        }
+    }
+
+    // MARK: - Empty State
+
+    // Absent measurements must LOOK absent. Shown when no session data has been
+    // injected — never a stand-in with representative-looking numbers.
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.md) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 40))
+                .foregroundStyle(AppColors.textSecondary)
+            Text("No session data yet")
+                .font(.headline)
+                .foregroundStyle(AppColors.textPrimary)
+            Text("Record a ride to see its integrity report here.")
+                .font(.subheadline)
+                .foregroundStyle(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(AppSpacing.screenPadding)
+        .background(AppColors.background)
+        .navigationTitle("Data Integrity")
+        .preferredColorScheme(.dark)
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Report List
+
+    private func reportList(_ report: IntegrityReport) -> some View {
         List {
             if report.isLowConfidence {
                 Section {
@@ -149,7 +195,10 @@ struct IntegrityReport {
         return descs
     }
 
-    static let placeholder = IntegrityReport(
+    // Preview-only sample. NOT a live-data fallback: renamed from `placeholder`
+    // so it can never again be mistaken for a measured report and defaulted into
+    // the view. Referenced only by the #Preview below.
+    static let previewSample = IntegrityReport(
         achievedRateHz: 98.2,
         nominalRateHz: 100,
         gapCount: 0,
@@ -163,4 +212,18 @@ struct IntegrityReport {
         batteryPercent: 72,
         qualityFlags: []
     )
+}
+
+// MARK: - Previews
+
+#Preview("Populated") {
+    NavigationStack {
+        IntegrityReportView(report: .previewSample)
+    }
+}
+
+#Preview("No session data") {
+    NavigationStack {
+        IntegrityReportView()
+    }
 }

@@ -1,5 +1,8 @@
 import Foundation
 import MotoTelemetryCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Records the RAW, unprocessed sensor stream — every `IMUSample` and `GNSSFix`
 /// exactly as it arrives, at full rate — to `<Documents>/logs/raw-<stamp>.ndjson`,
@@ -32,9 +35,24 @@ final class RawSampleRecorder: @unchecked Sendable {
     // MARK: - Tuning
 
     private let flushInterval: TimeInterval = 0.5
+    /// fsync cadence, from `Config.fsyncInterval`. This is what bounds "a force-quit
+    /// loses at most N seconds".
+    ///
+    /// That guarantee used to be documented on `SessionWriter`, the only writer that
+    /// honoured `Config.fsyncInterval` — and `SessionWriter` had ZERO callers, so the
+    /// guarantee was false for every ride ever recorded: the live path is this class,
+    /// and this class only fsynced on `finish()`. `SessionWriter` has now been deleted
+    /// and the guarantee moved here, to the writer that actually runs. A periodic
+    /// `synchronizeFile()` is the whole substance of it; a `write()` alone leaves the
+    /// bytes in the page cache, where a kill loses them.
+    private let fsyncInterval: TimeInterval
+    /// Monotonic time of the last successful fsync, `flushQueue` only.
+    private var lastSyncTime: TimeInterval = 0
     /// ~120 bytes/sample × 100 Hz × 0.5 s ≈ 6 KB per flush; the cap bounds a stalled
-    /// disk to a few seconds of samples before dropping and counting.
-    private let maxBufferedChunks = 4_000
+    /// disk to a few seconds of samples before dropping and counting. From
+    /// `Config.writerRingCapacity`, which was likewise orphaned by `SessionWriter`'s
+    /// deletion and is the same concept under the old writer's name.
+    private let maxBufferedChunks: Int
     /// Hard ceiling on one raw trace, bytes.
     ///
     /// The recorder defaults ON and had no cap at all: a device log measured
@@ -53,11 +71,27 @@ final class RawSampleRecorder: @unchecked Sendable {
     let fileURL: URL
     /// Current on-disk size in bytes, surfaced so the UI can show how much a ride
     /// is costing. Updated on each flush.
-    private(set) var fileSizeBytes: UInt64 = 0
-    private(set) var droppedSamples = 0
+    ///
+    /// These three are the "your trace is incomplete" signals: current size, how
+    /// many samples were dropped when the buffer was full, and whether the hard
+    /// size cap truncated the trace. They are written under `bufferLock` (from the
+    /// sensor path and the flush queue) and read from the UI thread. A plain
+    /// `private(set) var` read is a torn/stale cross-thread read of a value whose
+    /// whole job is to say whether the data can be trusted — so they are `private`
+    /// backing storage exposed ONLY through accessors that take the same
+    /// `bufferLock`. The hot `record` path's locking is unchanged: it already holds
+    /// `bufferLock` when it touches these, and these accessors add no work to it.
+    private var _fileSizeBytes: UInt64 = 0
+    private var _droppedSamples = 0
+    private var _sizeCapReached = false
+
+    /// Bytes on disk as of the last flush. Read under `bufferLock`.
+    var fileSizeBytes: UInt64 { bufferLock.lock(); defer { bufferLock.unlock() }; return _fileSizeBytes }
+    /// Samples dropped because the flush buffer was full. Read under `bufferLock`.
+    var droppedSamples: Int { bufferLock.lock(); defer { bufferLock.unlock() }; return _droppedSamples }
     /// True once `maxFileBytes` was hit and recording stopped. Surfaced so the UI can
-    /// say the trace is truncated rather than silently ending it.
-    private(set) var sizeCapReached = false
+    /// say the trace is truncated rather than silently ending it. Read under `bufferLock`.
+    var sizeCapReached: Bool { bufferLock.lock(); defer { bufferLock.unlock() }; return _sizeCapReached }
 
     // MARK: - Private
 
@@ -67,6 +101,17 @@ final class RawSampleRecorder: @unchecked Sendable {
     private var timerSource: DispatchSourceTimer?
     private var handle: FileHandle?
     private let encoder = JSONEncoder()
+    /// Guards `finish()` against a second call and against racing the flush queue.
+    /// Only ever touched on `flushQueue`, so no separate lock is needed.
+    private var finished = false
+    /// Tokens for the background/terminate observers, removed in `finish()`.
+    ///
+    /// `DiagnosticLog` is a process-lifetime singleton and never removes its block
+    /// observers; this recorder is created and destroyed per session, so its
+    /// observers MUST be torn down or they would fire against a finished recorder.
+    /// The blocks capture `[weak self]` (same as `DiagnosticLog`) so they never
+    /// retain the recorder — the tokens exist for teardown, not to break a cycle.
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     // MARK: - Init
 
@@ -75,6 +120,9 @@ final class RawSampleRecorder: @unchecked Sendable {
     ///     runs under the same parameters that produced the trace.
     ///   - bikeProfileID: recorded in the header notes for provenance.
     init(config: Config, bikeProfileID: UUID) {
+        self.fsyncInterval = config.fsyncInterval
+        self.maxBufferedChunks = config.writerRingCapacity
+
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("logs", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -102,10 +150,11 @@ final class RawSampleRecorder: @unchecked Sendable {
         )
         if let headerData = try? LogFile.encodeHeader(header) {
             handle?.write(headerData)
-            fileSizeBytes = UInt64(headerData.count)
+            _fileSizeBytes = UInt64(headerData.count)
         }
 
         startTimer()
+        registerLifecycleObservers()
     }
 
     // MARK: - Recording
@@ -116,12 +165,12 @@ final class RawSampleRecorder: @unchecked Sendable {
     func record(_ sample: Sample) {
         guard let data = try? LogFile.encode(sample) else { return }
         bufferLock.lock()
-        if sizeCapReached {
+        if _sizeCapReached {
             bufferLock.unlock()
             return
         }
         if buffer.count >= maxBufferedChunks {
-            droppedSamples += 1
+            _droppedSamples += 1
             bufferLock.unlock()
             return
         }
@@ -134,16 +183,65 @@ final class RawSampleRecorder: @unchecked Sendable {
         flushQueue.sync { self.drain() }
     }
 
-    /// Stop recording and close the file.
+    /// Drain the buffer AND force the bytes to disk. Used by the background /
+    /// terminate observers: the OS may kill a backgrounded app moments later, so a
+    /// plain `flush()` (which only `write`s) is not enough — the last samples must
+    /// actually reach the file, which is what `synchronizeFile()` guarantees.
+    /// No-op after `finish()` has closed the handle.
+    private func flushAndSync() {
+        flushQueue.sync {
+            guard !self.finished else { return }
+            self.drain()
+            self.handle?.synchronizeFile()
+        }
+    }
+
+    /// Stop recording and close the file. Idempotent: a second call (e.g. an
+    /// explicit stop after a terminate observer already ran) is a no-op, and the
+    /// timer cancel/nil and the synchronize/close all happen on `flushQueue` so
+    /// they cannot race a concurrent `drain()`.
     func finish() {
         timerSource?.cancel()
         timerSource = nil
+        removeLifecycleObservers()
         flush()
         flushQueue.sync {
+            guard !self.finished else { return }
+            self.finished = true
             self.handle?.synchronizeFile()
             try? self.handle?.close()
             self.handle = nil
         }
+    }
+
+    // MARK: - Background / terminate flush
+
+    /// Mirror of `DiagnosticLog.registerLifecycleObservers`: flush when the app is
+    /// backgrounded or terminated so a kill never loses the buffered tail.
+    ///
+    /// `RawSampleRecorder` writes the MORE important file (the replayable raw
+    /// trace) yet registered NONE of these — it flushed only on its 0.5 s timer and
+    /// on explicit `finish()`, so an OS kill of a backgrounded app dropped up to
+    /// 0.5 s of samples even though the code to save them existed. These observers
+    /// close that gap, and unlike `DiagnosticLog` they also `synchronizeFile()`
+    /// (via `flushAndSync`) because a raw trace killed mid-flush must have its
+    /// bytes on disk, not merely handed to the OS write buffer.
+    private func registerLifecycleObservers() {
+        #if canImport(UIKit)
+        let nc = NotificationCenter.default
+        lifecycleObservers.append(
+            nc.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                           object: nil, queue: nil) { [weak self] _ in self?.flushAndSync() })
+        lifecycleObservers.append(
+            nc.addObserver(forName: UIApplication.willTerminateNotification,
+                           object: nil, queue: nil) { [weak self] _ in self?.flushAndSync() })
+        #endif
+    }
+
+    private func removeLifecycleObservers() {
+        let nc = NotificationCenter.default
+        for token in lifecycleObservers { nc.removeObserver(token) }
+        lifecycleObservers.removeAll()
     }
 
     // MARK: - Private
@@ -151,9 +249,28 @@ final class RawSampleRecorder: @unchecked Sendable {
     private func startTimer() {
         let timer = DispatchSource.makeTimerSource(queue: flushQueue)
         timer.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
-        timer.setEventHandler { [weak self] in self?.drain() }
+        timer.setEventHandler { [weak self] in self?.drainAndMaybeSync() }
         timer.resume()
         timerSource = timer
+    }
+
+    /// The timer's tick: always drain, and fsync once `fsyncInterval` has elapsed.
+    ///
+    /// The two cadences are deliberately separate. Draining is cheap and frequent so
+    /// the in-memory buffer cannot grow into the drop threshold; fsync is expensive
+    /// (it waits on the device) so it runs on the slower `Config.fsyncInterval`. The
+    /// gap between them IS the durability bound: a kill loses at most one fsync
+    /// interval of samples, which is exactly what `Config.fsyncInterval` claims.
+    ///
+    /// Runs on `flushQueue` only.
+    private func drainAndMaybeSync() {
+        drain()
+        guard !finished else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastSyncTime >= fsyncInterval {
+            handle?.synchronizeFile()
+            lastSyncTime = now
+        }
     }
 
     /// Runs on `flushQueue` only.
@@ -166,21 +283,31 @@ final class RawSampleRecorder: @unchecked Sendable {
 
         guard let h = handle else { return }
         for chunk in chunks {
-            if fileSizeBytes + UInt64(chunk.count) > maxFileBytes {
-                bufferLock.lock()
-                let alreadyReported = sizeCapReached
-                sizeCapReached = true
+            // Size accounting is read AND written under `bufferLock` so the UI
+            // accessors above never see a torn `_fileSizeBytes` / `_sizeCapReached`.
+            // This runs on `flushQueue`, never on the 100 Hz `record` path, so it
+            // adds no lock work to the sensor thread.
+            bufferLock.lock()
+            let projected = _fileSizeBytes + UInt64(chunk.count)
+            if projected > maxFileBytes {
+                let alreadyReported = _sizeCapReached
+                _sizeCapReached = true
                 bufferLock.unlock()
                 if !alreadyReported {
                     DiagnosticLog.shared.log(.warn, "rawrec",
                                              "raw trace hit its size cap — recording stopped",
-                                             ["bytes": Double(fileSizeBytes),
+                                             ["bytes": Double(projected - UInt64(chunk.count)),
                                               "capBytes": Double(maxFileBytes)])
                 }
                 return
             }
+            bufferLock.unlock()
+
             h.write(chunk)
-            fileSizeBytes += UInt64(chunk.count)
+
+            bufferLock.lock()
+            _fileSizeBytes += UInt64(chunk.count)
+            bufferLock.unlock()
         }
     }
 

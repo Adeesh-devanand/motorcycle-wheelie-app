@@ -140,29 +140,58 @@ enum NDJSONReader {
         return TailResult(lines: parsed, skippedCount: skipped, truncated: truncated)
     }
 
-    /// Read EVERY line of a file for full-session parsing (summary card). Still
-    /// streams line by line rather than materialising typed objects eagerly.
+    /// Read EVERY line of a file for full-session parsing (summary card).
+    ///
+    /// Genuinely streams: it reads the file in fixed-size chunks through a
+    /// `FileHandle`, splits complete lines out of a rolling buffer as it goes, and
+    /// carries only the trailing partial line forward — so at no point is the whole
+    /// file resident. It previously did `Data(contentsOf: url, options: .mappedIfSafe)`
+    /// and split that, under a comment claiming it "streams line by line"; that was
+    /// false — `.mappedIfSafe` maps (or, when mapping is unsafe, fully reads) the
+    /// ENTIRE file, and the raw trace is capped at 64 MB, so a summary of a full
+    /// trace could pull tens of MB into memory at once. Parsed `LogLine`s are still
+    /// all retained (that is this call's contract — it returns every line), but the
+    /// file bytes no longer are.
     /// Must be called off the main thread.
-    static func allLines(url: URL) -> TailResult {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+    static func allLines(url: URL, chunkSize: Int = 64 * 1024) -> TailResult {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
             return TailResult(lines: [], skippedCount: 0, truncated: false)
         }
+        defer { try? handle.close() }
+
         let newline = UInt8(0x0A)
         var parsed: [LogLine] = []
         var skipped = 0
-        var start = data.startIndex
-        while start < data.endIndex {
-            let end = data[start...].firstIndex(of: newline) ?? data.endIndex
-            let slice = data[start..<end]
-            if !slice.isEmpty {
-                if let line = decode(Data(slice)) {
-                    parsed.append(line)
-                } else {
-                    skipped += 1
-                }
+        var pending = Data()   // bytes after the last newline seen so far
+
+        func consume(_ slice: Data) {
+            if slice.isEmpty { return }
+            if let line = decode(Data(slice)) {
+                parsed.append(line)
+            } else {
+                skipped += 1
             }
-            start = end < data.endIndex ? data.index(after: end) : data.endIndex
         }
+
+        while true {
+            guard let chunk = try? handle.read(upToCount: chunkSize), !chunk.isEmpty else {
+                break
+            }
+            pending.append(chunk)
+            // Split out every complete line in `pending`, keeping the tail remainder.
+            var searchStart = pending.startIndex
+            while let nl = pending[searchStart...].firstIndex(of: newline) {
+                consume(pending[searchStart..<nl])
+                searchStart = pending.index(after: nl)
+            }
+            // Drop the consumed prefix so `pending` holds only the trailing partial.
+            if searchStart > pending.startIndex {
+                pending = Data(pending[searchStart...])
+            }
+        }
+        // Final partial line (no trailing newline).
+        consume(pending)
+
         return TailResult(lines: parsed, skippedCount: skipped, truncated: false)
     }
 

@@ -8,11 +8,14 @@ final class BetaCalibrateOnceTests: XCTestCase {
 
     // MARK: - Config
 
-    func testVersionSixAndTheChangedDefaults() {
+    func testCurrentVersionAndTheChangedDefaults() {
         let config = Config()
-        XCTAssertEqual(config.version, 6)
+        XCTAssertEqual(config.version, 7)
         XCTAssertEqual(config.eventMinDuration, 1.0, accuracy: 1e-12)
         XCTAssertEqual(config.biasCalibrationDuration, 2.0, accuracy: 1e-12)
+        // v7's two additions, both previously hardcoded literals.
+        XCTAssertEqual(config.maxIntegrationDt, 1.0, accuracy: 1e-12)
+        XCTAssertEqual(config.maxSampleGap, 0.5, accuracy: 1e-12)
     }
 
     /// A v5 header predates the beta fields. It must still decode, with them at
@@ -67,12 +70,19 @@ final class BetaCalibrateOnceTests: XCTestCase {
     func testBlurPullsDownALoneSpike() throws {
         var series = [Double](repeating: 40.0, count: 200)
         series[100] += 4.0                      // one +4 deg vibration spike
-        let blurred = try JitterBlur().blur(series).get()
+        let blur = JitterBlur()
+        let blurred = try blur.blur(series).get()
 
         XCTAssertEqual(series.max()!, 44.0, accuracy: 1e-12)
-        // A 9-wide window spreads the spike over 9 samples: 4/9 = 0.44 deg remains.
-        XCTAssertLessThan(blurred.max()!, 41.0)
-        XCTAssertGreaterThan(blurred.max()!, 40.0, "the spike is attenuated, not erased")
+        // A centred boxcar spreads a lone spike evenly over the whole window, so the
+        // residual is exactly spike/windowSamples. DERIVED from the window rather than
+        // hardcoded: the old assertion only bounded the result to 40.0...41.0, which is
+        // ~2.3x wider than the physics and would have passed just as happily with a
+        // 5-wide window (residual 0.80) as with the intended 9-wide one (0.444). A test
+        // that accepts the wrong window width is not testing the window.
+        let expectedResidual = 4.0 / Double(blur.windowSamples)
+        XCTAssertEqual(blurred.max()!, 40.0 + expectedResidual, accuracy: 1e-9,
+                       "a lone spike must be attenuated by exactly the window width")
     }
 
     /// The scoring consequence, which is the reason the blur exists at all.

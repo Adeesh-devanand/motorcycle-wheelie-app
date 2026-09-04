@@ -66,9 +66,37 @@ import Foundation
 /// at exactly the angle every wheelie starts at), and the jitter-blur window.
 /// Changed defaults: `eventMinDuration` 0.4 -> 1.0 s, `biasCalibrationDuration`
 /// 8.0 -> 2.0 s.
+///
+/// ### v6 -> v7
+/// Named the two stream-continuity limits that were previously hardcoded literals:
+/// `maxIntegrationDt` (the estimator's "this dt is absurd, resynchronise" cutoff,
+/// was a bare `1.0` inside `CalibrateOnceEstimator.integrate`) and `maxSampleGap`
+/// (the "the stream lost continuity" cutoff, was a bare `0.5` inside
+/// `Pipeline.processIMU`'s gap warning). Both are now read by a second consumer —
+/// `EventSegmenter` restarts its entry/exit dwell across a gap, because a dwell is
+/// a claim that pitch was SUSTAINED and a gap is precisely the absence of evidence
+/// for that. Adding a field is backward-compatible: `init(from:)` is tolerant, so a
+/// v6 header decodes with these defaults.
+///
+/// Also moved the cue's angle-to-tone TRANSFER CURVE out of `CueAudioRenderer`,
+/// where the whole policy lived as private `let`s that never reached a log
+/// header — so a replay could reproduce the numbers the estimator saw but not
+/// the sound the rider actually heard, which for a safety cue is the part that
+/// matters. The rider-facing policy is now the `cueSilenceThreshold`,
+/// `cueLimitPitch`, `cuePitchCap`, `cueBaseFrequency`, `cuePeakFrequency`,
+/// `cueMinPulseRate`, `cueMaxPulseRate`, `cueMinDutyCycle`, `cueMaxDutyCycle`,
+/// `cueAmplitudeExponent` and `cueMaxAmplitude` group below. The three angle
+/// fields are stored in RADIANS to match every other angle in this struct
+/// (`cueEnterPitch`, `eventEntryPitch`, …); the renderer works in degrees and
+/// converts on read at one place. The three one-pole smoothing time constants
+/// (`amplitudeSmoothingTime`, `frequencySmoothingTime`, `gateSmoothingTime`)
+/// deliberately STAYED local to the renderer: they are pure-DSP anti-click and
+/// anti-zipper implementation detail — they shape how the tone glides, not what
+/// angle maps to what sound — so they are not rider-facing policy and their
+/// value does not change what a replay must reproduce.
 
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 6
+    public var version: Int = 7
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -212,6 +240,55 @@ public struct Config: Codable, Sendable, Equatable {
     /// the tone, not the decision, so a flapping decision still flaps.
     public var cueDeadband: Double = 0.5 * .pi / 180           // rad
 
+    // MARK: - Cue transfer curve (angle -> tone)
+    // The angle-to-tone mapping the renderer synthesises. Lived as private lets
+    // inside `CueAudioRenderer`, so none of it reached this struct and therefore
+    // none of it reached a log header: a replay could reproduce what the estimator
+    // saw but not what the rider HEARD. For a safety cue the sound is the output,
+    // so its policy belongs here with everything else a log must be able to
+    // reconstruct. Angles are in RADIANS to match the rest of this struct; the
+    // renderer converts to degrees on read, at one place.
+    //
+    // NOTE these are the SAME angle as `cueEnterPitch`/`cueExitPitch` above but a
+    // different job: enter/exit are the ON/OFF latch (FIX B5), whereas
+    // `cueSilenceThreshold`…`cuePitchCap` shape the tone once it IS on. They are
+    // kept distinct rather than folded together because the latch boundary and the
+    // synthesis floor answer different questions and can be tuned independently.
+    /// Below this angle the renderer is silent. Keeps normal riding, bumps and
+    /// lean from making noise (the variometer "climb threshold" convention).
+    public var cueSilenceThreshold: Double = 10.0 * .pi / 180  // rad
+    /// At and above this angle the tone goes solid at full cap — the categorical
+    /// past-the-limit signal. Well past a wheelie's balance point, so the whole
+    /// usable range stays inside the pulsed zone.
+    public var cueLimitPitch: Double = 70.0 * .pi / 180        // rad
+    /// Ceiling for the amplitude and pitch maps. Angles above clamp here.
+    public var cuePitchCap: Double = 90.0 * .pi / 180          // rad
+    /// Carrier at the silence threshold. Above the phone speaker's low-end rolloff
+    /// and above the helmet wind-noise energy peak (250-500 Hz).
+    public var cueBaseFrequency: Double = 1000.0              // Hz
+    /// Carrier at the cap — the ear's most sensitive band (2-5 kHz, peaking ~3 kHz
+    /// from ear-canal resonance), worth 6-8 dB of free perceived loudness.
+    public var cuePeakFrequency: Double = 3000.0             // Hz
+    /// Beep rate at the silence threshold. Rises with angle toward `cueMaxPulseRate`.
+    public var cueMinPulseRate: Double = 2.0                 // Hz
+    /// Beep rate just below the limit. Kept under the ~20 Hz click-fusion threshold
+    /// so beeps stay countable, near the ~10 Hz tempo-discrimination optimum.
+    public var cueMaxPulseRate: Double = 12.0                // Hz
+    /// Fraction of each pulse period sounding at the silence threshold — a short
+    /// chirp with a long gap.
+    public var cueMinDutyCycle: Double = 0.30
+    /// Fraction sounding just below the limit — widened toward solid, the
+    /// far-to-near progression parking sensors use.
+    public var cueMaxDutyCycle: Double = 0.70
+    /// Non-linear amplitude curve exponent. Raw amplitude ∝ t^n; perceived loudness
+    /// then grows as t^(0.6n) by Stevens' power law, so n = 2 gives clearly
+    /// accelerating loudness while keeping the mid range audible. Raise toward 3-5
+    /// for a more violent late rush, lower to 1.67 for perceptually linear.
+    public var cueAmplitudeExponent: Double = 2.0
+    /// Fixed internal amplitude ceiling. Below 1.0 for headroom against clipping;
+    /// iOS still scales the final output by the device volume on top of this.
+    public var cueMaxAmplitude: Double = 0.85
+
     // MARK: - Event segmentation
     public var eventEntryPitchRate: Double = 15.0 * .pi / 180  // rad/s
     /// 10 deg. Nothing below this counts as a wheelie and nothing below this is
@@ -237,6 +314,23 @@ public struct Config: Codable, Sendable, Equatable {
     /// Deadband on pitch rate when locating the hold window's boundaries, so
     /// vibration does not produce spurious zero crossings.
     public var holdRateEpsilon: Double = 1.0 * .pi / 180       // rad/s
+
+    // MARK: - Stream continuity
+    // Two different questions about the same gap, which is why they are two fields
+    // and not one. `maxIntegrationDt` asks "can I integrate across this?" and its
+    // answer must be generous, because a legitimate 100 Hz stream that hiccups for
+    // 200 ms is still worth integrating. `maxSampleGap` asks "was the signal
+    // CONTINUOUS across this?" and its answer must be strict, because a dwell timer
+    // and a gap-warning both depend on continuity rather than on magnitude.
+    /// Beyond this, a dt is treated as a stream jump rather than a real interval:
+    /// integrating it would rotate attitude by a fabricated amount, so the sample is
+    /// skipped and the estimator resynchronises on the next pair.
+    public var maxIntegrationDt: TimeInterval = 1.0
+    /// Beyond this, the stream is considered to have lost continuity. Raises
+    /// `QualityFlags.gapExceeded`, and restarts any dwell in progress: a dwell is a
+    /// claim that pitch stayed above a threshold for a span, and across a gap there
+    /// is no evidence either way, so the conservative reading is to start over.
+    public var maxSampleGap: TimeInterval = 0.5
 
     // MARK: - Bias
     // Dominant error term in the whole system. A stationary average drives it to
@@ -403,6 +497,12 @@ public struct Config: Codable, Sendable, Equatable {
     public var fsyncInterval: TimeInterval = 1.0
     /// Frames of full-screen white at ride start, as a visual alignment mark for
     /// an external camera. Replaces the withdrawn audio chirp.
+    ///
+    /// INERT as of 2026-09-04: its only consumer, `SyncFlashView`, was unreachable
+    /// (no caller, no preview) and has been deleted. Kept rather than removed
+    /// because the video-cross-correlation workflow it serves is still a wanted
+    /// feature and this is the tuned value for it — but nothing reads it today, so
+    /// do not infer from its presence that a sync flash happens.
     public var syncFlashFrames: Int = 6
     /// Full-scale ranges used to set IMUSample.saturated, with a 1% margin.
     public var gyroFullScale: Double = 2000.0 * .pi / 180      // rad/s
@@ -446,6 +546,18 @@ public struct Config: Codable, Sendable, Equatable {
         cueExitPitch             = try get(.cueExitPitch, d.cueExitPitch)
         cueDeadband              = try get(.cueDeadband, d.cueDeadband)
 
+        cueSilenceThreshold = try get(.cueSilenceThreshold, d.cueSilenceThreshold)
+        cueLimitPitch       = try get(.cueLimitPitch, d.cueLimitPitch)
+        cuePitchCap         = try get(.cuePitchCap, d.cuePitchCap)
+        cueBaseFrequency    = try get(.cueBaseFrequency, d.cueBaseFrequency)
+        cuePeakFrequency    = try get(.cuePeakFrequency, d.cuePeakFrequency)
+        cueMinPulseRate     = try get(.cueMinPulseRate, d.cueMinPulseRate)
+        cueMaxPulseRate     = try get(.cueMaxPulseRate, d.cueMaxPulseRate)
+        cueMinDutyCycle     = try get(.cueMinDutyCycle, d.cueMinDutyCycle)
+        cueMaxDutyCycle     = try get(.cueMaxDutyCycle, d.cueMaxDutyCycle)
+        cueAmplitudeExponent = try get(.cueAmplitudeExponent, d.cueAmplitudeExponent)
+        cueMaxAmplitude     = try get(.cueMaxAmplitude, d.cueMaxAmplitude)
+
         eventEntryPitchRate = try get(.eventEntryPitchRate, d.eventEntryPitchRate)
         eventEntryPitch     = try get(.eventEntryPitch, d.eventEntryPitch)
         eventExitPitch      = try get(.eventExitPitch, d.eventExitPitch)
@@ -453,6 +565,9 @@ public struct Config: Codable, Sendable, Equatable {
         eventExitDwell      = try get(.eventExitDwell, d.eventExitDwell)
         eventMinDuration    = try get(.eventMinDuration, d.eventMinDuration)
         holdRateEpsilon     = try get(.holdRateEpsilon, d.holdRateEpsilon)
+
+        maxIntegrationDt    = try get(.maxIntegrationDt, d.maxIntegrationDt)
+        maxSampleGap        = try get(.maxSampleGap, d.maxSampleGap)
 
         biasCalibrationDuration = try get(.biasCalibrationDuration, d.biasCalibrationDuration)
         biasStaleAfter          = try get(.biasStaleAfter, d.biasStaleAfter)

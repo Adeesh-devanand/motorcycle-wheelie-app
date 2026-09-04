@@ -16,14 +16,23 @@ import os
 /// 250 ms, and the completed run is persisted atomically when it ends. The session
 /// therefore starts as soon as calibration succeeds and runs until the screen goes
 /// away — the rider never presses anything.
+/// this view model is `@MainActor`. It reads `RunRecorder`'s live display
+/// state and is driven by a `CADisplayLink` that fires on the main run loop, so the
+/// whole type belongs to the main actor. The annotation is what lets it read the
+/// recorder's `@MainActor` display properties and call its main-actor lifecycle
+/// methods without a data race — the recorder stages sensor values off-actor and
+/// this side applies them here via `recorder.flushDisplay()`.
 @Observable
+@MainActor
 final class LiveWheelieViewModel {
 
     // MARK: - Display State (30 Hz decimated)
 
     private(set) var currentAngle: Double = 0       // degrees
     private(set) var currentSpeed: Double = 0       // km/h
-    private(set) var pitchRate: Double = 0          // deg/s
+    /// false when the recorder has no valid GNSS speed yet, so the view can
+    /// distinguish "no fix" from a real 0 km/h instead of showing 0 for both.
+    private(set) var speedAvailable: Bool = false
     private(set) var calibrationState: CalibrationState = .unavailable
 
     /// R6.2: which gate condition is blocking calibration, phrased for the rider.
@@ -47,7 +56,14 @@ final class LiveWheelieViewModel {
     }
 
     var speedInRange: RangeStatus {
-        rangeStatus(value: currentSpeed, target: preferences.speedTarget, nearThreshold: 5)
+        // With no GNSS fix there is no speed to judge, and `currentSpeed` is a HELD
+        // value rather than a measurement. Reporting `.inRange` off it would light the
+        // meter green on data that does not exist — the one outcome worth actively
+        // preventing, since green is the signal the rider steers by. `RangeStatus` has
+        // no neutral case, so fall to the non-flattering side instead of inventing one
+        // and threading it through the meter.
+        guard speedAvailable else { return .outOfRange }
+        return rangeStatus(value: currentSpeed, target: preferences.speedTarget, nearThreshold: 5)
     }
 
     /// Live values are only trustworthy once calibrated. §7.2 requires them frozen
@@ -160,6 +176,12 @@ final class LiveWheelieViewModel {
     /// run uses estimator output, never these interpolated values.
     private func decimateToDisplay() {
         let alpha = 0.3
+        // apply the sensor values the recorder staged off-actor onto its
+        // observable properties, here on the main actor, before reading them. This is
+        // the single coalescing hop — 100 Hz of sensor writes become one apply per
+        // 30 Hz display frame.
+        recorder.flushDisplay()
+
         calibrationState = calibrationService.state
         blockingReason = calibrationService.blockingReason
 
@@ -181,8 +203,17 @@ final class LiveWheelieViewModel {
         guard isCalibrated else { return }
 
         currentAngle += alpha * (recorder.livePitch - currentAngle)
-        currentSpeed += alpha * (recorder.liveSpeed - currentSpeed)
-        pitchRate = recorder.livePitchRate
+
+        // `recorder.liveSpeed` stays 0 until the first GNSS fix, so EMA-ing it
+        // unconditionally rendered "0 km/h" for BOTH a stationary bike and a total
+        // absence of GNSS — R15.3 says those must not look identical. Drive an
+        // explicit `speedAvailable` flag from the recorder and, while no fix exists,
+        // HOLD the last displayed speed rather than smoothing toward a fabricated 0.
+        // The view shows a dash / "—" when `speedAvailable` is false (see the view).
+        speedAvailable = recorder.liveSpeedAvailable
+        if speedAvailable {
+            currentSpeed += alpha * (recorder.liveSpeed - currentSpeed)
+        }
 
         let wasActive = eventActive
         eventActive = recorder.eventActive
@@ -195,7 +226,12 @@ final class LiveWheelieViewModel {
         }
         if eventActive {
             attemptMaxAngle = max(attemptMaxAngle, recorder.livePitch)
-            attemptMaxSpeed = max(attemptMaxSpeed, recorder.liveSpeed)
+            // only fold a genuine speed reading into the attempt max — while
+            // no GNSS fix exists `recorder.liveSpeed` is a placeholder 0, not a
+            // measured value, and must not seed the max.
+            if speedAvailable {
+                attemptMaxSpeed = max(attemptMaxSpeed, recorder.liveSpeed)
+            }
         }
     }
 
@@ -218,13 +254,18 @@ enum RangeStatus {
 
 // MARK: - Display Link Proxy (30 Hz cap)
 
+/// `@MainActor` — the display link is added to the `.main` runloop, so `tick`
+/// always fires on the main thread, and its handler drives the main-actor view
+/// model. Isolating the proxy lets the compiler prove that the handler call is on the
+/// main actor instead of forcing a hop.
+@MainActor
 private final class DisplayLinkProxy {
     private var displayLink: CADisplayLink?
-    private let handler: () -> Void
+    private let handler: @MainActor () -> Void
     private var lastFire: CFTimeInterval = 0
     private let minInterval: CFTimeInterval = 1.0 / 30.0
 
-    init(handler: @escaping () -> Void) {
+    init(handler: @escaping @MainActor () -> Void) {
         self.handler = handler
     }
 

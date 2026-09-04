@@ -211,9 +211,11 @@ private struct LogFileRow: View {
             .buttonStyle(.plain)
             .disabled(entry.kind == .raw)   // raw files are for export, not the line viewer
 
-            // WORKING ShareLink on the REAL file URL — deliberately NOT the
-            // decorative "Prepare Export" pattern in ExportShareView. A file URL
-            // is directly Transferable, so this exports the actual bytes.
+            // WORKING ShareLink on the REAL file URL. A file URL is directly
+            // Transferable, so this exports the actual bytes. This is the app's
+            // only export path: the decorative "Prepare Export" screen it used to
+            // be contrasted against (ExportShareView) was unreachable and has been
+            // deleted.
             ShareLink(item: entry.url) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 15))

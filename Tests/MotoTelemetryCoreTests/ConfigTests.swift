@@ -32,15 +32,24 @@ final class ConfigTests: XCTestCase {
         // ceiling 3 -> 5 deg/s, shared. Added `anchorLevelCosine`, since a
         // magnitude-only anchor test cannot reject a tilt at all.
         //
-        // v5 -> v6: added the beta "calibrate-once" estimator as a selectable mode
-        // (`estimatorMode`, `driftCompensation`), the GATING vibration limit
-        // `calibrationVibrationLimit` — distinct from the reporting-only threshold,
-        // because |f| magnitude is AC-blind and an idling engine passes the band test
-        // untouched — the swipe alignment's `alignmentConfidenceMin`, the cue's
-        // enter/exit pair and deadband, and the jitter-blur window. Two defaults
-        // changed: `eventMinDuration` 0.4 -> 1.0 s and `biasCalibrationDuration`
-        // 8.0 -> 2.0 s.
-        XCTAssertEqual(Config().version, 6)
+        // v5 -> v6: added the GATING vibration limit `calibrationVibrationLimit` —
+        // distinct from the reporting-only threshold, because |f| magnitude is
+        // AC-blind and an idling engine passes the band test untouched — the swipe
+        // alignment's `alignmentConfidenceMin`, the cue's enter/exit pair and
+        // deadband, and the jitter-blur window. Two defaults changed:
+        // `eventMinDuration` 0.4 -> 1.0 s and `biasCalibrationDuration` 8.0 -> 2.0 s.
+        //
+        // NOTE: an earlier version of this comment said v6 added the calibrate-once
+        // estimator "as a selectable mode (`estimatorMode`, `driftCompensation`)".
+        // Those two fields were removed before shipping — calibrate-once is the SOLE
+        // path on this branch, not a mode — and the stale comment re-introduced a
+        // deleted mental model at the top of the file that defines the config.
+        //
+        // v6 -> v7: named the two stream-continuity limits that had been hardcoded
+        // literals, `maxIntegrationDt` (was a bare 1.0 in the estimator) and
+        // `maxSampleGap` (was a bare 0.5 in the pipeline's gap warning), and gave the
+        // latter a second consumer in `EventSegmenter`'s dwell restart.
+        XCTAssertEqual(Config().version, 7)
     }
 
     func testExitThresholdMatchesTheUISpec() {

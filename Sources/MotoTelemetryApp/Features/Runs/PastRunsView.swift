@@ -112,16 +112,13 @@ struct PastRunsView: View {
                 .accessibilityLabel("More run actions")
             }
 
-            Button {
-                // Settings placeholder
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
-                    .frame(width: 44, height: 44)
-                    .background(AppColors.surfaceButton, in: Circle())
-            }
-            .accessibilityLabel("Settings")
+            // Removed: a gearshape Button labelled "Settings" whose action was
+            // empty. It announced a "Settings" button to VoiceOver that opened
+            // nothing. Settings is not reachable from here without new plumbing
+            // — this view is built with only a RunRepository, while SettingsView
+            // needs preferences + bikeStore — so the honest fix is to drop the
+            // control rather than wire a fake one. Settings remains reachable
+            // from the live screen (LiveWheelieView → SettingsView).
         }
         .padding(.horizontal, AppSpacing.screenPadding)
         .padding(.vertical, AppSpacing.sm)

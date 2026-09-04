@@ -62,14 +62,14 @@ struct RunDetailsView: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
             Spacer()
-            HStack(spacing: AppSpacing.lg) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
-            }
+            // Removed: a share icon and a gear icon that were bare
+            // `Image(systemName:)` views — not Buttons. They looked tappable but
+            // did nothing and were invisible to VoiceOver. There was no real
+            // export path in reach (the only one, ExportShareView, was itself
+            // unreachable and has since been deleted) and no settings action on
+            // the view model, so a control that lies is worse than no control.
+            // Removed rather than faked. A working export does exist, on the real
+            // file URL, in DiagnosticsView.
         }
         .padding(.top, AppSpacing.sm)
     }
@@ -151,7 +151,10 @@ struct RunDetailsView: View {
                     label: "MAX SPEED",
                     value: String(format: "%.0f", viewModel.maxSpeed),
                     unit: "km/h",
-                    color: AppColors.angleMetric,
+                    // Was `AppColors.angleMetric` (teal) — the angle channel's
+                    // colour, so the speed hero was lying about which channel it
+                    // was. Speed is blue throughout the app.
+                    color: AppColors.speedMetric,
                     showBest: false
                 )
                 .frame(maxWidth: .infinity)
@@ -301,16 +304,24 @@ struct RunDetailsView: View {
                 insightItem(label: "ANGLE IN RANGE", value: String(format: "%.1fs", viewModel.totalAngleInRange))
                     .frame(maxWidth: .infinity)
                 verticalDivider
-                insightItem(label: "AVG SPEED", value: String(format: "%.0f km/h", viewModel.averageSpeed))
+                insightItem(label: "AVG SPEED", value: String(format: "%.0f km/h", viewModel.averageSpeed), color: AppColors.speedMetric)
                     .frame(maxWidth: .infinity)
                 verticalDivider
-                insightItem(label: "SPEED IN RANGE", value: String(format: "%.1fs", viewModel.totalSpeedInRange))
+                insightItem(label: "SPEED IN RANGE", value: String(format: "%.1fs", viewModel.totalSpeedInRange), color: AppColors.speedMetric)
                     .frame(maxWidth: .infinity)
             }
         }
     }
 
-    private func insightItem(label: String, value: String) -> some View {
+    /// `color` defaults to the angle channel because two of the three insight rows
+    /// are angle metrics. It exists because the helper previously hardcoded
+    /// `AppColors.angleMetric` for ALL rows, so AVG SPEED and SPEED IN RANGE
+    /// rendered teal — the angle channel's colour — on the same screen whose legend
+    /// teaches teal = angle and blue = speed. A defaulted parameter fixes the two
+    /// speed rows without restructuring the other call site.
+    private func insightItem(label: String,
+                             value: String,
+                             color: Color = AppColors.angleMetric) -> some View {
         VStack(spacing: AppSpacing.xxs) {
             Text(label)
                 .font(.system(size: 12, weight: .medium))
@@ -319,7 +330,7 @@ struct RunDetailsView: View {
             Text(value)
                 .font(.system(size: 24, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(AppColors.angleMetric)
+                .foregroundStyle(color)
         }
     }
 

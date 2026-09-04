@@ -235,9 +235,17 @@ struct LiveScreen: View {
                 label: "SPEED",
                 valueContent: AnyView(
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text("\(Int(viewModel.currentSpeed))")
+                        // A dash, not a zero, when GNSS has no fix. `liveSpeed` sits at
+                        // 0 until the first fix arrives, so rendering it unconditionally
+                        // made "stationary" and "no satellites yet" identical on screen —
+                        // and 0 km/h is a perfectly plausible reading for a bike waiting
+                        // at a light, so the rider had no way to tell. The view model now
+                        // publishes `speedAvailable` for exactly this.
+                        Text(viewModel.speedAvailable
+                             ? "\(Int(viewModel.currentSpeed))" : "—")
                             .font(.system(size: 34, weight: .bold, design: .monospaced))
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(viewModel.speedAvailable
+                                             ? AppColors.textPrimary : AppColors.textSecondary)
                         Text("km/h")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(AppColors.accentBright)

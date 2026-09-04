@@ -244,7 +244,18 @@ public struct SessionSummary: Sendable, Equatable {
         bestDuration = events.max(by: { $0.duration < $1.duration })
         bestDistance = events.compactMap({ $0.distance != nil ? $0 : nil })
             .max(by: { ($0.distance ?? 0) < ($1.distance ?? 0) })
-        // Best consistency = lowest std dev (most stable hold).
-        bestConsistency = events.isEmpty ? nil : events.min(by: { $0.angleStdDev < $1.angleStdDev })
+        // Best consistency = lowest std dev (most stable hold), among events whose
+        // hold window was actually RESOLVED from pitch-rate crossings.
+        //
+        // The `holdWindowResolved` flag exists precisely to keep a heuristic window
+        // out of a personal best, and this line previously ignored it. That was the
+        // worst possible direction to fail: the heuristic fallback takes a fixed
+        // ±30% slice around the event's midpoint, which is narrower and better
+        // centred than a real hold, so it tends to produce a LOWER std dev than an
+        // honestly-measured hold — meaning a fallback event did not merely compete
+        // for the best-consistency slot, it was biased toward winning it.
+        bestConsistency = events
+            .filter { $0.holdWindowResolved }
+            .min(by: { $0.angleStdDev < $1.angleStdDev })
     }
 }

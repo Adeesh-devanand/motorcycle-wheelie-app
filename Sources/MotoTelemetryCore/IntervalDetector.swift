@@ -1,19 +1,13 @@
 import Foundation
 
-/// A snapshot of the rider's target ranges AS RECORDED at run finalisation.
-/// Stored per-run so historical intervals are never recomputed against changed
-/// current preferences — changing targets must never retroactively alter a run.
-public struct TargetSnapshot: Codable, Sendable, Equatable {
-    /// Angle target in radians.
-    public var angleRange: ClosedRange<Double>
-    /// Speed target in m/s.
-    public var speedRange: ClosedRange<Double>
-
-    public init(angleRange: ClosedRange<Double>, speedRange: ClosedRange<Double>) {
-        self.angleRange = angleRange
-        self.speedRange = speedRange
-    }
-}
+// `TargetSnapshot` was removed here on 2026-09-04. It stored a per-run copy of the
+// rider's angle/speed targets (radians, m/s) so historical intervals could never be
+// recomputed against changed current preferences. That requirement is real and still
+// honoured — but by the app's own `RunConfigurationSnapshot` (degrees, km/h, plus the
+// gauge maximum and calibration ID), which `WheelieRun` actually stores and reads.
+// This core type was the earlier duplicate and had no non-test caller: it survived the
+// reachability check only because a COMMENT in WheelieRun.swift mentioned it by name,
+// which is the exact hole that check was tightened to close.
 
 /// Detects time intervals where a series remains within a target range.
 ///

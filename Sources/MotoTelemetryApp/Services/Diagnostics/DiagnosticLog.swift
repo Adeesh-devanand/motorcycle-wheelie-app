@@ -77,6 +77,17 @@ final class DiagnosticLog: DiagnosticSink {
     private let bufferLock = NSLock()
     private var droppedCount = 0
     /// Last emit time per `(category|message)` key, for coalescing.
+    ///
+    /// INVARIANT: `message` MUST be a compile-time constant (or a finite enum
+    /// rawValue), NEVER a string with an interpolated variable — the numbers belong
+    /// in `values`, which is not part of this key. This map is never pruned, so the
+    /// key set must be bounded by the finite set of (category, message) pairs the
+    /// code emits. A grep of every emit/log call site across app and core (audited
+    /// 2026-09) confirmed this holds: all messages are literals, and the two
+    /// concatenated ones — `"event " + stateName(state)` and `"gate " +
+    /// verdict.reason.rawValue` — append an enum rawValue drawn from a fixed set. If
+    /// a future call site interpolates a variable into `message`, this map grows
+    /// without bound over a long ride and must be given an LRU cap or periodic clear.
     private var lastEmitByKey: [String: TimeInterval] = [:]
 
     // MARK: - Flush machinery
@@ -172,17 +183,27 @@ final class DiagnosticLog: DiagnosticSink {
         flushQueue.sync { self.drain() }
     }
 
-    /// The last `lines` lines of the current file plus anything still buffered —
-    /// for an in-app diagnostics viewer.
+    /// The last `lines` lines of the current file — for an in-app diagnostics
+    /// viewer. Returns each line as its NDJSON text.
+    ///
+    /// Routed through `NDJSONReader.tail(url:maxLines:)`, which seeks from the END
+    /// of the file in 64 KB chunks. It previously did `Data(contentsOf:)` then
+    /// `suffix(lines)`, pulling the entire file — up to the 20 MB rotation
+    /// threshold — into memory just to show the last N lines, which is exactly what
+    /// the chunked tail reader exists to avoid. We `flush()` first so the tail
+    /// includes everything buffered, then re-serialise each parsed `LogLine`'s
+    /// `raw` object back to compact JSON to preserve this method's `[String]`
+    /// contract (the reader hands back parsed lines, not the original text).
     func snapshotTail(lines: Int) -> [String] {
         flush()
-        var result: [String] = []
-        if let data = try? Data(contentsOf: currentFileURL),
-           let text = String(data: data, encoding: .utf8) {
-            let all = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
-            result = Array(all.suffix(lines))
+        let result = NDJSONReader.tail(url: currentFileURL, maxLines: lines)
+        return result.lines.compactMap { line in
+            guard let data = try? JSONSerialization.data(
+                    withJSONObject: line.raw,
+                    options: [.sortedKeys, .withoutEscapingSlashes]),
+                  let text = String(data: data, encoding: .utf8) else { return nil }
+            return text
         }
-        return result
     }
 
     // MARK: - Encoding

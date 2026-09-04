@@ -103,8 +103,6 @@ public struct Pipeline {
     /// is downstream and the recorder wants to know, even though nothing in this
     /// pipeline is suppressed by it any more.
     public var eventActive = false
-    /// Monotonic time an event most recently ended.
-    public var lastEventEndTime: TimeInterval?
 
     // MARK: - Diagnostics state
     private var diag: DiagnosticEmitter
@@ -215,14 +213,14 @@ public struct Pipeline {
         let epoch = firstSampleTime ?? time
         firstSampleTime = epoch
 
-        // Gap warning: no sample for > 0.5 s of sample time. Checked against the
-        // PREVIOUS sample time before we overwrite it.
+        // Gap warning: no sample for > Config.maxSampleGap of sample time. Checked
+        // against the PREVIOUS sample time before we overwrite it.
         if let last = lastSampleTime {
             let gap = time - last
-            if gap > 0.5 {
+            if gap > config.maxSampleGap {
                 diag.always(time: time, level: .warn,
                             message: "pipe sample gap",
-                            values: ["gap": gap, "limit": 0.5])
+                            values: ["gap": gap, "limit": config.maxSampleGap])
                 flags.insert(.gapExceeded)
             }
         }

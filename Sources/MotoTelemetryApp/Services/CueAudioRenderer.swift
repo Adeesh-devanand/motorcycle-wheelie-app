@@ -113,49 +113,87 @@ final class CueAudioRenderer: @unchecked Sendable {
     private var diag = DiagnosticEmitter(sink: DiagnosticLog.shared, category: "audio")
 
     // MARK: - Angle mapping
+    //
+    // The transfer curve below is POLICY, not implementation detail, so it now
+    // lives in `Config` (v7) and reaches the log header — before, a replay could
+    // reproduce what the estimator saw but not what the rider HEARD. Read once at
+    // init into `let`s so the render/update paths stay allocation- and lookup-free.
+    // Config stores the angle thresholds in RADIANS (like every other angle in the
+    // struct); this file works in DEGREES, so the conversion happens HERE, at one
+    // place, and nowhere else.
 
     private let sampleRate: Double = 48_000
 
     /// Below this angle the renderer is silent. Keeps normal riding, bumps and
     /// lean from making noise (the variometer "climb threshold" convention).
-    private let silenceThresholdDegrees: Double = 10
+    private let silenceThresholdDegrees: Double
 
     /// At and above this angle the tone goes solid at full cap — the categorical
     /// past-the-limit signal. Well past a wheelie's balance point, so the whole
     /// usable range stays inside the pulsed zone.
-    private let limitDegrees: Double = 70
+    private let limitDegrees: Double
 
     /// Ceiling for the amplitude and pitch maps. Angles above clamp here.
-    private let pitchCapDegrees: Double = 90
+    private let pitchCapDegrees: Double
 
     /// Carrier at the silence threshold. Above the phone speaker's low-end
     /// rolloff and above the helmet wind-noise energy peak (250-500 Hz).
-    private let baseFrequency: Double = 1000     // Hz
+    private let baseFrequency: Double
 
     /// Carrier at the cap — the ear's most sensitive band (2-5 kHz, peaking
     /// ~3 kHz from ear-canal resonance), worth 6-8 dB of free perceived loudness.
-    private let peakFrequency: Double = 3000     // Hz
+    private let peakFrequency: Double
 
     /// Beep rate at the silence threshold, and just below the limit. The maximum
     /// stays under the ~20 Hz click-fusion threshold so beeps remain countable,
     /// and lands near the ~10 Hz (100 ms interval) tempo-discrimination optimum.
-    private let minPulseRate: Double = 2.0       // Hz
-    private let maxPulseRate: Double = 12.0      // Hz
+    private let minPulseRate: Double
+    private let maxPulseRate: Double
 
     /// Fraction of each pulse period that sounds. Short chirp with a long gap at
     /// low angle, widening toward solid as the angle climbs — the far-to-near
     /// progression parking sensors use.
-    private let minDutyCycle: Double = 0.30
-    private let maxDutyCycle: Double = 0.70
+    private let minDutyCycle: Double
+    private let maxDutyCycle: Double
 
     /// Non-linear amplitude curve. Raw amplitude ∝ t^n; perceived loudness then
     /// grows as t^(0.6n) by Stevens' power law, so n = 2 gives clearly
-    /// accelerating loudness while keeping the mid range audible. Raise toward
-    /// 3-5 for a more violent late rush, lower to 1.67 for perceptually linear.
-    private let amplitudeExponent: Double = 2.0
+    /// accelerating loudness while keeping the mid range audible.
+    private let amplitudeExponent: Double
 
     /// Fixed internal amplitude ceiling. Below 1.0 for headroom against clipping.
-    private let maxAmplitude: Float = 0.85
+    private let maxAmplitude: Float
+
+    // MARK: - Hysteresis latch (WORK ITEM B5 — the flapping tone)
+    //
+    // `update(pitchDegrees:)` used to recompute the silence decision from the raw
+    // angle on every call with no memory, so at exactly the entry angle — which is
+    // exactly where every wheelie begins — vibration walked the reading back and
+    // forth across the one threshold and the tone chattered on and off at 100 Hz.
+    // The fix is a latch: turn ON above `enterDegrees`, and only turn OFF once the
+    // angle has been below `exitDegrees` (which is deliberately lower) for
+    // `releaseTime`. Config owns these (`cueEnterPitch`/`cueExitPitch`/
+    // `cueReleaseTime`), in radians; converted to degrees here at the one place.
+    // `cueDeadband` is applied to the tracked angle so sub-`deadband` jitter cannot
+    // move the latched target either.
+
+    /// Enter/exit thresholds in DEGREES (converted from Config's radians once).
+    private let enterDegrees: Double
+    private let exitDegrees: Double
+    /// The tone must stay below `exitDegrees` this long before it releases.
+    private let releaseTime: TimeInterval
+    /// Pitch changes smaller than this are ignored when deciding to release.
+    private let deadbandDegrees: Double
+
+    /// Persistent latch state. `update` is the only writer and runs on the single
+    /// pipeline thread (~100 Hz), so no lock is needed between calls; the render
+    /// thread never touches it.
+    private var isSounding: Bool = false
+    /// systemUptime at which the angle first dropped below `exitDegrees` while
+    /// sounding; nil while above exit. Release fires once `now - since >= releaseTime`.
+    private var belowExitSince: TimeInterval?
+    /// Last angle that actually moved the latch decision, for the deadband test.
+    private var lastLatchAngle: Double = 0
 
     // MARK: - Smoothing
 
@@ -175,12 +213,68 @@ final class CueAudioRenderer: @unchecked Sendable {
     private var gateEnvelope: Float = 0
     private var smoothedFrequency: Double = 1000
 
+    // MARK: - Precomputed smoothing coefficients
+    //
+    // these one-pole coefficients depend ONLY on `sampleRate` and the fixed
+    // smoothing times, yet were recomputed with three `exp()` calls on EVERY render
+    // callback. `sampleRate` never changes after init, so compute them once here.
+    // The render thread only reads them. (They are recomputed if the engine is
+    // re-established, via `computeSmoothingCoefficients`, though sampleRate does not
+    // currently change — see the config-change observer.)
+    private var ampCoeff: Float = 0
+    private var freqCoeff: Double = 0
+    private var gateCoeff: Float = 0
+
+    // MARK: - Interruption state
+    //
+    // on an AVAudioSession interruption (call, Siri, another app grabbing the
+    // session) iOS STOPS the engine. The renderer previously observed only route
+    // changes, so after an interruption the safety tone went silent for the rest of
+    // the ride with no signal. We now track the interruption and resume on `.ended`
+    // with `.shouldResume`. Control-path only; never read from the render thread.
+    private var wasRunningBeforeInterruption = false
+
     // MARK: - Lifecycle
 
-    init() {
+    /// - Parameter config: the tunable transfer curve + latch policy. Defaults to
+    ///   `Config()` so existing call sites need no change; the app passes the live
+    ///   config so the sound matches the numbers written to the log header.
+    init(config: Config = Config()) {
+        // Transfer curve (radians in Config -> degrees here, at THE one place).
+        let radToDeg = 180.0 / Double.pi
+        silenceThresholdDegrees = config.cueSilenceThreshold * radToDeg
+        limitDegrees            = config.cueLimitPitch * radToDeg
+        pitchCapDegrees         = config.cuePitchCap * radToDeg
+        baseFrequency           = config.cueBaseFrequency
+        peakFrequency           = config.cuePeakFrequency
+        minPulseRate            = config.cueMinPulseRate
+        maxPulseRate            = config.cueMaxPulseRate
+        minDutyCycle            = config.cueMinDutyCycle
+        maxDutyCycle            = config.cueMaxDutyCycle
+        amplitudeExponent       = config.cueAmplitudeExponent
+        maxAmplitude            = Float(config.cueMaxAmplitude)
+
+        // Hysteresis latch (radians in Config -> degrees here, same one place).
+        enterDegrees   = config.cueEnterPitch * radToDeg
+        exitDegrees    = config.cueExitPitch * radToDeg
+        releaseTime    = config.cueReleaseTime
+        deadbandDegrees = config.cueDeadband * radToDeg
+
+        computeSmoothingCoefficients()
         configureSession()
         setupEngine()
         observeRouteChanges()
+        observeInterruptions()
+        observeConfigurationChanges()
+    }
+
+    /// One-pole smoothing coefficients toward each target. Depend only on
+    /// `sampleRate` and the fixed smoothing times, so computed once  rather
+    /// than three `exp()` per render callback.
+    private func computeSmoothingCoefficients() {
+        ampCoeff  = Float(1.0 - exp(-1.0 / (sampleRate * amplitudeSmoothingTime)))
+        freqCoeff = 1.0 - exp(-1.0 / (sampleRate * frequencySmoothingTime))
+        gateCoeff = Float(1.0 - exp(-1.0 / (sampleRate * gateSmoothingTime)))
     }
 
     deinit {
@@ -225,9 +319,39 @@ final class CueAudioRenderer: @unchecked Sendable {
     /// Lock-free — safe to call from any thread.
     func update(pitchDegrees: Double) {
         let clamped = max(0, min(pitchDegrees, pitchCapDegrees))
+        let now = ProcessInfo.processInfo.systemUptime
 
-        // Deadband: silent during normal riding.
-        guard clamped >= silenceThresholdDegrees else {
+        // Hysteresis latch (WORK ITEM B5). The tone used to be gated by a single
+        // `clamped >= silenceThresholdDegrees` test recomputed every call with no
+        // memory, so at the entry angle — where every wheelie begins — vibration
+        // chattered the tone on and off at 100 Hz. Now: turn ON at `enterDegrees`,
+        // and stay on until the angle has held below `exitDegrees` (lower, so the
+        // boundary is split) for `releaseTime`. `deadbandDegrees` ignores jitter
+        // smaller than itself so it cannot by itself drive the release timer.
+        if isSounding {
+            if clamped >= exitDegrees {
+                // Back above exit: cancel any pending release.
+                belowExitSince = nil
+            } else if abs(clamped - lastLatchAngle) >= deadbandDegrees || belowExitSince != nil {
+                // Genuinely below exit (past the deadband). Start/continue the
+                // release timer; release once it has held long enough.
+                if belowExitSince == nil { belowExitSince = now }
+                if let since = belowExitSince, now - since >= releaseTime {
+                    isSounding = false
+                    belowExitSince = nil
+                }
+            }
+        } else {
+            if clamped >= enterDegrees {
+                isSounding = true
+                belowExitSince = nil
+            }
+        }
+        lastLatchAngle = clamped
+
+        // Latch says silent → emit the silent snapshot and stop. This replaces the
+        // old raw-angle deadband guard.
+        guard isSounding else {
             cueParameters.withLock { $0 = CueParameters.silent }
             return
         }
@@ -264,7 +388,6 @@ final class CueAudioRenderer: @unchecked Sendable {
         // called ~100 Hz from the pipeline, so gate emission on a lock-protected
         // timestamp. This logs the SYNTHESIS TARGETS (what we asked the tone to do)
         // for the current angle; the render callback itself is never instrumented.
-        let now = ProcessInfo.processInfo.systemUptime
         let due: Bool = lastAudioHeartbeat.withLock { last in
             if now - last >= 1.0 { last = now; return true }
             return false
@@ -322,17 +445,26 @@ final class CueAudioRenderer: @unchecked Sendable {
     private func renderCallback(frameCount: AVAudioFrameCount,
                                 bufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
         let params = cueParameters.withLock { $0 }
-        let buffer = UnsafeMutableBufferPointer<Float>(
-            start: bufferList.pointee.mBuffers.mData?.assumingMemoryBound(to: Float.self),
-            count: Int(frameCount)
-        )
 
-        // One-pole smoothing coefficients toward each target.
-        let ampCoeff = Float(1.0 - exp(-1.0 / (sampleRate * amplitudeSmoothingTime)))
-        let freqCoeff = 1.0 - exp(-1.0 / (sampleRate * frequencySmoothingTime))
-        let gateCoeff = Float(1.0 - exp(-1.0 / (sampleRate * gateSmoothingTime)))
+        // do NOT assume one mono Float buffer of
+        // exactly `frameCount` samples. If the hardware format diverges after a route
+        // change, `mData` may be nil or the buffer may be smaller than `frameCount`,
+        // and binding `count: Int(frameCount)` then writing all of them ran off the
+        // end. Bail if the pointer is nil, and cap the write at the buffer's REAL
+        // capacity derived from `mDataByteSize`. No logging/allocation here — this is
+        // the real-time thread.
+        let mBuffers = bufferList.pointee.mBuffers
+        guard let base = mBuffers.mData?.assumingMemoryBound(to: Float.self) else {
+            return noErr
+        }
+        let capacity = Int(mBuffers.mDataByteSize) / MemoryLayout<Float>.size
+        let framesToRender = min(Int(frameCount), capacity)
+        let buffer = UnsafeMutableBufferPointer<Float>(start: base, count: framesToRender)
 
-        for frame in 0..<Int(frameCount) {
+        // One-pole smoothing coefficients are precomputed — they depend only
+        // on sampleRate and the fixed smoothing times, so recomputing exp() per
+        // callback was wasted work on the render thread.
+        for frame in 0..<framesToRender {
             // Glide amplitude and carrier toward their angle-derived targets.
             amplitudeEnvelope += ampCoeff * (params.amplitude - amplitudeEnvelope)
             smoothedFrequency += freqCoeff * (params.frequency - smoothedFrequency)
@@ -368,6 +500,122 @@ final class CueAudioRenderer: @unchecked Sendable {
             name: AVAudioSession.routeChangeNotification,
             object: nil
         )
+    }
+
+    // MARK: - Interruption handling (FIX — the tone dies after a phone call)
+    //
+    // Before this, the renderer observed ONLY `routeChangeNotification`. On an
+    // AVAudioSession interruption (incoming call, Siri, another app taking the
+    // session) iOS stops the engine and posts NOTHING that the old code listened
+    // for, so the safety cue went silent for the REST of the ride with no signal —
+    // the single defect this fix exists to close. We now resume on `.ended` with
+    // `.shouldResume`, and if the resume FAILS we shout about it through `diag` at
+    // error level rather than failing silently.
+    private func observeInterruptions() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else {
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        switch type {
+        case .began:
+            // iOS has (or is about to) stop our engine. Record whether we were
+            // sounding so `.ended` knows to bring it back.
+            wasRunningBeforeInterruption = engine.isRunning
+            diag.always(time: now, level: .warn,
+                        message: "audio interruption began — engine stopped by iOS",
+                        values: ["wasRunning": wasRunningBeforeInterruption ? 1 : 0])
+        case .ended:
+            // Only resume if iOS says we may AND we were running before.
+            let options: AVAudioSession.InterruptionOptions
+            if let optRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                options = AVAudioSession.InterruptionOptions(rawValue: optRaw)
+            } else {
+                options = []
+            }
+            guard options.contains(.shouldResume), wasRunningBeforeInterruption else {
+                diag.always(time: now, level: .warn,
+                            message: "audio interruption ended — not resuming",
+                            values: ["shouldResume": options.contains(.shouldResume) ? 1 : 0,
+                                     "wasRunning": wasRunningBeforeInterruption ? 1 : 0])
+                return
+            }
+            wasRunningBeforeInterruption = false
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+                try engine.start()
+                updateRouteLatency()
+                diag.always(time: now, level: .info,
+                            message: "audio engine resumed after interruption",
+                            values: [:])
+            } catch {
+                // SILENT FAILURE is the exact thing being fixed — surface it loud.
+                log.error("Failed to resume after interruption: \(error.localizedDescription)")
+                diag.always(time: now, level: .error,
+                            message: "audio engine resume FAILED after interruption — cue is silent",
+                            values: ["code": Double((error as NSError).code)])
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    // MARK: - Configuration-change handling (FIX)
+    //
+    // `.AVAudioEngineConfigurationChange` fires when the engine's I/O format changes
+    // out from under us — a route change to/from Bluetooth, a sample-rate change,
+    // hardware reconfiguration. When it does, the source-node connection can be torn
+    // down and the engine left stopped; the render callback then either never runs
+    // or previously writes into a mismatched buffer. Re-establish the connection
+    // and restart, and if that fails, say so through `diag`.
+    private func observeConfigurationChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConfigurationChange),
+            name: .AVAudioEngineConfigurationChange,
+            object: engine
+        )
+    }
+
+    @objc private func handleConfigurationChange(_ notification: Notification) {
+        let now = ProcessInfo.processInfo.systemUptime
+        // Re-establish the source-node -> mixer connection at our fixed format.
+        // sampleRate is a `let`, so the precomputed coefficients remain valid; the
+        // recompute is here for correctness if that ever changes.
+        computeSmoothingCoefficients()
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+        if let node = sourceNode {
+            engine.connect(node, to: engine.mainMixerNode, format: format)
+        }
+        // A config change can leave the engine stopped. Restart if it is not running.
+        guard !engine.isRunning else {
+            diag.always(time: now, level: .info,
+                        message: "audio engine reconfigured (still running)",
+                        values: [:])
+            return
+        }
+        do {
+            try engine.start()
+            updateRouteLatency()
+            diag.always(time: now, level: .info,
+                        message: "audio engine restarted after configuration change",
+                        values: [:])
+        } catch {
+            log.error("Failed to restart after configuration change: \(error.localizedDescription)")
+            diag.always(time: now, level: .error,
+                        message: "audio engine restart FAILED after configuration change — cue is silent",
+                        values: ["code": Double((error as NSError).code)])
+        }
     }
 
     @objc private func handleRouteChange(_ notification: Notification) {

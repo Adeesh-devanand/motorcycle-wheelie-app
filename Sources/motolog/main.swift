@@ -76,9 +76,22 @@ case "replay":
         i += 1
     }
 
-    // Read session
+    // Read session.
+    //
+    // `StreamingReplaySource` rather than `LogFile.read`, for two reasons that both
+    // matter for a replay tool. It reads in chunks instead of materialising the whole
+    // trace, and a raw trace is capped at 64 MB. More importantly it TOLERATES a
+    // truncated final line, reporting it via `endedMidLine`, where `LogFile.read`
+    // throws — and a log truncated mid-line is exactly what a crash or a force-quit
+    // produces, i.e. the ride you most want to look at. The two readers disagreed on
+    // crash recovery and the CLI was using the unforgiving one.
+    //
+    // Two passes over the file, because the calibration pre-pass and the replay both
+    // start from the beginning and a stream is consumed once. Re-opening is cheaper
+    // than holding the trace in memory.
     let url = URL(fileURLWithPath: sessionPath)
-    let (header, items) = try LogFile.read(contentsOf: url)
+    let headerProbe = try StreamingReplaySource(url: url)
+    let header = headerProbe.header
 
     // Determine effective config
     var effectiveConfig = header.config
@@ -98,23 +111,92 @@ case "replay":
         } else {
             print("")
         }
-        print("samples:  \(items.count)")
-        print("")
     }
 
     // Run the full pipeline
     let alignment = MountAlignment.identity()
+
+    // Replay MUST anchor the estimator. `CalibrateOnceEstimator` publishes nothing
+    // until a gravity vector fixes the world frame (`Pipeline.processIMU` guards on
+    // `isAnchored`), so a pipeline built without one returns nil for every single
+    // sample and this tool printed "pipeline samples: 0 / events: 0" on a perfectly
+    // good log. It was silent because `gravityAnchor:` is a defaulted parameter —
+    // omitting a required step compiled clean. Every test passes it explicitly and
+    // the app passes real measured gravity; replay was the one caller that forgot,
+    // and no test covers this file.
+    //
+    // Prefer a real calibration measured from the log's OWN opening samples: that is
+    // exactly what the device does, so replay becomes equivalent to live rather than
+    // merely similar — which is the entire point of the pipeline being a pure
+    // function over a sample stream. Fall back to the first IMU sample's specific
+    // force when the log has no clean at-rest window (a log that starts mid-ride),
+    // so such a log still replays, with the substitution stated rather than hidden.
+    var calibrator = BiasEstimator(config: effectiveConfig,
+                                   bikeProfileID: UUID())
+    var replayBias: BiasEstimate?
+    var firstSpecificForce: Vector3?
+    var sampleCount = 0
+    var calibrationPass = try StreamingReplaySource(url: url)
+    while let sample = calibrationPass.next() {
+        sampleCount += 1
+        guard case .imu(let imu) = sample else { continue }
+        if firstSpecificForce == nil { firstSpecificForce = imu.specificForce }
+        if replayBias == nil, case .done(let estimate) = calibrator.process(imu) {
+            replayBias = estimate
+        }
+    }
+    if let failure = calibrationPass.failure {
+        FileHandle.standardError.write(Data(
+            "warning: log decode stopped early: \(failure)\n".utf8))
+    }
+    if calibrationPass.endedMidLine {
+        FileHandle.standardError.write(Data(
+            "warning: log ends mid-line — it was truncated, most likely by a crash or force-quit. Replaying what decoded.\n".utf8))
+    }
+
+    if !jsonOutput {
+        print("samples:  \(sampleCount)")
+        print("")
+    }
+
+    let anchorSource: String
+    let gravityAnchor: Vector3?
+    if let measured = replayBias?.measuredGravity {
+        gravityAnchor = measured
+        anchorSource = "calibrated from the log's opening samples"
+    } else if let first = firstSpecificForce {
+        gravityAnchor = first
+        anchorSource = "FALLBACK: first IMU sample's specific force "
+            + "(no clean at-rest window in this log — attitude is relative to "
+            + "whatever the bike was doing at t=0)"
+    } else {
+        gravityAnchor = nil
+        anchorSource = "none — no IMU samples in this log"
+    }
+
+    if !jsonOutput {
+        print("anchor:   \(anchorSource)")
+        if let b = replayBias {
+            let degPerSec = 180.0 / .pi
+            print(String(format: "bias:     %.4f, %.4f, %.4f deg/s",
+                         b.bias.x * degPerSec, b.bias.y * degPerSec, b.bias.z * degPerSec))
+        }
+        print("")
+    }
+
     var pipeline = Pipeline(config: effectiveConfig,
                             alignment: alignment,
-                            initialBias: nil)
+                            initialBias: replayBias,
+                            gravityAnchor: gravityAnchor)
 
     var segmenter = EventSegmenter(config: effectiveConfig)
     var scorer = RunScorer(config: effectiveConfig)
 
-    // Upper bound of the in-range angle band reported by --intervals.
+    // Upper bound of the in-range angle band used for the interval report below.
+    // (There is no `--intervals` flag; intervals are always reported.)
     let angleTargetUpper = effectiveConfig.eventEntryPitch * 2.5
 
-    var source = ReplaySource(samples: items)
+    var source = try StreamingReplaySource(url: url)
     var pipelineOutputs: [PipelineOutput] = []
     var events: [EventMetrics] = []
     var eventActive = false
@@ -164,7 +246,6 @@ case "replay":
             case .end(let endTime):
                 eventActive = false
                 pipeline.eventActive = false
-                pipeline.lastEventEndTime = endTime
                 let metrics = scorer.finalise(end: endTime)
                 events.append(metrics)
             case .discarded:
@@ -182,7 +263,36 @@ case "replay":
         }
     }
 
+    // Close an event still open at the last sample. A log that ends mid-wheelie
+    // otherwise loses the event entirely, and the longest holds are the most likely
+    // to be cut off — so the loss was biased toward the best runs.
+    if let t = segmenter.finish() {
+        switch t.kind {
+        case .end(let endTime):
+            let metrics = scorer.finalise(end: endTime)
+            events.append(metrics)
+        case .discarded, .onset:
+            break
+        }
+        eventActive = false
+    }
+
     stagesHandle?.closeFile()
+
+    // An empty pipeline is a FAILURE, not a finding. Printing "pipeline samples: 0"
+    // as though it were a measurement is what let the missing gravity anchor go
+    // unnoticed: the tool reported zero output in the same shape it reports real
+    // output, so nothing distinguished "this ride had no wheelies" from "this tool
+    // processed nothing at all".
+    if pipelineOutputs.isEmpty && sampleCount > 0 {
+        FileHandle.standardError.write(Data("""
+        error: the pipeline produced no output from \(sampleCount) decoded samples.
+               The estimator never anchored, so every sample was dropped. Check that
+               the log contains .imu records with a usable specificForce.
+
+        """.utf8))
+        exit(2)
+    }
 
     // Compute session summary
     let summary = SessionSummary(events: events)

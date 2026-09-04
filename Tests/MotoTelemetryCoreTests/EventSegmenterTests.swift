@@ -116,12 +116,51 @@ final class EventSegmenterTests: XCTestCase {
             return false
         }
         XCTAssertFalse(discarded.isEmpty,
-                       "An event lasting ~0.3 s (< 0.4 s minDuration) must be discarded — " +
-                       "it's a bump, not a wheelie")
+                       "An event lasting ~0.3 s must be discarded — it's a bump, not a wheelie")
         if case .discarded(let dur) = discarded.first?.kind {
             XCTAssertLessThan(dur, config.eventMinDuration,
                              "Discarded event duration must be below the minimum")
         }
+    }
+
+    /// Pins `eventMinDuration` from BOTH sides at its real value.
+    ///
+    /// `testShortBlipIsDiscarded` above used a ~0.3 s event and its comment claimed
+    /// "< 0.4 s minDuration" — the pre-beta default. The threshold is now 1.0 s, and
+    /// because that test asserts against `config.eventMinDuration` rather than a
+    /// literal, it stayed green while proving far less than it read as: a 0.3 s event
+    /// is discarded under 0.4 s and under 1.0 s alike, so it could not detect the
+    /// threshold silently reverting. These two cases straddle the boundary, so a
+    /// revert to 0.4 s fails the first of them.
+    func testMinDurationBoundaryIsPinnedFromBothSides() {
+        /// Builds an event held above entry for `heldFor`, then dropped below exit
+        /// long enough for the exit dwell to complete.
+        func transitions(heldFor: TimeInterval) -> [EventSegmenter.Transition] {
+            var seg = EventSegmenter(config: config)
+            let dt = 0.01
+            var samples: [(TimeInterval, Double, Double)] = [(0, 0, 0)]
+            var t = 0.01
+            while t < 0.01 + heldFor {
+                samples.append((t, config.eventEntryPitch + 0.05, 0.3))
+                t += dt
+            }
+            for i in 0...40 {
+                samples.append((t + Double(i) * dt, config.eventExitPitch - 0.02, -0.3))
+            }
+            return feed(&seg, samples: samples)
+        }
+
+        // 0.6 s: would have COMMITTED under the old 0.4 s default. Must discard now.
+        let short = transitions(heldFor: 0.6)
+        XCTAssertTrue(short.contains { if case .discarded = $0.kind { return true }; return false },
+                      "a 0.6 s event is under the 1.0 s minimum and must be discarded — this is the case a revert to 0.4 s would break")
+        XCTAssertFalse(short.contains { if case .end = $0.kind { return true }; return false })
+
+        // 1.4 s: comfortably over the minimum. Must commit.
+        let long = transitions(heldFor: 1.4)
+        XCTAssertTrue(long.contains { if case .end = $0.kind { return true }; return false },
+                      "a 1.4 s event is over the minimum and must commit")
+        XCTAssertFalse(long.contains { if case .discarded = $0.kind { return true }; return false })
     }
 
     /// Boundary lands strictly BETWEEN two sample times: onset and end must be

@@ -19,19 +19,59 @@ final class RunRecorder: @unchecked Sendable {
         case paused
     }
 
-    private(set) var recordingState: RecordingState = .idle
-    private(set) var livePitch: Double = 0           // degrees
-    private(set) var livePitchRate: Double = 0       // deg/s
-    private(set) var liveRoll: Double = 0            // degrees
-    private(set) var liveSpeed: Double = 0           // km/h
+    // MARK: - Live state (for ViewModel binding)
+    //
+    // Data race: this class is `@Observable` + `@unchecked Sendable` but is
+    // NOT `@MainActor`, while SwiftUI observes these properties on the main actor.
+    // `processSample` runs on two detached sensor Tasks at 100 Hz — `processLock`
+    // serialises those two writers against each OTHER, but gives no exclusion against
+    // the main actor reading the same `@Observable` storage. Under Swift 6 strict
+    // concurrency that cross-actor read/write is a hard data race.
+    //
+    // Fix: every UI-facing property below is `@MainActor`-isolated, so it is only
+    // ever mutated on the main actor. The sensor tasks never touch them directly.
+    // Instead `processSample` (under the lock, off-actor) stages the latest values
+    // into `pendingDisplay`, a plain lock-protected value type; the main-actor
+    // `flushDisplay()` copies that snapshot into the observable properties. The view
+    // model already ticks at 30 Hz on the main actor, so it calls `flushDisplay()`
+    // once per display frame — coalescing 100 Hz of sensor writes into 30 Hz of
+    // main-actor applies. No `Task` is spawned per sample, and no `await` runs inside
+    // the critical section.
+
+    @MainActor private(set) var recordingState: RecordingState = .idle
+    @MainActor private(set) var livePitch: Double = 0           // degrees
+    @MainActor private(set) var livePitchRate: Double = 0       // deg/s
+    @MainActor private(set) var liveRoll: Double = 0            // degrees
+    @MainActor private(set) var liveSpeed: Double = 0           // km/h
     /// False when no GNSS fix has produced a valid speed yet. R15.3 forbids
     /// fabricating 0: a stationary bike and an absent fix must not look identical.
     /// `liveSpeed` stays 0 for compatibility; consult this before displaying it.
-    private(set) var liveSpeedAvailable: Bool = false
-    private(set) var liveVibration: Double = 0       // m/s²
-    private(set) var eventActive: Bool = false
-    private(set) var currentEventDuration: TimeInterval = 0
-    private(set) var sampleCount: Int = 0
+    @MainActor private(set) var liveSpeedAvailable: Bool = false
+    @MainActor private(set) var liveVibration: Double = 0       // m/s²
+    @MainActor private(set) var eventActive: Bool = false
+    @MainActor private(set) var currentEventDuration: TimeInterval = 0
+    @MainActor private(set) var sampleCount: Int = 0
+    /// Current raw-log size in bytes, surfaced for the UI.
+    @MainActor private(set) var rawLogSizeBytes: UInt64 = 0
+
+    /// Latest UI values staged by `processSample` under `processLock`, drained onto
+    /// the observable properties by `flushDisplay()` on the main actor. A plain value
+    /// type so it can be read-modify-written inside the critical section with no
+    /// isolation concerns.
+    private struct PendingDisplay {
+        var pitch: Double = 0
+        var pitchRate: Double = 0
+        var roll: Double = 0
+        var speed: Double = 0
+        var speedAvailable: Bool = false
+        var vibration: Double = 0
+        var eventActive: Bool = false
+        var currentEventDuration: TimeInterval = 0
+        var sampleCount: Int = 0
+        var rawLogSizeBytes: UInt64 = 0
+    }
+    /// Guarded by `processLock`.
+    private var pendingDisplay = PendingDisplay()
 
     // MARK: - Dependencies
 
@@ -48,17 +88,30 @@ final class RunRecorder: @unchecked Sendable {
     private var segmenter: EventSegmenter?
     private var scorer: RunScorer?
 
+    // Internal hot-path mirrors of UI state, mutated on the sensor tasks under
+    // `processLock`. Kept SEPARATE from the `@MainActor` observable properties so the
+    // sensor path never touches main-actor storage; the observable copies are updated
+    // only by `flushDisplay()`.
+    private var internalSampleCount: Int = 0
+    private var internalEventActive: Bool = false
+    private var internalRawLogSizeBytes: UInt64 = 0
+    private var internalCurrentEventDuration: TimeInterval = 0
+
+    /// Monotonically increasing session id. Bumped on every `startSession` /
+    /// `startSensing` and read at the top of `processSample` : a sample that
+    /// arrives after the session it belongs to has stopped — an in-flight
+    /// `processSample` on a task that was cancelled but not awaited — carries the OLD
+    /// epoch and is dropped, so it can neither mutate state after stop nor race the
+    /// next session's pipeline. `stopSession` does not await the tasks (that would
+    /// force `stopSession`/`onDisappear` to become async — see the note there), so
+    /// this guard is what actually makes the stop safe.
+    private var sessionEpoch: UInt64 = 0
+
     /// Interpolated onset time of the attempt in progress. The live timer is
     /// `output.time - eventOnsetTime`; using `sessionStartMonotonic` instead made
     /// the timer jump straight to the session's elapsed time the moment an attempt
     /// began (a wheelie 85 s into a session displayed 85 s).
     private var eventOnsetTime: TimeInterval?
-
-    /// Id of the calibration currently reflected in the pipeline's anchor. When a new
-    /// estimate is adopted this changes, which is how a completed re-zero is detected.
-    private var lastCalibrationID: UUID?
-    /// Bias vector the attitude anchor was last established against — the reference
-    /// for the material-change test in `processSample`.
 
     private var collectedSamples: [TelemetrySample] = []
     private var sessionStartDate: Date?
@@ -84,8 +137,6 @@ final class RunRecorder: @unchecked Sendable {
     /// default ON — the user needs data for the TestFlight bugs. Set false to skip.
     var rawRecordingEnabled = true
     private var rawRecorder: RawSampleRecorder?
-    /// Current raw-log size in bytes, surfaced for the UI.
-    private(set) var rawLogSizeBytes: UInt64 = 0
     private var batchCount = 0
 
     // MARK: - Init
@@ -121,11 +172,23 @@ final class RunRecorder: @unchecked Sendable {
         motionService.start()
         speedService.start()
 
+        // Bind each task to a fresh session id. `startSensorTasks` is the ONLY place
+        // tasks are created, so bumping here (and again in `stopSession`) means the
+        // epoch identifies THIS pair of tasks' lifetime. The sensing→recording
+        // promotion in `startSession` reuses these same tasks without calling this
+        // method, so it must NOT bump — the tasks stay valid across the promotion.
+        // `processSample` compares against the live `sessionEpoch` and drops any
+        // sample whose task outlived its session .
+        processLock.lock()
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
+        processLock.unlock()
+
         motionTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.motionService.samples {
                 self.processLock.lock()
-                self.processSample(sample)
+                self.processSample(sample, epoch: epoch)
                 self.processLock.unlock()
             }
         }
@@ -134,7 +197,7 @@ final class RunRecorder: @unchecked Sendable {
             guard let self else { return }
             for await sample in self.speedService.fixes {
                 self.processLock.lock()
-                self.processSample(sample)
+                self.processSample(sample, epoch: epoch)
                 self.processLock.unlock()
             }
         }
@@ -146,6 +209,7 @@ final class RunRecorder: @unchecked Sendable {
     /// pipeline, so nothing is scored or stored yet. `startSession` later promotes
     /// this same running stream to a full recording session — the stream is never
     /// started twice.
+    @MainActor
     func startSensing(bikeProfileID: UUID) {
         guard recordingState == .idle else { return }
         self.bikeProfileID = bikeProfileID
@@ -155,12 +219,18 @@ final class RunRecorder: @unchecked Sendable {
         log.info("Sensing started (calibration phase) for bike \(bikeProfileID)")
     }
 
+    @MainActor
     func startSession(bikeProfileID: UUID,
                       mountAlignment: MountAlignment,
                       angleTarget: MetricRange) {
         // Reachable from .idle (no prior sensing) OR .sensing (calibration ran
-        // first, the normal path). Refuse only if already recording.
-        guard recordingState != .running else { return }
+        // first, the normal path). Refuse from .running AND .paused: the guard used
+        // to be `!= .running`, which let a .paused session fall through and start a
+        // SECOND pair of sensor tasks — the `!= .sensing` check below then passed,
+        // overwriting motionTask/speedTask and leaking the first pair's handles (the
+        // streams stayed live with no way to cancel them). Only .idle/.sensing may
+        // legally begin a recording.
+        guard recordingState == .idle || recordingState == .sensing else { return }
 
         self.bikeProfileID = bikeProfileID
         self.angleTarget = angleTarget
@@ -168,7 +238,17 @@ final class RunRecorder: @unchecked Sendable {
         self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
         self.collectedSamples = []
         self.sampleCount = 0
-        self.lastCalibrationID = calibrationService.estimate?.id
+        // Reset the hot-path mirrors and the staged snapshot. Do NOT bump
+        // `sessionEpoch` here: on the .sensing path the sensor tasks are reused
+        // (their epoch must stay valid), and on the .idle path `startSensorTasks`
+        // below bumps it. The late-sample guard is anchored to task lifetime,
+        // not session start.
+        processLock.lock()
+        internalSampleCount = 0
+        internalEventActive = false
+        internalRawLogSizeBytes = 0
+        pendingDisplay = PendingDisplay()
+        processLock.unlock()
 
         // Initialize pipeline with the calibration result. In the beta flow the
         // rider cannot reach this screen until calibration has completed and the
@@ -218,16 +298,32 @@ final class RunRecorder: @unchecked Sendable {
             // a screen with no way out. Never contradict evidence either: if an IMU
             // sample has EVER arrived in this process the sensors demonstrably
             // exist, so claiming otherwise is a false negative, not a diagnosis.
+            //
+            // this Task is not on the main actor, so it must not read the
+            // `@MainActor` observable state directly. `recordingState` is hopped via a
+            // main-actor read; sample counts come from `internalSampleCount`, the
+            // lock-protected hot-path counter (which is what the sensor tasks bump),
+            // so the watchdog measures the same "emitted" quantity as before without
+            // touching main-actor storage.
             self?.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                               message: "watchdog armed (2×2.5s)", values: [:])
+            func isRunning() async -> Bool {
+                guard let self else { return false }
+                return await MainActor.run { self.recordingState == .running }
+            }
+            func emittedSamples() -> Int {
+                guard let self else { return 0 }
+                self.processLock.lock(); defer { self.processLock.unlock() }
+                return self.internalSampleCount
+            }
             for _ in 0..<2 {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
-                guard let self, self.recordingState == .running else { return }
-                if self.sampleCount > 0 { return }
+                guard await isRunning() else { return }
+                if emittedSamples() > 0 { return }
             }
             guard let self,
-                  self.recordingState == .running,
-                  self.sampleCount == 0,
+                  await isRunning(),
+                  emittedSamples() == 0,
                   !self.calibrationService.hasSeenSample else { return }
 
             // What kind of silence is this? The watchdog measures EMITTED samples,
@@ -243,22 +339,38 @@ final class RunRecorder: @unchecked Sendable {
                 self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
                                  message: "watchdog FIRED — sensors ALIVE but nothing emitted (pairing fault)",
                                  values: ["rawCallbacks": Double(raw),
-                                          "emitted": Double(self.sampleCount)])
+                                          "emitted": Double(emittedSamples())])
                 self.log.error("Motion callbacks arriving (\(raw)) but no paired samples emitted — pairing fault, not a hardware fault")
                 return
             }
 
             self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
                              message: "watchdog FIRED — reporting sensors unavailable",
-                             values: ["sampleCount": Double(self.sampleCount),
+                             values: ["sampleCount": 0,
                                       "rawCallbacks": 0])
             self.calibrationService.reportSensorsUnavailable(
                 reason: "no IMU samples and no raw motion callbacks 5 s after starting motion updates")
         }
     }
 
+    @MainActor
     func stopSession() {
         guard recordingState != .idle else { return }
+
+        // Late work on stop: we cancel the consuming Tasks but deliberately do
+        // NOT await them here — awaiting would make `stopSession` (and therefore
+        // `LiveWheelieViewModel.onDisappear`, a synchronous SwiftUI lifecycle hook)
+        // `async`, which it cannot be without a wrapping `Task` that reintroduces the
+        // very ordering race we are closing. Instead we invalidate the session id
+        // BEFORE cancelling: bumping `sessionEpoch` under the lock means any
+        // `processSample` already in flight (or that resumes after cancel) carries the
+        // stale epoch and early-returns, so it can neither mutate state after stop nor
+        // race the next `startSession`. The bump is under the lock so it is ordered
+        // against a concurrent `processSample`'s epoch read.
+        processLock.lock()
+        sessionEpoch &+= 1
+        let emitted = internalSampleCount
+        processLock.unlock()
 
         // Cancelling the consuming Task is what actually kills the AsyncStream —
         // `MotionService.stop()` deliberately leaves its continuation live. This is the
@@ -270,7 +382,7 @@ final class RunRecorder: @unchecked Sendable {
                     values: ["streamEnded": 1,
                              "motionTaskLive": motionTask == nil ? 0 : 1,
                              "speedTaskLive": speedTask == nil ? 0 : 1,
-                             "sampleCount": Double(sampleCount)])
+                             "sampleCount": Double(emitted)])
 
         motionTask?.cancel()
         speedTask?.cancel()
@@ -281,28 +393,89 @@ final class RunRecorder: @unchecked Sendable {
         speedService.stop()
         cueRenderer?.stop()
 
-        // If an event was in progress, finalize it
-        if eventActive {
-            finalizeCurrentEvent(at: ProcessInfo.processInfo.systemUptime)
+        // close an event still OPEN at stream end. Previously a ride stopped
+        // while still lofted lost its event entirely — the segmenter only emitted on
+        // an in-stream boundary crossing, so a hold that never came back down was
+        // silently dropped, biasing recorded runs toward the shortest/typical holds
+        // and away from the longest. `EventSegmenter.finish()` closes such an event
+        // and re-applies the SAME minDuration rule (a hold too short to count is
+        // returned as `.discarded`, not promoted). Route its transition through the
+        // exact `handleTransition` path the in-loop `.end`/`.discarded` cases use so
+        // the scorer is finalised and the run recorded identically. The segmenter is
+        // a value type, so take the lock for the read-modify-write; the sensor tasks
+        // are cancelled by now but the lock keeps this ordered against any that is
+        // still draining its final buffered sample.
+        processLock.lock()
+        if var seg = segmenter {
+            let transition = seg.finish()
+            segmenter = seg
+            if let transition {
+                // `finish()` returns only `.end`/`.discarded`, both of which
+                // `handleTransition` already handles (it finalises the scorer and,
+                // for `.end`, records the event via `finalizeCurrentEvent`). The `at:`
+                // argument is only the diag timestamp for the `.discarded` case; use
+                // the event's end time when known, else the current uptime.
+                let at: TimeInterval
+                switch transition.kind {
+                case .end(let endTime): at = endTime
+                case .discarded, .onset: at = ProcessInfo.processInfo.systemUptime
+                }
+                handleTransition(transition, at: at, speed: nil)
+            }
         }
+        internalEventActive = false
+        processLock.unlock()
 
         pipeline = nil
         segmenter = nil
         scorer = nil
         recordingState = .idle
+        eventActive = false
         rawRecorder?.finish()
-        rawLogSizeBytes = rawRecorder?.fileSizeBytes ?? rawLogSizeBytes
+        let finalSize = rawRecorder?.fileSizeBytes ?? internalRawLogSizeBytes
+        internalRawLogSizeBytes = finalSize
+        rawLogSizeBytes = finalSize
         rawRecorder = nil
-        log.info("Recording session stopped. Total samples: \(self.sampleCount)")
+        log.info("Recording session stopped. Total samples: \(emitted)")
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "session stopped",
-                    values: ["totalSamples": Double(sampleCount),
-                             "rawLogBytes": Double(rawLogSizeBytes)])
+                    values: ["totalSamples": Double(emitted),
+                             "rawLogBytes": Double(finalSize)])
+    }
+
+    /// Copies the latest staged sensor values onto the `@MainActor` observable
+    /// properties . Called from the view model's 30 Hz display tick, so 100 Hz
+    /// of sensor writes coalesce into one main-actor apply per display frame — no Task
+    /// per sample, no cross-actor write of `@Observable` storage.
+    @MainActor
+    func flushDisplay() {
+        processLock.lock()
+        let snap = pendingDisplay
+        processLock.unlock()
+
+        livePitch = snap.pitch
+        livePitchRate = snap.pitchRate
+        liveRoll = snap.roll
+        liveSpeed = snap.speed
+        liveSpeedAvailable = snap.speedAvailable
+        liveVibration = snap.vibration
+        eventActive = snap.eventActive
+        currentEventDuration = snap.currentEventDuration
+        sampleCount = snap.sampleCount
+        rawLogSizeBytes = snap.rawLogSizeBytes
     }
 
     // MARK: - Sample processing
 
-    private func processSample(_ sample: Sample) {
+    private func processSample(_ sample: Sample, epoch: UInt64) {
+        // Late work on stop: this may be an in-flight sample on a task that
+        // was cancelled but not awaited. If its session has ended (or a new one has
+        // begun), `epoch` no longer matches `sessionEpoch` — drop it, so it cannot
+        // record raw data, feed calibration, or mutate the next session's pipeline.
+        // Runs under `processLock` (held by the caller), so the comparison is ordered
+        // against `stopSession`'s bump.
+        guard epoch == sessionEpoch else { return }
+
         // Raw trace and calibration run BEFORE the pipeline guard, so they work
         // during the sensing-only phase (calibration + swipe) when `pipeline` is
         // still nil. The rider is calibrating precisely when there is no pipeline yet.
@@ -328,27 +501,31 @@ final class RunRecorder: @unchecked Sendable {
         }
         pipeline = pipe
 
-        sampleCount += 1
+        internalSampleCount += 1
         batchCount += 1
 
         // 1 Hz processing heartbeat (gated on output time), carrying cumulative
         // sample count, per-heartbeat batch size, live pitch and the raw-log size.
-        if rawRecorder != nil { rawLogSizeBytes = rawRecorder!.fileSizeBytes }
-        let emitted = diag.emit("processing", time: output.time, level: .info,
+        if let rawRecorder { internalRawLogSizeBytes = rawRecorder.fileSizeBytes }
+        let heartbeatEmitted = diag.emit("processing", time: output.time, level: .info,
                                 message: "rec heartbeat",
-                                values: ["samples": Double(sampleCount),
+                                values: ["samples": Double(internalSampleCount),
                                          "batch": Double(batchCount),
                                          "pitchDeg": output.pitch * 180 / .pi,
-                                         "rawLogBytes": Double(rawLogSizeBytes)])
-        if emitted { batchCount = 0 }
+                                         "rawLogBytes": Double(internalRawLogSizeBytes)])
+        if heartbeatEmitted { batchCount = 0 }
 
-        // Update live state (rad → deg, m/s → km/h)
-        livePitch = output.pitch * 180 / .pi
-        livePitchRate = output.pitchRate * 180 / .pi
-        liveRoll = output.roll * 180 / .pi
-        liveSpeedAvailable = output.speed != nil
-        liveSpeed = (output.speed ?? 0) * 3.6
-        liveVibration = output.vibration
+        // Compute the live display values (rad → deg, m/s → km/h). these are
+        // NOT written to the `@Observable` properties here — that would be an
+        // off-main-actor write of storage SwiftUI reads. They are staged into
+        // `pendingDisplay` at the end of this critical section and applied on the main
+        // actor by `flushDisplay()`.
+        let pitchDeg = output.pitch * 180 / .pi
+        let pitchRateDeg = output.pitchRate * 180 / .pi
+        let rollDeg = output.roll * 180 / .pi
+        let speedAvailable = output.speed != nil
+        let speedKPH = (output.speed ?? 0) * 3.6
+        let vibration = output.vibration
 
         // No calibrationService.process(output): the beta pipeline has no live gate,
         // and calibration is driven directly by feedIMU above. Pipeline output no
@@ -359,7 +536,7 @@ final class RunRecorder: @unchecked Sendable {
         // CueEngine that once also drove a UI badge was removed — it read pitch
         // RATE, never reached the speaker, and was dead weight once the cue was
         // decided as angle-only.
-        cueRenderer?.update(pitchDegrees: livePitch)
+        cueRenderer?.update(pitchDegrees: pitchDeg)
 
         // Event segmenter
         if var seg = segmenter {
@@ -374,19 +551,19 @@ final class RunRecorder: @unchecked Sendable {
 
             // Update event-active flag on pipeline for GNSS suppression
             let isActive = seg.state == .active || seg.state == .arming
-            if isActive != eventActive {
-                eventActive = isActive
+            if isActive != internalEventActive {
+                internalEventActive = isActive
                 pipeline?.eventActive = isActive
             }
         }
 
         // Track event duration
-        if eventActive, let onset = eventOnsetTime {
-            currentEventDuration = output.time - onset
+        if internalEventActive, let onset = eventOnsetTime {
+            internalCurrentEventDuration = output.time - onset
         }
 
         // Feed scorer during active events
-        if eventActive {
+        if internalEventActive {
             scorer?.addSample(time: output.time,
                              pitch: output.pitch,
                              pitchRate: output.pitchRate,
@@ -396,6 +573,20 @@ final class RunRecorder: @unchecked Sendable {
         // Bridge to TelemetrySample for UI
         let telemetrySample = bridgeToTelemetrySample(output)
         collectedSamples.append(telemetrySample)
+
+        // Stage the latest display values (still under `processLock`, no `await`).
+        // `flushDisplay()` copies these onto the observable properties on the main
+        // actor at the 30 Hz display tick.
+        pendingDisplay.pitch = pitchDeg
+        pendingDisplay.pitchRate = pitchRateDeg
+        pendingDisplay.roll = rollDeg
+        pendingDisplay.speed = speedKPH
+        pendingDisplay.speedAvailable = speedAvailable
+        pendingDisplay.vibration = vibration
+        pendingDisplay.eventActive = internalEventActive
+        pendingDisplay.currentEventDuration = internalEventActive ? internalCurrentEventDuration : 0
+        pendingDisplay.sampleCount = internalSampleCount
+        pendingDisplay.rawLogSizeBytes = internalRawLogSizeBytes
     }
 
     // MARK: - Event handling
@@ -410,27 +601,29 @@ final class RunRecorder: @unchecked Sendable {
                         values: ["onset": onsetTime, "speed": speed ?? -1])
             scorer?.beginEvent(onset: onsetTime, entrySpeed: speed)
             eventOnsetTime = onsetTime
-            currentEventDuration = 0
-            eventActive = true
+            internalCurrentEventDuration = 0
+            internalEventActive = true
 
         case .end(let endTime):
             log.info("Event end at \(endTime, format: .fixed(precision: 3))s")
             diag.always(time: endTime, level: .info, message: "event end",
                         values: ["end": endTime,
                                  "duration": eventOnsetTime.map { endTime - $0 } ?? -1])
-            pipeline?.lastEventEndTime = endTime
+            // (Removed `pipeline?.lastEventEndTime = endTime`: that core property was
+            // deleted — it was write-only, two callers set it and nothing ever read
+            // it, so the assignment no longer compiles and had no effect anyway.)
             finalizeCurrentEvent(at: endTime)
-            eventActive = false
+            internalEventActive = false
             eventOnsetTime = nil
-            currentEventDuration = 0
+            internalCurrentEventDuration = 0
 
         case .discarded(let duration):
             log.info("Event discarded (duration: \(duration, format: .fixed(precision: 3))s)")
             diag.always(time: time, level: .info, message: "event discarded",
                         values: ["duration": duration])
-            eventActive = false
+            internalEventActive = false
             eventOnsetTime = nil
-            currentEventDuration = 0
+            internalCurrentEventDuration = 0
             scorer = RunScorer(config: config)
         }
     }

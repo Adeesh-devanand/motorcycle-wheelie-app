@@ -1,14 +1,19 @@
 import MotoTelemetryCore
 import SwiftUI
 
-/// Create/edit bikes: name, mount alignment gesture flow
-/// (rest gravity → accelerate → cross product), list + select active.
+/// Create/edit bikes: name, list + select active.
+///
+/// Mount alignment is NOT captured here. It is performed at launch in the live
+/// flow (`Features/Live/SwipeAlignmentScreen.swift`). An earlier version of this
+/// screen showed a rest-gravity → accelerate → cross-product "wizard" that never
+/// advanced past step 1 and whose completion copy claimed a rotation matrix had
+/// been saved — both untrue. It was removed; do not restore it. See the Mount
+/// Alignment section below for the honest replacement.
 struct BikeProfileSetupView: View {
     @State private var store: BikeProfileStore
     @State private var isAddingNew = false
     @State private var editingProfile: BikeProfile?
     @State private var newBikeName = ""
-    @State private var alignmentStep: AlignmentStep = .idle
 
     init(store: BikeProfileStore) {
         _store = State(wrappedValue: store)
@@ -33,10 +38,8 @@ struct BikeProfileSetupView: View {
                 }
             }
 
-            if let selected = store.selectedProfile {
-                Section("Mount Alignment") {
-                    alignmentSection(for: selected)
-                }
+            Section("Mount Alignment") {
+                alignmentSection
             }
         }
         .scrollContentBackground(.hidden)
@@ -64,15 +67,13 @@ struct BikeProfileSetupView: View {
                     .font(.body)
                     .foregroundStyle(AppColors.textPrimary)
 
-                if profile.mountAlignment != nil {
-                    Text("Aligned")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.success)
-                } else {
-                    Text("Not aligned")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
+                // Removed: an "Aligned"/"Not aligned" status derived from
+                // profile.mountAlignment. On the calibrate-once branch nothing
+                // ever writes mountAlignment back onto a BikeProfile (alignment
+                // is resolved at launch and consumed live, not persisted), so
+                // this row could only ever read "Not aligned" while implying
+                // per-bike alignment is a thing you can store — the same false
+                // persistence promise removed from the alignment section.
             }
 
             Spacer()
@@ -92,66 +93,23 @@ struct BikeProfileSetupView: View {
 
     // MARK: - Alignment Flow
 
-    private func alignmentSection(for profile: BikeProfile) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            switch alignmentStep {
-            case .idle:
-                if profile.mountAlignment != nil {
-                    Text("Mount alignment recorded.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-                Button("Start Alignment") {
-                    alignmentStep = .restGravity
-                }
-                .buttonStyle(.borderedProminent)
-
-            case .restGravity:
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Text("Step 1: Rest Gravity")
-                        .font(.headline)
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text("Place the phone in the mount on the stationary bike. Keep still for 3 seconds.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                    ProgressView()
-                        .tint(Color(hex: 0x10B9B7))
-                }
-                .accessibilityElement(children: .combine)
-
-            case .accelerate:
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Text("Step 2: Accelerate")
-                        .font(.headline)
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text("Accelerate forward in a straight line. This captures the forward axis.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                    ProgressView()
-                        .tint(Color(hex: 0x238CD8))
-                }
-
-            case .complete:
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(AppColors.success)
-                    Text("Alignment Complete")
-                        .font(.headline)
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text("Cross-product computed. Mount rotation matrix saved.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                    Button("Done") {
-                        alignmentStep = .idle
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
+    // Honest replacement for the removed alignment "wizard". This screen does
+    // NOT capture mount alignment and does not save a profile: this branch
+    // (calibrate-once) drops BikeProfile persistence and re-derives alignment
+    // from the swipe gesture at launch. So there is nothing to start, nothing
+    // to progress, and nothing to persist here — only an explanation of where
+    // alignment actually happens.
+    private var alignmentSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("Captured at launch")
+                .font(.headline)
+                .foregroundStyle(AppColors.textPrimary)
+            Text("Mount alignment is measured each time you start a ride, in the "
+                 + "swipe alignment step of the live flow. It is not stored per "
+                 + "bike, so there is nothing to set up here.")
+                .font(.subheadline)
+                .foregroundStyle(AppColors.textSecondary)
         }
-    }
-
-    enum AlignmentStep {
-        case idle, restGravity, accelerate, complete
+        .accessibilityElement(children: .combine)
     }
 }

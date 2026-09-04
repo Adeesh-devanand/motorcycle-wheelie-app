@@ -230,27 +230,9 @@ final class IntervalDetectorTests: XCTestCase {
         XCTAssertEqual(total, 2.5, accuracy: 0.05)
     }
 
-    // MARK: - TargetSnapshot
-
-    func testTargetSnapshotImmutability() {
-        let snapshot = TargetSnapshot(
-            angleRange: (20.0 * .pi / 180)...(40.0 * .pi / 180),
-            speedRange: 5.0...15.0
-        )
-        // Verify it holds the original values regardless of what current preferences say.
-        XCTAssertEqual(snapshot.angleRange.lowerBound, 20.0 * .pi / 180, accuracy: 1e-10)
-        XCTAssertEqual(snapshot.speedRange.upperBound, 15.0)
-    }
-
-    func testTargetSnapshotCodable() throws {
-        let original = TargetSnapshot(
-            angleRange: 0.35...0.70,
-            speedRange: 8.0...14.0
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(TargetSnapshot.self, from: data)
-        XCTAssertEqual(original, decoded)
-    }
+    // The two `TargetSnapshot` tests that were here are gone with the type
+    // (2026-09-04). Its per-run target-immutability job is done by the app's
+    // `RunConfigurationSnapshot`, which is what `WheelieRun` actually stores.
 
     // MARK: - Interpolated boundaries
 

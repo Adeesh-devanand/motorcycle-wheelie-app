@@ -53,9 +53,16 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         guard hi > lo else { return [] }
         let series = samples.map { (time: $0.elapsed,
                                     value: ($0.blurredAngleDegrees ?? $0.angleDegrees) * .pi / 180) }
+        // Was `RangeInterval(start:end:)` — an initializer that does not exist,
+        // a hard build break. `RangeInterval` synthesizes only
+        // `init(id:metric:start:end:)`, and the detector returns a different
+        // type (`IntervalDetector.Interval`), so no overload rescued the two-arg
+        // call. Supply all four; `metric: .angle` is load-bearing —
+        // `RangeIntervalTimeline` colours the angle vs speed channel off it, so
+        // a wrong metric would mis-colour the timeline.
         return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10)
             .intervals(over: series)
-            .map { RangeInterval(start: $0.start, end: $0.end) }
+            .map { RangeInterval(id: UUID(), metric: .angle, start: $0.start, end: $0.end) }
     }
 
     var speedIntervals: [RangeInterval] {
@@ -63,8 +70,11 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         let hi = configuration.speedTarget.upper / 3.6
         guard hi > lo else { return [] }
         let series = samples.map { (time: $0.elapsed, value: $0.speedKPH / 3.6) }
+        // Same nonexistent `RangeInterval(start:end:)` build break as above;
+        // here `metric: .speed` distinguishes this from the angle channel so
+        // `RangeIntervalTimeline` colours it correctly.
         return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10)
             .intervals(over: series)
-            .map { RangeInterval(start: $0.start, end: $0.end) }
+            .map { RangeInterval(id: UUID(), metric: .speed, start: $0.start, end: $0.end) }
     }
 }
