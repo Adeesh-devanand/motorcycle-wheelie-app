@@ -56,7 +56,12 @@ struct VerticalTelemetryMeter: View {
 
     private let trackWidth: CGFloat = 30
     private let tickLength: CGFloat = 5
-    private let majorTickLength: CGFloat = 9
+    private let majorTickLength: CGFloat = 12
+    /// Clear air between the track's edge and where a spoke begins. Was effectively 1 pt,
+    /// which read as the spokes growing out of the bar; they are a separate scale.
+    private let tickGap: CGFloat = 4
+    private let minorTickWidth: CGFloat = 1
+    private let majorTickWidth: CGFloat = 2
     private let cursorOverhang: CGFloat = 6
     private let cursorThickness: CGFloat = 2
     private let cursorDotSize: CGFloat = 10
@@ -80,18 +85,31 @@ struct VerticalTelemetryMeter: View {
 
     /// Gap between the end of a major tick and the scale label text.
     ///
-    /// Widened from 4 to 10 to move the y-axis numbers clear of the band's dashed
-    /// outline, which got wider. Half of the "move the axis out, bring the box in" pair —
-    /// doing it entirely from either side would have meant either numbers colliding with
-    /// the TARGET label or losing the extra box width.
-    private let scaleLabelGap: CGFloat = 10
+    /// 6 rather than the original 4 keeps the numbers clear of the band's dashed outline,
+    /// which is wider than it used to be. It does not need the 10 it briefly had, because
+    /// `tickGap` now contributes 4 pt of its own and `majorTickLength` grew — `scaleInset`
+    /// lands at 37 either way, against a band edge at 27.
+    private let scaleLabelGap: CGFloat = 6
     /// Column widths for the outboard content.
     private let readoutWidth: CGFloat = 56
     private let targetLabelWidth: CGFloat = 62
 
-    /// Horizontal distance from the track centre to where scale labels sit.
+    /// Horizontal distance from the track centre to where scale labels sit — just beyond
+    /// the longest spoke, including the gap that now separates the spokes from the bar.
     private var scaleInset: CGFloat {
-        trackWidth / 2 + majorTickLength + scaleLabelGap
+        trackWidth / 2 + tickGap + majorTickLength + scaleLabelGap
+    }
+
+    /// Width the tick Canvas needs so a major spoke is not cut off.
+    ///
+    /// It used to be sized to `totalTrackWidth` (42 pt, i.e. 21 pt each side) while a
+    /// major tick reached 25 pt — a `Canvas` clips to its bounds, so the major spokes were
+    /// being trimmed by 4 pt and every one of them rendered the same length as it would
+    /// at 21. Sizing from the geometry means the length constants mean what they say.
+    private var tickCanvasWidth: CGFloat {
+        // +1 of headroom: a major spoke ends exactly at the computed edge, and a path
+        // terminating on a Canvas boundary can lose its last antialiased pixel.
+        (trackWidth / 2 + tickGap + majorTickLength + 1) * 2
     }
 
     /// Horizontal distance from the track centre to the inner edge of the TARGET label.
@@ -104,7 +122,7 @@ struct VerticalTelemetryMeter: View {
     /// two rarely sharing a height — the label tracks the band's centre, the numbers sit
     /// at fixed 15 deg steps.
     private var targetLabelInset: CGFloat {
-        scaleInset + 12
+        scaleInset + 8
     }
 
     var body: some View {
@@ -225,9 +243,11 @@ struct VerticalTelemetryMeter: View {
                 .frame(width: trackWidth, height: max(fraction * height, 0))
                 .animation(.easeOut(duration: 0.05), value: value)
 
-            // Ticks on both sides
+            // Ticks on both sides. Sized from the tick geometry, NOT `totalTrackWidth` —
+            // a Canvas clips to its bounds, and the major spokes now reach further out
+            // than the cursor does.
             tickCanvas(height: height)
-                .frame(width: totalTrackWidth, height: height)
+                .frame(width: tickCanvasWidth, height: height)
 
             // Cursor line + dot + glow
             cursorOverlayView(cursorY: cursorY, height: height)
@@ -389,40 +409,72 @@ struct VerticalTelemetryMeter: View {
 
     private func tickCanvas(height: CGFloat) -> some View {
         let span = range.upperBound - range.lowerBound
-        let majorStep = span > 0 ? span / 4.0 : 1
-        let minorStep: Double = label == "ANGLE" ? 3.0 : 5.0
+        let minorStep = minorTickStep
+        let perMajor = minorTicksPerMajor
         let tw = trackWidth
+        let gap = tickGap
         let tl = tickLength
         let mtl = majorTickLength
+        let minorW = minorTickWidth
+        let majorW = majorTickWidth
         let lb = range.lowerBound
         let ub = range.upperBound
+        // The track is a Capsule of width `trackWidth`, so its ends curve over a radius of
+        // half that. Spokes are only drawn between the two caps — along the straight part
+        // of the bar — because a spoke beside a curving edge does not line up with
+        // anything.
+        let capRadius = tw / 2
 
         return Canvas { context, size in
-            guard span > 0 else { return }
+            guard span > 0, minorStep > 0 else { return }
             let centerX = size.width / 2
+            let innerX = tw / 2 + gap
 
-            var tick = lb
-            while tick <= ub + 0.001 {
-                let frac = (tick - lb) / span
+            var index = 0
+            while true {
+                let value = lb + Double(index) * minorStep
+                if value > ub + 1e-6 { break }
+
+                let frac = (value - lb) / span
                 let y = size.height - (frac * size.height)
+                // Majors by INDEX, so they are evenly spaced by construction: one major,
+                // then five minors, then the next major. This replaced a modulo test
+                // against `span / 4` with a 0.5-unit tolerance, which on the angle scale
+                // (minor step 3, quarter step 22.5) only ever matched at 0, 45 and 90 —
+                // three majors out of 31 spokes, at irregular gaps.
+                let isMajor = index % perMajor == 0
+                index += 1
 
-                let remainder = tick.truncatingRemainder(dividingBy: majorStep)
-                let isMajor = remainder < 0.5 || (majorStep - remainder) < 0.5 || abs(tick - ub) < 0.5
+                guard y >= capRadius, y <= size.height - capRadius else { continue }
+
                 let len: CGFloat = isMajor ? mtl : tl
+                let width: CGFloat = isMajor ? majorW : minorW
 
                 var leftPath = Path()
-                leftPath.move(to: CGPoint(x: centerX - tw / 2 - 1, y: y))
-                leftPath.addLine(to: CGPoint(x: centerX - tw / 2 - 1 - len, y: y))
-                context.stroke(leftPath, with: .color(AppColors.tickMark), lineWidth: 1)
+                leftPath.move(to: CGPoint(x: centerX - innerX, y: y))
+                leftPath.addLine(to: CGPoint(x: centerX - innerX - len, y: y))
+                context.stroke(leftPath, with: .color(AppColors.tickMark), lineWidth: width)
 
                 var rightPath = Path()
-                rightPath.move(to: CGPoint(x: centerX + tw / 2 + 1, y: y))
-                rightPath.addLine(to: CGPoint(x: centerX + tw / 2 + 1 + len, y: y))
-                context.stroke(rightPath, with: .color(AppColors.tickMark), lineWidth: 1)
-
-                tick += minorStep
+                rightPath.move(to: CGPoint(x: centerX + innerX, y: y))
+                rightPath.addLine(to: CGPoint(x: centerX + innerX + len, y: y))
+                context.stroke(rightPath, with: .color(AppColors.tickMark), lineWidth: width)
             }
         }
+    }
+
+    /// Value step between MAJOR spokes — deliberately the same step
+    /// `makeScaleSteps()` draws numbers at, so every number lands on a major spoke
+    /// instead of floating between two minors.
+    private var majorTickStep: Double {
+        label == "ANGLE" ? 15.0 : (range.upperBound - range.lowerBound) / 4.0
+    }
+
+    /// Five minor spokes between each pair of majors, hence six steps per major.
+    private var minorTicksPerMajor: Int { 6 }
+
+    private var minorTickStep: Double {
+        majorTickStep / Double(minorTicksPerMajor)
     }
 
     // MARK: - Cursor Overlay
