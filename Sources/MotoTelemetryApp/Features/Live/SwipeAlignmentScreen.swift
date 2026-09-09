@@ -69,7 +69,24 @@ struct SwipeAlignmentScreen: View {
                 .gesture(
                     DragGesture(minimumDistance: 8)
                         .onChanged { value in
-                            if startPoint == nil { startPoint = value.startLocation }
+                            // `startLocation` is constant for the life of one drag, so
+                            // assigning it unconditionally both anchors the first frame
+                            // and RE-anchors on a second attempt.
+                            //
+                            // The `startPoint == nil` guard this replaces only ever fired
+                            // once, on the very first swipe. On a re-draw it left the
+                            // PREVIOUS attempt's start in place while `endPoint` followed
+                            // the new finger, so the rider saw a line hinged on the old
+                            // start point sweeping to the new one, snapping into place
+                            // only on lift-off when `onEnded` finally reassigned it.
+                            if startPoint != value.startLocation {
+                                startPoint = value.startLocation
+                                // The previous solution describes a line no longer on
+                                // screen. Drop it so "Looks right" cannot confirm an
+                                // alignment the rider has stopped looking at.
+                                resolved = nil
+                                errorText = nil
+                            }
                             endPoint = value.location
                         }
                         .onEnded { value in
@@ -81,12 +98,18 @@ struct SwipeAlignmentScreen: View {
                 .frame(maxHeight: .infinity)
                 .padding(AppSpacing.screenPadding)
 
-                if let errorText {
-                    Text(errorText)
-                        .font(AppTypography.cardSubtitle)
-                        .foregroundStyle(AppColors.warning)
-                        .multilineTextAlignment(.center)
-                }
+                // Constant-height slot, NOT `if let errorText`. The drawing area above
+                // is `maxHeight: .infinity`, so it absorbs whatever this row gives up:
+                // a message appearing or clearing resized the canvas under the rider's
+                // finger, and every already-drawn point moved with it. Reserving the
+                // space means the canvas geometry — and so the line — never moves.
+                Text(errorText ?? "")
+                    .font(AppTypography.cardSubtitle)
+                    .foregroundStyle(AppColors.warning)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .frame(height: 34)
 
                 HStack(spacing: AppSpacing.xl) {
                     Button("Recalibrate") { onRecalibrate() }

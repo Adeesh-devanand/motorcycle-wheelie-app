@@ -1,7 +1,27 @@
 import SwiftUI
 
-/// §9 — Run Details: nav row, title, hero card, synced angle/speed charts,
-/// insight strip, legend, and interval timeline.
+/// §9 — Run Details, laid out to fit ONE portrait screen with no scrolling.
+///
+/// The page used to be a `ScrollView`: a 36 pt black "RUN DETAILS" title, a hero card,
+/// two fixed 180 pt charts, an insight card, a colour legend and the timeline came to
+/// roughly 1030 pt of content against about 715 pt of usable height on an iPhone 14,
+/// so two thirds of a run's summary lived below the fold. Fitting it meant cutting real
+/// rows, not just tightening padding:
+///
+///   - the title block collapsed into the nav row, so the header costs 44 pt instead of
+///     ~95 and the empty band above it is gone;
+///   - the hero card and the insight card merged into ONE card of two rows — six
+///     numbers, one set of dividers, one set of card padding;
+///   - the teal/blue legend row was deleted and each chart's own title took its
+///     channel colour instead, which teaches the same thing in a row that already
+///     existed;
+///   - the "PERSONAL BEST" line under wheelie time went, because the LONGEST pill in
+///     the header already says it;
+///   - both charts became flexible-height and now split whatever is left over, so the
+///     page adapts from an SE to a Pro Max rather than assuming 180 pt fits.
+///
+/// The tab bar is hidden here (`.toolbar(.hidden, for: .tabBar)`) — this is a pushed
+/// detail with its own back button, and it returns ~49 pt to the charts.
 struct RunDetailsView: View {
     @State private var viewModel: RunDetailsViewModel
     @Environment(\.dismiss) private var dismiss
@@ -34,63 +54,59 @@ struct RunDetailsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: AppSpacing.lg) {
-                navRow
-                titleSection
-                heroCard
-                chartsGroup
-                insightStrip
-                legendCaption
-                intervalTimeline
-            }
-            .padding(.horizontal, AppSpacing.screenPadding)
-            .padding(.bottom, AppSpacing.xxl)
+        VStack(spacing: AppSpacing.sm) {
+            headerRow
+            statsCard
+            chartsGroup
+            intervalTimeline
         }
+        .padding(.horizontal, AppSpacing.screenPadding)
+        .padding(.bottom, AppSpacing.sm)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppColors.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .tabBar)
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Nav Row
+    // MARK: - Header (nav + title + date + record badge, one row)
 
-    private var navRow: some View {
-        HStack {
+    private var headerRow: some View {
+        HStack(spacing: AppSpacing.sm) {
             Button { dismiss() } label: {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 18, weight: .medium))
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(AppColors.textSecondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            Spacer()
-            // Removed: a share icon and a gear icon that were bare
-            // `Image(systemName:)` views — not Buttons. They looked tappable but
-            // did nothing and were invisible to VoiceOver. There was no real
-            // export path in reach (the only one, ExportShareView, was itself
-            // unreachable and has since been deleted) and no settings action on
-            // the view model, so a control that lies is worse than no control.
-            // Removed rather than faked. A working export does exist, on the real
-            // file URL, in DiagnosticsView.
-        }
-        .padding(.top, AppSpacing.sm)
-    }
+            .accessibilityLabel("Back to runs")
 
-    // MARK: - Title
-
-    private var titleSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text("RUN DETAILS")
-                .font(.system(size: 36, weight: .black))
+                .font(.system(size: 13, weight: .semibold))
+                .tracking(0.5)
                 .foregroundStyle(AppColors.textPrimary)
+                .fixedSize()
 
-            HStack(spacing: AppSpacing.sm) {
-                Text(subtitleText)
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(AppColors.textSecondary)
+            Text(subtitleText)
+                .font(.system(size: 13))
+                .foregroundStyle(AppColors.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-                badgePill
-            }
+            Spacer(minLength: AppSpacing.xs)
+
+            badgePill
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // The row is exactly the back button's 44 pt hit target — the smallest this
+        // can be without shrinking a control below the touch minimum. The old
+        // `.padding(.top, .sm)` above it is gone; that padding plus the 36 pt title's
+        // line box is the empty space at the top of the page.
+        .frame(height: 44)
+        // Removed with the old nav row: a share icon and a gear icon that were bare
+        // `Image(systemName:)` views, not Buttons. They looked tappable, did nothing,
+        // and were invisible to VoiceOver. A working export exists in DiagnosticsView,
+        // on the real file URL.
     }
 
     private var subtitleText: String {
@@ -117,86 +133,105 @@ struct RunDetailsView: View {
                 .padding(.vertical, AppSpacing.xxs + 1)
                 .background(AppColors.badgeSuccessFill)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                .fixedSize()
         }
     }
 
-    // MARK: - Hero Card
+    // MARK: - Stats (the old hero card and insight strip, merged)
 
-    private var heroCard: some View {
+    private var statsCard: some View {
         TelemetryCard {
-            HStack(spacing: 0) {
-                heroMetric(
-                    label: "WHEELIE TIME",
-                    value: String(format: "%.1f", viewModel.duration),
-                    unit: "s",
-                    color: AppColors.success,
-                    showBest: isLongestRun
-                )
-                .frame(maxWidth: .infinity)
+            VStack(spacing: AppSpacing.xs) {
+                HStack(spacing: 0) {
+                    metricColumn(label: "WHEELIE TIME",
+                                 value: String(format: "%.1f", viewModel.duration),
+                                 unit: "s",
+                                 valueSize: 26,
+                                 color: AppColors.success,
+                                 labelColor: AppColors.accent)
+                    verticalDivider(height: 34)
+                    metricColumn(label: "MAX ANGLE",
+                                 value: String(format: "%.0f", viewModel.maxAngle),
+                                 unit: "°",
+                                 valueSize: 26,
+                                 color: AppColors.angleMetric,
+                                 labelColor: AppColors.accent)
+                    verticalDivider(height: 34)
+                    metricColumn(label: "MAX SPEED",
+                                 value: String(format: "%.0f", viewModel.maxSpeed),
+                                 unit: "km/h",
+                                 valueSize: 26,
+                                 // Was the angle channel's teal, so the speed hero was
+                                 // lying about which channel it belonged to.
+                                 color: AppColors.speedMetric,
+                                 labelColor: AppColors.accent)
+                }
 
-                verticalDivider
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
 
-                heroMetric(
-                    label: "MAX ANGLE",
-                    value: String(format: "%.0f°", viewModel.maxAngle),
-                    unit: nil,
-                    color: AppColors.angleMetric,
-                    showBest: false
-                )
-                .frame(maxWidth: .infinity)
-
-                verticalDivider
-
-                heroMetric(
-                    label: "MAX SPEED",
-                    value: String(format: "%.0f", viewModel.maxSpeed),
-                    unit: "km/h",
-                    // Was `AppColors.angleMetric` (teal) — the angle channel's
-                    // colour, so the speed hero was lying about which channel it
-                    // was. Speed is blue throughout the app.
-                    color: AppColors.speedMetric,
-                    showBest: false
-                )
-                .frame(maxWidth: .infinity)
+                HStack(spacing: 0) {
+                    metricColumn(label: "ANGLE IN RANGE",
+                                 value: String(format: "%.1f", viewModel.totalAngleInRange),
+                                 unit: "s",
+                                 valueSize: 17,
+                                 color: AppColors.angleMetric)
+                    verticalDivider(height: 24)
+                    metricColumn(label: "SPEED IN RANGE",
+                                 value: String(format: "%.1f", viewModel.totalSpeedInRange),
+                                 unit: "s",
+                                 valueSize: 17,
+                                 color: AppColors.speedMetric)
+                    verticalDivider(height: 24)
+                    metricColumn(label: "AVG SPEED",
+                                 value: String(format: "%.0f", viewModel.averageSpeed),
+                                 unit: "km/h",
+                                 valueSize: 17,
+                                 color: AppColors.speedMetric)
+                }
             }
         }
-        .accessibilityElement(children: .combine)
     }
 
-    private var verticalDivider: some View {
+    private func verticalDivider(height: CGFloat) -> some View {
         Rectangle()
             .fill(Color.white.opacity(0.08))
-            .frame(width: 1, height: 60)
+            .frame(width: 1, height: height)
     }
 
-    private func heroMetric(label: String, value: String, unit: String?, color: Color, showBest: Bool) -> some View {
-        VStack(spacing: AppSpacing.xs) {
+    /// One labelled number. `labelColor` defaults to secondary because the lower row's
+    /// labels are quieter than the three headline metrics above them.
+    private func metricColumn(label: String,
+                              value: String,
+                              unit: String?,
+                              valueSize: CGFloat,
+                              color: Color,
+                              labelColor: Color = AppColors.textSecondary) -> some View {
+        VStack(spacing: 1) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .tracking(0.5)
-                .foregroundStyle(AppColors.accent)
+                .font(.system(size: 10, weight: .medium))
+                .tracking(0.4)
+                .foregroundStyle(labelColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
-            if let unit {
-                HStack(alignment: .lastTextBaseline, spacing: 1) {
-                    Text(value)
-                        .font(.system(size: 34, weight: .bold, design: .monospaced))
-                        .foregroundStyle(color)
+            HStack(alignment: .lastTextBaseline, spacing: 1) {
+                Text(value)
+                    .font(.system(size: valueSize, weight: .bold, design: .monospaced))
+                    .foregroundStyle(color)
+                if let unit {
                     Text(unit)
-                        .font(.system(size: 16, weight: .medium, design: .monospaced))
+                        .font(.system(size: valueSize * 0.5, weight: .medium, design: .monospaced))
                         .foregroundStyle(color)
                 }
-            } else {
-                Text(value)
-                    .font(.system(size: 34, weight: .bold, design: .monospaced))
-                    .foregroundStyle(color)
             }
-
-            if showBest {
-                Text("PERSONAL BEST")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(AppColors.success)
-            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value) \(unit ?? "")")
     }
 
     // MARK: - Charts (§9.4)
@@ -205,8 +240,11 @@ struct RunDetailsView: View {
     /// as a single overlay (M-UI8). Each chart reports its plot rect + scrubber x
     /// via `ScrubberGeometryKey`; the overlay joins them into one line and floats
     /// the time bubble at the scrubber's x.
+    ///
+    /// This group is the page's only flexible element, so it absorbs every point the
+    /// fixed rows above and below do not use, and its two children split that equally.
     private var chartsGroup: some View {
-        VStack(spacing: AppSpacing.lg) {
+        VStack(spacing: AppSpacing.sm) {
             angleChart
             speedChart
         }
@@ -258,10 +296,8 @@ struct RunDetailsView: View {
 
     private var angleChart: some View {
         TelemetryCard {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Text("ANGLE")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(AppColors.textPrimary)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                chartTitle("ANGLE", color: AppColors.angleMetric)
 
                 TelemetryChart(
                     points: viewModel.anglePoints,
@@ -270,18 +306,18 @@ struct RunDetailsView: View {
                     metric: .angle,
                     yDomain: viewModel.angleDomain,
                     runDuration: viewModel.duration,
-                    selectedTime: $viewModel.selectedTime
+                    selectedTime: $viewModel.selectedTime,
+                    plotHeight: nil
                 )
             }
         }
+        .frame(maxHeight: .infinity)
     }
 
     private var speedChart: some View {
         TelemetryCard {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Text("SPEED")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(AppColors.textPrimary)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                chartTitle("SPEED", color: AppColors.speedMetric)
 
                 TelemetryChart(
                     points: viewModel.speedPoints,
@@ -290,75 +326,23 @@ struct RunDetailsView: View {
                     metric: .speed,
                     yDomain: viewModel.speedDomain,
                     runDuration: viewModel.duration,
-                    selectedTime: $viewModel.selectedTime
+                    selectedTime: $viewModel.selectedTime,
+                    plotHeight: nil
                 )
             }
         }
+        .frame(maxHeight: .infinity)
     }
 
-    // MARK: - Insight Strip (§9.5)	
-
-    private var insightStrip: some View {
-        TelemetryCard {
-            HStack(spacing: 0) {
-                insightItem(label: "ANGLE IN RANGE", value: String(format: "%.1fs", viewModel.totalAngleInRange))
-                    .frame(maxWidth: .infinity)
-                verticalDivider
-                insightItem(label: "AVG SPEED", value: String(format: "%.0f km/h", viewModel.averageSpeed), color: AppColors.speedMetric)
-                    .frame(maxWidth: .infinity)
-                verticalDivider
-                insightItem(label: "SPEED IN RANGE", value: String(format: "%.1fs", viewModel.totalSpeedInRange), color: AppColors.speedMetric)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    /// `color` defaults to the angle channel because two of the three insight rows
-    /// are angle metrics. It exists because the helper previously hardcoded
-    /// `AppColors.angleMetric` for ALL rows, so AVG SPEED and SPEED IN RANGE
-    /// rendered teal — the angle channel's colour — on the same screen whose legend
-    /// teaches teal = angle and blue = speed. A defaulted parameter fixes the two
-    /// speed rows without restructuring the other call site.
-    private func insightItem(label: String,
-                             value: String,
-                             color: Color = AppColors.angleMetric) -> some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .tracking(0.5)
-                .foregroundStyle(AppColors.textSecondary)
-            Text(value)
-                .font(.system(size: 24, weight: .semibold, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(color)
-        }
-    }
-
-    // MARK: - Legend + Caption
-
-    private var legendCaption: some View {
-        VStack(spacing: AppSpacing.xs) {
-            HStack(spacing: AppSpacing.lg) {
-                HStack(spacing: AppSpacing.xs) {
-                    Circle().fill(AppColors.angleMetric).frame(width: 8, height: 8)
-                    Text("ANGLE")
-                        .font(.system(size: 12, weight: .medium))
-                        .tracking(0.5)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-                HStack(spacing: AppSpacing.xs) {
-                    Circle().fill(AppColors.speedMetric).frame(width: 8, height: 8)
-                    Text("SPEED")
-                        .font(.system(size: 12, weight: .medium))
-                        .tracking(0.5)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-            }
-            Text("Tap a segment for details")
-                .font(.system(size: 12))
-                .foregroundStyle(AppColors.textTertiary)
-        }
-        .frame(maxWidth: .infinity)
+    /// The channel name in the channel's own colour. This is what replaced the separate
+    /// teal-dot / blue-dot legend row: with each chart titled in its own colour the
+    /// legend taught what the label already shows, and it cost a row this page does not
+    /// have to spare.
+    private func chartTitle(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .tracking(0.5)
+            .foregroundStyle(color)
     }
 
     // MARK: - Interval Timeline (§9.6)

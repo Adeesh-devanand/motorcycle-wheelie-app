@@ -13,6 +13,26 @@ struct TelemetryChart: View {
     let runDuration: TimeInterval
     @Binding var selectedTime: TimeInterval?
 
+    /// Height of the plot area. A number keeps the original fixed-height chart; `nil`
+    /// means "fill whatever the parent gives me", which is how Run Details fits both
+    /// charts plus the summary and timeline on one screen with no scrolling.
+    ///
+    /// Declared last on purpose: the memberwise initialiser follows declaration order,
+    /// so a defaulted property placed earlier would silently reorder every existing
+    /// call site's arguments.
+    var plotHeight: CGFloat? = 180
+
+    /// Applied as `.frame(height:)`. Nil leaves the plot unconstrained so the
+    /// companion `flexiblePlotMax` can let it fill the parent instead.
+    private var fixedPlotHeight: CGFloat? { plotHeight }
+
+    /// Applied as `.frame(maxHeight:)`. Only non-nil in the flexible case, where it
+    /// makes the plot claim all the height the parent offers. Both the chart and the
+    /// band-label overlay take the same pair, because they MUST agree — the label
+    /// positions its caption by offset inside its own frame, so a mismatch floats the
+    /// range text off the band it is labelling.
+    private var flexiblePlotMax: CGFloat? { plotHeight == nil ? .infinity : nil }
+
     // MARK: - Derived colours from AppColors tokens
 
     private var traceColor: Color {
@@ -97,7 +117,11 @@ struct TelemetryChart: View {
         if metric == .angle {
             return [0, 45, 90]
         } else {
-            return [0, 50, 100]
+            // Was a hardcoded [0, 50, 100]. The speed gauge maximum is rider-set
+            // (50-300 km/h), so a fixed 100 either labelled a tick the axis does not
+            // contain or stopped a third of the way up a 300 km/h axis.
+            let top = yDomain.upperBound
+            return [0, (top / 2).rounded(), top]
         }
     }
 
@@ -207,7 +231,8 @@ struct TelemetryChart: View {
                         )
                 }
             }
-            .frame(height: 180)
+            .frame(height: fixedPlotHeight)
+            .frame(maxHeight: flexiblePlotMax)
 
             // Target band label at right edge inside the band
             targetBandLabel
@@ -233,9 +258,7 @@ struct TelemetryChart: View {
     // MARK: - Target Band Label
 
     private var targetBandLabel: some View {
-        VStack {
-            Spacer()
-                .frame(height: 40) // Position inside band area roughly
+        GeometryReader { geo in
             HStack {
                 Spacer()
                 Text(bandRangeText)
@@ -243,10 +266,33 @@ struct TelemetryChart: View {
                     .foregroundStyle(AppColors.textSecondary)
                     .padding(.trailing, AppSpacing.sm)
             }
-            Spacer()
+            .frame(width: geo.size.width)
+            .position(x: geo.size.width / 2, y: bandCaptionY(in: geo.size.height))
         }
-        .frame(height: 180)
+        .frame(height: fixedPlotHeight)
+        .frame(maxHeight: flexiblePlotMax)
         .allowsHitTesting(false)
+    }
+
+    /// Where the band caption sits, as a FRACTION of the plot height rather than a
+    /// fixed offset.
+    ///
+    /// This was `Spacer().frame(height: 40)` — 40 pt from the top of a 180 pt chart,
+    /// which on the 0-90 deg angle axis is up around 70 deg, nowhere near a 35-45 deg
+    /// band. It happened to look plausible and was never on the band. Once the plot
+    /// height stopped being a constant it would have been wrong at every size.
+    ///
+    /// Still approximate in one respect: the frame includes the x-axis label strip
+    /// along the bottom, so the caption sits a few points low. Reading the true plot
+    /// rect needs `ChartProxy.plotAreaFrame`, which is deprecated on the SDK this
+    /// project builds against, and the caption is a label on a band it already visibly
+    /// overlaps — not worth an availability fork.
+    private func bandCaptionY(in height: CGFloat) -> CGFloat {
+        let span = yDomain.upperBound - yDomain.lowerBound
+        guard span > 0, height > 0 else { return height / 2 }
+        let center = (targetBand.lower + targetBand.upper) / 2
+        let fractionFromTop = 1 - (center - yDomain.lowerBound) / span
+        return max(10, min(height - 10, CGFloat(fractionFromTop) * height))
     }
 
     private var bandRangeText: String {

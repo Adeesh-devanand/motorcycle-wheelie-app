@@ -152,7 +152,7 @@ public struct Pipeline {
             // Speed only. Uncoupled from the IMU stream by design: at ~1 Hz it cannot
             // track a 1.2 s pitch ramp, and with no filter to correct there is
             // nothing to fuse it into.
-            if fix.isSpeedValid { lastSpeed = fix.speed }
+            if let speed = fix.resolvedSpeed { lastSpeed = speed }
             return nil
         case .baro, .wheelSpeed:
             // Neither is consumed by this estimator, but both remain part of the LOG

@@ -93,6 +93,32 @@ public struct GNSSFix: Codable, Sendable {
     }
 
     public var isSpeedValid: Bool { speed >= 0 }
+
+    /// The speed this fix can actually defend, m/s, or nil when it carries no speed
+    /// at all.
+    ///
+    /// CoreLocation reports `speed` and its own error bound `speedAccuracy`
+    /// independently, and the Doppler solution does NOT settle on zero when the
+    /// receiver is still — it wanders inside that bound. A phone lifted off a table
+    /// produced `speed = 1.02` with `speedAccuracy = 1.64`: 3.7 km/h of displayed
+    /// motion from a measurement that cannot distinguish itself from standing still.
+    /// Showing it is not a rounding artefact, it is reporting a number the receiver
+    /// never claimed. Doppler is worst right after acquisition, which is exactly when
+    /// a rider is sitting at the lights watching the readout.
+    ///
+    /// So a reading smaller than its own stated error reports 0. The threshold is the
+    /// receiver's bound, not one of ours — there is no tunable constant here to get
+    /// wrong. A fix whose accuracy is UNKNOWN (negative) passes through unchanged:
+    /// with no bound there is nothing to test against, and manufacturing a zero would
+    /// be the same fabrication in the other direction (R15.3).
+    ///
+    /// This does not make a slow roll unreportable. It makes a slow roll unreportable
+    /// *until the receiver can tell it from rest*, which is the only honest answer.
+    public var resolvedSpeed: Double? {
+        guard isSpeedValid else { return nil }
+        guard speedAccuracy >= 0 else { return speed }
+        return speed >= speedAccuracy ? speed : 0
+    }
 }
 
 public struct BaroSample: Codable, Sendable {

@@ -28,7 +28,7 @@ struct RangeIntervalTimeline: View {
     }
 
     var body: some View {
-        VStack(spacing: AppSpacing.md) {
+        VStack(spacing: AppSpacing.sm) {
             // Timeline
             GeometryReader { geo in
                 let width = geo.size.width
@@ -117,42 +117,44 @@ struct RangeIntervalTimeline: View {
             }
             .frame(height: 44) // Account for 44pt tap target
 
-            // Endpoint labels
-            HStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    Text("LIFT")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text("0.0s")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
+            // Endpoint labels, one line each rather than a stacked pair — Run Details
+            // has no scroll view, so a second line here is a second line taken off the
+            // charts.
+            HStack {
+                Text("LIFT 0.0s")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppColors.textTertiary)
                 Spacer()
-                VStack(spacing: 0) {
-                    Text("DOWN")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text(String(format: "%.1fs", duration))
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
+                Text(String(format: "DOWN %.1fs", duration))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppColors.textTertiary)
             }
 
             // Boundary times
             boundaryTimesRow
 
-            // Overlap chooser
-            if showOverlapChooser {
-                overlapChooserView
+            // ONE fixed-height slot shared by the hint, the overlap chooser and the
+            // selected segment's detail.
+            //
+            // The detail used to be a full card that appeared on tap, below everything
+            // else. Inside the old ScrollView that just made the page longer; on a
+            // page that must fit the screen it would push the charts off the bottom
+            // every time the rider tapped a segment. Reserving one row costs 26 pt
+            // always and means tapping never changes the page's height.
+            ZStack {
+                if showOverlapChooser {
+                    overlapChooserView
+                } else if let sel = selectedInterval {
+                    compactCallout(sel)
+                } else {
+                    Text("Tap a segment for details")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
             }
-
-            // Detail callout card
-            if let sel = selectedInterval {
-                intervalCallout(sel)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            .frame(height: 26)
         }
-        .padding(.vertical, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
         .animation(.easeInOut(duration: 0.2), value: selectedInterval?.interval.id)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Range interval timeline, \(angleIntervals.count) angle intervals, \(speedIntervals.count) speed intervals")
@@ -317,32 +319,38 @@ struct RangeIntervalTimeline: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Callout Card
+    // MARK: - Callout (one line, fits the reserved slot)
 
-    private func intervalCallout(_ sel: SelectedInterval) -> some View {
+    /// Same three facts as the card it replaced — which metric, which of how many
+    /// intervals, its bounds and its duration — on one line. The card version was
+    /// ~86 pt tall and appeared only on tap, which is exactly the growth a page with
+    /// no scroll view cannot absorb.
+    private func compactCallout(_ sel: SelectedInterval) -> some View {
         let metricColor = sel.interval.metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
         let metricName = sel.interval.metric == .angle ? "ANGLE" : "SPEED"
 
-        return VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            Text("\(metricName) · RANGE \(sel.ordinal) OF \(sel.total)")
-                .font(.system(size: 12, weight: .semibold))
+        return HStack(spacing: AppSpacing.xs) {
+            Text("\(metricName) \(sel.ordinal)/\(sel.total)")
+                .font(.system(size: 11, weight: .semibold))
                 .tracking(0.5)
                 .foregroundStyle(metricColor)
 
             Text("\(String(format: "%.1f", sel.interval.start))s → \(String(format: "%.1f", sel.interval.end))s")
-                .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(metricColor)
 
-            Text("\(String(format: "%.1f", sel.interval.duration))s in range")
-                .font(.system(size: 13))
+            Text("· \(String(format: "%.1f", sel.interval.duration))s in range")
+                .font(.system(size: 12))
                 .foregroundStyle(AppColors.textSecondary)
         }
-        .padding(AppSpacing.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xxs)
         .background(AppColors.surfaceCard)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
-            RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card)
+            RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(AppColors.cardBorder, lineWidth: 1)
         )
     }
