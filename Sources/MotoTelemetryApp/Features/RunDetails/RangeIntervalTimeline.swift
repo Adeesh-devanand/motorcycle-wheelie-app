@@ -18,7 +18,12 @@ struct RangeIntervalTimeline: View {
     @State private var timelineWidth: CGFloat = 0
 
     private let trackHeight: CGFloat = 12
-    private let segmentRadius: CGFloat = 6
+    /// How thick the in-range highlight bar is drawn. Deliberately thinner than the
+    /// 6 pt endpoint dots so the dots read as caps on a slimmer line, not as beads on
+    /// a bar of equal width. The bar used to fill the whole `trackHeight` (12 pt) —
+    /// twice the dot diameter — so the dots vanished into it.
+    private let segmentBarThickness: CGFloat = 3
+    private let segmentRadius: CGFloat = 1.5
     private let markerSize: CGFloat = 8
 
     private struct SelectedInterval: Equatable {
@@ -225,8 +230,11 @@ struct RangeIntervalTimeline: View {
         guard duration > 0 else { return .zero }
         let x = CGFloat(interval.start / duration) * size.width
         let w = CGFloat(interval.duration / duration) * size.width
-        let yOffset = (size.height - trackHeight) / 2
-        return CGRect(x: x, y: yOffset, width: max(w, 2), height: trackHeight)
+        // Center the thin bar vertically; the endpoint dots are drawn separately at
+        // their own (larger) 6 pt size, so they cap the ends rather than matching the
+        // bar's width.
+        let yOffset = (size.height - segmentBarThickness) / 2
+        return CGRect(x: x, y: yOffset, width: max(w, 2), height: segmentBarThickness)
     }
 
     // MARK: - Tap Handling
