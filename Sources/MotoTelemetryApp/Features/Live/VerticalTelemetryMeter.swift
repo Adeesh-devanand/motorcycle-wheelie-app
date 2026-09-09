@@ -108,11 +108,19 @@ struct VerticalTelemetryMeter: View {
         let sign: CGFloat = labelsOnLeading ? -1 : 1
 
         return ZStack {
-            // Track, centred in the available width.
+            // Track, centred in the available width. Carries the target-drag gesture,
+            // so it must be the only hit-testable layer here.
             meterTrackView(height: height, cursorY: cursorY)
 
             // Scale labels, drawn across the full width so x/y are exact.
+            //
+            // `allowsHitTesting(false)` is load-bearing, not defensive. This Canvas is
+            // sized to the WHOLE meter and sits ABOVE the track in the ZStack, so it
+            // hit-tests first and swallowed every touch — the drag gesture on the
+            // track never fired at all. Same for the two offset labels below: they
+            // overlap the track once clamped toward the middle.
             scaleView(height: height, totalWidth: totalWidth)
+                .allowsHitTesting(false)
 
             // Live value readout, riding the cursor but clamped on-screen.
             valueReadoutView
@@ -121,8 +129,10 @@ struct VerticalTelemetryMeter: View {
                     x: sign * (scaleInset + readoutWidth / 2),
                     y: clampedReadoutOffset(cursorY: cursorY, height: height)
                 )
+                .allowsHitTesting(false)
 
-            // Target label, near the band centre, itself the tap target.
+            // Target label, near the band centre. A readout only — the band is set by
+            // dragging the track.
             if let band = targetBand {
                 targetLabelView(band: band, height: height)
                     .frame(width: targetLabelWidth, alignment: labelsOnLeading ? .trailing : .leading)
@@ -130,6 +140,7 @@ struct VerticalTelemetryMeter: View {
                         x: sign * (scaleInset + targetLabelWidth / 2),
                         y: clampedTargetOffset(band: band, height: height)
                     )
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: totalWidth, height: height)
@@ -187,7 +198,13 @@ struct VerticalTelemetryMeter: View {
         // The Canvases above are not hit-testable, so without this the gesture
         // would only fire over the track Capsule and the fill.
         .contentShape(Rectangle())
-        .gesture(targetDragGesture(height: height))
+        // `highPriorityGesture`, not `gesture`: the enclosing `TabView` has a paging
+        // swipe, and a plain gesture loses the drag to it as soon as the movement has
+        // any horizontal component. The cost is that swipe-paging no longer works when
+        // the swipe STARTS on a meter track — the tab bar buttons, the header and the
+        // bottom cards all still page — and a target you cannot set is worse than a
+        // swipe you have to start 40 pt lower.
+        .highPriorityGesture(targetDragGesture(height: height))
     }
 
     // MARK: - Target Drag

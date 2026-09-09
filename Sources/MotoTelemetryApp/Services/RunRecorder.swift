@@ -134,6 +134,31 @@ final class RunRecorder: @unchecked Sendable {
     /// mutual exclusion.
     private let processLock = NSLock()
 
+    /// Runs finalised by `processSample` — off the main actor, under `processLock` —
+    /// and waiting to be handed to `RunRepository` on the main actor. Guarded by
+    /// `processLock`.
+    ///
+    /// This queue exists because saving inline was hanging the app. `repository.save`
+    /// JSON-encodes the run, writes it to disk atomically, and appends to
+    /// `RunRepository.allRuns`, which is `@Observable` and read by SwiftUI. Doing that
+    /// from `finalizeCurrentEvent` meant:
+    ///
+    /// 1. The sensor thread held `processLock` across a synchronous FILE WRITE, while
+    ///    the main thread takes the same lock 30x a second in `flushDisplay()`. Every
+    ///    event end therefore blocked the main thread for the length of a disk write.
+    /// 2. `allRuns` was mutated OFF the main actor while SwiftUI read it on the main
+    ///    actor — an `@Observable` data race, and the notification it fires can reach
+    ///    main-actor observers from a thread already holding a lock the main actor
+    ///    wants. That is the lock inversion, and it matches the device log exactly:
+    ///    `sensor heartbeat` continues at 100 Hz (MotionService's own callback, which
+    ///    takes no lock) while `pipe`, `rec` and `live` heartbeats all stop dead after
+    ///    "event end", with "event finalized — windowed & saved" never printed.
+    ///
+    /// Draining happens on the main actor with no lock held: from `flushDisplay()` on
+    /// the display tick, and from `stopSession()`, which needs its own drain because
+    /// the view model stops the display link BEFORE calling it.
+    private var pendingSavedRuns: [WheelieRun] = []
+
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "RunRecorder")
 
     // MARK: - Diagnostics ("rec")
@@ -470,6 +495,11 @@ final class RunRecorder: @unchecked Sendable {
         internalEventActive = false
         processLock.unlock()
 
+        // Write whatever `seg.finish()` just closed. Must be after the unlock: the
+        // save touches the disk and `@Observable` repository state, and this method
+        // runs on the main actor.
+        drainPendingSaves()
+
         pipeline = nil
         segmenter = nil
         scorer = nil
@@ -495,6 +525,10 @@ final class RunRecorder: @unchecked Sendable {
     func flushDisplay() {
         processLock.lock()
         let snap = pendingDisplay
+        // Taken in the SAME critical section as the display snapshot, so the 30 Hz
+        // tick costs one lock acquisition rather than two.
+        let finished = pendingSavedRuns
+        if !finished.isEmpty { pendingSavedRuns.removeAll(keepingCapacity: true) }
         processLock.unlock()
 
         livePitch = snap.pitch
@@ -507,6 +541,34 @@ final class RunRecorder: @unchecked Sendable {
         currentEventDuration = snap.currentEventDuration
         sampleCount = snap.sampleCount
         rawLogSizeBytes = snap.rawLogSizeBytes
+
+        // AFTER the unlock, on the main actor. The disk write and the `@Observable`
+        // mutation must not happen under `processLock` or off the main actor.
+        saveFinished(finished)
+    }
+
+    /// Hand runs finalised off-actor to the repository. Main actor, no lock held.
+    ///
+    /// `stopSession()` needs this separately from `flushDisplay()`: the view model
+    /// stops the 30 Hz display link before calling it, so a run closed by
+    /// `EventSegmenter.finish()` would otherwise sit in the queue and never be
+    /// written — losing exactly the run the `finish()` fix was added to save.
+    @MainActor
+    private func drainPendingSaves() {
+        processLock.lock()
+        let finished = pendingSavedRuns
+        pendingSavedRuns.removeAll(keepingCapacity: true)
+        processLock.unlock()
+        saveFinished(finished)
+    }
+
+    @MainActor
+    private func saveFinished(_ runs: [WheelieRun]) {
+        for run in runs {
+            repository.save(run)
+            diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                        message: "run saved", values: ["samples": Double(run.samples.count)])
+        }
     }
 
     // MARK: - Sample processing
@@ -743,8 +805,10 @@ final class RunRecorder: @unchecked Sendable {
             qualityFlags: flags
         )
 
-        repository.save(run)
-        diag.always(time: endTime, level: .info, message: "event finalized — windowed & saved",
+        // Queued, NOT saved here. This runs under `processLock`, usually on a sensor
+        // thread; see `pendingSavedRuns` for why saving inline froze the app.
+        pendingSavedRuns.append(run)
+        diag.always(time: endTime, level: .info, message: "event finalized — windowed & queued",
                     values: ["collected": Double(collectedSamples.count),
                              "windowed": Double(windowed.count),
                              "onsetElapsed": onsetElapsed,

@@ -62,8 +62,38 @@ public final class MotionService: MotionProviding, @unchecked Sendable {
     private let config: Config
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "MotionService")
 
-    /// Tolerance for timestamp pairing (seconds).
-    private let pairTolerance: TimeInterval = 0.005
+    /// Tolerance for timestamp pairing (seconds), as a fraction of the nominal
+    /// sample interval.
+    ///
+    /// Was a hardcoded 5 ms, which is HALF the 10 ms interval at 100 Hz — and that is
+    /// what made pairing a coin flip on the phase relation between two independent
+    /// hardware streams. Gyro and accelerometer are started as separate CoreMotion
+    /// subscriptions with independent timestamps; if their steady-state offset happens
+    /// to exceed 5 ms, no sample ever pairs and the whole session emits almost
+    /// nothing. The device log of 2026-09-08 shows both outcomes from the same build:
+    /// session 1 emitted 986 samples against 7,907 unpaired (11%, sensor rate ~21 Hz),
+    /// session 2 ran a clean 100 Hz. Nothing changed between them but the phase.
+    ///
+    /// That 11% session is also why calibration failed twice on sigma. Completion
+    /// needs `elapsed >= 2 s` AND `n >= requiredSampleCount` (duration x rate x 0.5 =
+    /// 100). At full rate the 2 s bound binds and n lands near 200; at a fifth of the
+    /// rate the sample floor binds instead and n stops at exactly 100 — which is what
+    /// all three `bias finish` lines report. The SEM is `std/sqrt(n)`, so sqrt(100)
+    /// instead of sqrt(200) inflates the reported sigma by 1.41x, and the 0.05 deg/s
+    /// limit was chosen for the 200-sample case. Measured semX 0.0523 and 0.0552 both
+    /// FAILED; the same raw std over 200 samples gives 0.0370 and 0.0390, which pass.
+    /// The bike was not moving too much — the stream was starving the estimator.
+    ///
+    /// 1.5 intervals (15 ms at 100 Hz) makes pairing nearest-neighbour rather than
+    /// phase-dependent: whatever the offset, each sample pairs with the closest one
+    /// from the other channel and at most one sample of skew is admitted. Safe here
+    /// because the two channels are used for different things — the pair carries the
+    /// GYRO's timestamp, integration dt comes from that, and the accelerometer is
+    /// calibration-only in the beta (gravity anchor and rest detection), where 15 ms
+    /// of skew on a stationary bike is nothing.
+    private var pairTolerance: TimeInterval {
+        config.nominalSampleRate > 0 ? 1.5 / config.nominalSampleRate : 0.015
+    }
 
     /// Pending samples awaiting a pair.
     private var pendingGyro: (time: TimeInterval, rate: Vector3)?

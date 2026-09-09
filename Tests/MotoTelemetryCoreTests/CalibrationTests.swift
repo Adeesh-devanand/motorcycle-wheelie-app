@@ -62,6 +62,55 @@ final class CalibrationTests: XCTestCase {
 
     // MARK: - The happy path
 
+    /// A STARVED stream fails on sigma while the identical noise at full rate passes,
+    /// and the failure looks exactly like "the bike was moving too much".
+    ///
+    /// This is the 2026-09-08 device log, encoded. Completion needs `elapsed >= 2 s`
+    /// AND `n >= requiredSampleCount` (duration x rate x 0.5 = 100). At full rate the
+    /// 2 s bound binds and n lands near 200; at a fifth of the rate the sample floor
+    /// binds and n stops at exactly 100 — which is what all three `bias finish` lines
+    /// on the device reported. Since the SEM is `std/sqrt(n)`, sqrt(100) rather than
+    /// sqrt(200) inflates the reported sigma by 1.41x against a limit chosen for the
+    /// 200-sample case.
+    ///
+    /// The cause there was `MotionService` pairing (986 emitted against 7,907
+    /// unpaired). The point of this test is that no threshold is at fault: the same
+    /// gyro noise passes or fails purely on how many samples arrived, so a future
+    /// reader must not "fix" it by loosening `biasSigmaLimit`.
+    func testAStarvedStreamFailsSigmaOnSampleCountAloneNotNoise() throws {
+        // Noise chosen to sit between the two sqrt(n) cases: it passes at n ~ 200 and
+        // fails at n = 100. Deterministic, alternating so the mean stays put and only
+        // the spread carries.
+        let noise = 0.55 * .pi / 180          // deg/s of raw per-sample spread
+        func samples(rate: Double, seconds: Double) -> [IMUSample] {
+            let count = Int(rate * seconds)
+            return (0..<count).map { i in
+                let sign: Double = i % 2 == 0 ? 1 : -1
+                return IMUSample(time: Double(i) / rate,
+                                 rotationRate: Vector3(sign * noise, 0, 0),
+                                 specificForce: Conventions.restSpecificForce)
+            }
+        }
+
+        // Full rate: the elapsed bound binds, n is ~200, sigma passes.
+        guard case .done(let estimate)? = run(samples(rate: 100, seconds: 4)) else {
+            return XCTFail("full-rate stream should complete")
+        }
+        XCTAssertGreaterThan(estimate.sampleCount, 150,
+                            "at 100 Hz the 2 s elapsed bound should bind, not the floor")
+
+        // Same noise, a fifth of the rate. `discontinuityGap` is 30 nominal intervals
+        // (300 ms), and 20 Hz gives 50 ms spacing, so this is a slow stream and NOT a
+        // discontinuous one — exactly the device's case.
+        let starved = run(samples(rate: 20, seconds: 20))
+        guard case .failed(let failure)? = starved else {
+            return XCTFail("starved stream should fail, got \(String(describing: starved))")
+        }
+        guard case .sigmaTooHigh = failure else {
+            return XCTFail("expected sigmaTooHigh, got \(failure)")
+        }
+    }
+
     func testTenSecondZeroingRecoversBiasWithSmallSigma() throws {
         let trueBias = Vector3(0.004, -0.0025, 0.0011)
         let result = run(stationarySamples(duration: 12, trueBias: trueBias))
