@@ -25,6 +25,13 @@ struct RunSettingsSheet: View {
     @State private var minDuration: String = ""
     @State private var minAngle: String = ""
     @State private var showingDeleteAllConfirm = false
+    /// Which detent the sheet is showing. Seeded to `.large` because a
+    /// `presentationDetents` SET opens at its SMALLEST member — so declaring
+    /// `[.medium, .large]` without a selection opened the sheet half-height and cut off
+    /// the Delete All Runs footer, which is the one line explaining that the button
+    /// ignores the filters above it. A warning you have to scroll to find is not a
+    /// warning. Both detents are still offered, so the sheet can be dragged down.
+    @State private var detent: PresentationDetent = .large
 
     var body: some View {
         NavigationStack {
@@ -119,10 +126,10 @@ struct RunSettingsSheet: View {
                      + "hidden by the current filters. This cannot be undone.")
             }
         }
-        // `.large` as well as `.medium`: the delete section pushes the form past what a
-        // half sheet shows, and the destructive action must not be the thing that is
-        // off screen.
-        .presentationDetents([.medium, .large])
+        // `selection:` is what makes this open at `.large`. Without it the set's
+        // smallest member wins and the destructive action's explanation sits below the
+        // fold — see `detent` above.
+        .presentationDetents([.medium, .large], selection: $detent)
         .preferredColorScheme(.dark)
     }
 
