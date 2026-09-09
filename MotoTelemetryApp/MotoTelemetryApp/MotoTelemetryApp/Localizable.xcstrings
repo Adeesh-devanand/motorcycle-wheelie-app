@@ -1,1734 +1,1875 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "%lld attempt": {
-      "extractionState": "manual",
-      "comment": "Calibration attempt count suffix, singular",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentative"
+  "sourceLanguage" : "en",
+  "strings" : {
+    " " : {
+
+    },
+    "· %@s in range" : {
+      "comment" : "Interval detail: seconds in target range",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· %@s dans la cible"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ %lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$lld/%3$lld"
+          }
+        }
+      }
+    },
+    "%@ chart" : {
+
+    },
+    "%@ meter" : {
+
+    },
+    "%@: %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@ %3$@"
+          }
+        }
+      }
+    },
+    "%@: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@, %3$@"
+          }
+        }
+      }
+    },
+    "%@s → %@s" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@s → %2$@s"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld attempt" : {
+      "comment" : "Calibration attempt count suffix, singular",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentative"
           }
         }
       }
     },
-    "%lld attempt (filtered)": {
-      "extractionState": "manual",
-      "comment": "Runs subtitle, filtered singular",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentative (filtrées)"
+    "%lld attempt (filtered)" : {
+      "comment" : "Runs subtitle, filtered singular",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentative (filtrées)"
           }
         }
       }
     },
-    "%lld attempt today": {
-      "extractionState": "manual",
-      "comment": "Runs subtitle, today singular",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentative aujourd'hui"
+    "%lld attempt today" : {
+      "comment" : "Runs subtitle, today singular",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentative aujourd'hui"
           }
         }
       }
     },
-    "%lld attempt, no outcome": {
-      "extractionState": "manual",
-      "comment": "Calibration attempts recorded but no result, singular",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentative, aucun résultat"
+    "%lld attempt, no outcome" : {
+      "comment" : "Calibration attempts recorded but no result, singular",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentative, aucun résultat"
           }
         }
       }
     },
-    "%lld attempts": {
-      "extractionState": "manual",
-      "comment": "Calibration attempt count suffix, plural",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentatives"
+    "%lld attempts" : {
+      "comment" : "Calibration attempt count suffix, plural",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentatives"
           }
         }
       }
     },
-    "%lld attempts (filtered)": {
-      "extractionState": "manual",
-      "comment": "Runs subtitle, filtered plural",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentatives (filtrées)"
+    "%lld attempts (filtered)" : {
+      "comment" : "Runs subtitle, filtered plural",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentatives (filtrées)"
           }
         }
       }
     },
-    "%lld attempts today": {
-      "extractionState": "manual",
-      "comment": "Runs subtitle, today plural",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentatives aujourd'hui"
+    "%lld attempts today" : {
+      "comment" : "Runs subtitle, today plural",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentatives aujourd'hui"
           }
         }
       }
     },
-    "%lld attempts, no outcome": {
-      "extractionState": "manual",
-      "comment": "Calibration attempts recorded but no result, plural",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld tentatives, aucun résultat"
+    "%lld attempts, no outcome" : {
+      "comment" : "Calibration attempts recorded but no result, plural",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tentatives, aucun résultat"
           }
         }
       }
     },
-    "%lld d ago": {
-      "extractionState": "manual",
-      "comment": "Relative time, days",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "il y a %lld j"
+    "%lld d ago" : {
+      "comment" : "Relative time, days",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il y a %lld j"
           }
         }
       }
     },
-    "%lld events": {
-      "extractionState": "manual",
-      "comment": "Session summary total event count",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld évènements"
+    "%lld events" : {
+      "comment" : "Session summary total event count",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld évènements"
           }
         }
       }
     },
-    "%lld hr ago": {
-      "extractionState": "manual",
-      "comment": "Relative time, hours",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "il y a %lld h"
+    "%lld hr ago" : {
+      "comment" : "Relative time, hours",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il y a %lld h"
           }
         }
       }
     },
-    "%lld min ago": {
-      "extractionState": "manual",
-      "comment": "Relative time, minutes",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "il y a %lld min"
+    "%lld km/h" : {
+
+    },
+    "%lld min ago" : {
+      "comment" : "Relative time, minutes",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il y a %lld min"
           }
         }
       }
     },
-    "%lld shown": {
-      "extractionState": "manual",
-      "comment": "Count of currently visible log lines",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld affichées"
+    "%lld shown" : {
+      "comment" : "Count of currently visible log lines",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld affichées"
           }
         }
       }
     },
-    "%lld unparseable line skipped": {
-      "extractionState": "manual",
-      "comment": "Count of lines that could not be parsed, singular",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld ligne illisible ignorée"
+    "%lld unparseable line skipped" : {
+      "comment" : "Count of lines that could not be parsed, singular",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ligne illisible ignorée"
           }
         }
       }
     },
-    "%lld unparseable lines skipped": {
-      "extractionState": "manual",
-      "comment": "Count of lines that could not be parsed, plural",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld lignes illisibles ignorées"
+    "%lld unparseable lines skipped" : {
+      "comment" : "Count of lines that could not be parsed, plural",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld lignes illisibles ignorées"
           }
         }
       }
+    },
+    "%lld%%" : {
+
+    },
+    "%lld°" : {
+
     },
-    "%lld×": {
-      "extractionState": "manual",
-      "comment": "Occurrence count for a warning/error message",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld×"
+    "%lld×" : {
+      "comment" : "Occurrence count for a warning/error message",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld×"
           }
         }
       }
     },
-    "ALL CATS": {
-      "extractionState": "manual",
-      "comment": "Category filter chip: no category filter active",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TOUTES CAT."
+    "°" : {
+
+    },
+    "≥ %@" : {
+      "comment" : "Minimum log level filter chip; %@ is the level code",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥ %@"
           }
         }
       }
     },
-    "ANGLE": {
-      "extractionState": "manual",
-      "comment": "Angle meter label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ANGLE"
+    "0" : {
+
+    },
+    "About" : {
+      "comment" : "Settings section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À propos"
           }
         }
       }
     },
-    "About": {
-      "extractionState": "manual",
-      "comment": "Settings section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "À propos"
+    "All categories" : {
+      "comment" : "Filter option",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toutes les catégories"
           }
         }
       }
     },
-    "All categories": {
-      "extractionState": "manual",
-      "comment": "Filter option",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Toutes les catégories"
+    "ALL CATS" : {
+      "comment" : "Category filter chip: no category filter active",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TOUTES CAT."
           }
         }
       }
     },
-    "Almost — keep it still a moment longer": {
-      "extractionState": "manual",
-      "comment": "Calibration blocking reason: dwell not yet met",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Presque — gardez-le immobile un instant de plus"
+    "Almost — keep it still a moment longer" : {
+      "comment" : "Calibration blocking reason: dwell not yet met",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Presque — gardez-le immobile un instant de plus"
           }
         }
       }
     },
-    "Approaching tone": {
-      "extractionState": "manual",
-      "comment": "Audio cue toggle",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tonalité d'approche"
+    "ANGLE" : {
+      "comment" : "Angle meter label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANGLE"
           }
         }
       }
     },
-    "Audio Cues": {
-      "extractionState": "manual",
-      "comment": "Settings section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signaux sonores"
+    "Approaching tone" : {
+      "comment" : "Audio cue toggle",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tonalité d'approche"
           }
         }
       }
     },
-    "Back": {
-      "extractionState": "manual",
-      "comment": "Back button accessibility",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retour"
+    "Audio Cues" : {
+      "comment" : "Settings section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signaux sonores"
           }
         }
       }
     },
-    "Back to runs": {
-      "extractionState": "manual",
-      "comment": "Navigation",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retour aux sessions"
+    "Back" : {
+      "comment" : "Back button accessibility",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour"
           }
         }
       }
     },
-    "Being moved or tilted — let it settle": {
-      "extractionState": "manual",
-      "comment": "Calibration blocking reason: specific force out of band",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Déplacé ou incliné — laissez stabiliser"
+    "Back to runs" : {
+      "comment" : "Navigation",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour aux sessions"
           }
         }
       }
     },
-    "Build": {
-      "extractionState": "manual",
-      "comment": "Session summary header key: app build",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Version (build)"
+    "Being moved or tilted — let it settle" : {
+      "comment" : "Calibration blocking reason: specific force out of band",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déplacé ou incliné — laissez stabiliser"
           }
         }
       }
     },
-    "CALIBRATING": {
-      "extractionState": "manual",
-      "comment": "Calibration status pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "CALIBRATION…"
+    "Build" : {
+      "comment" : "Session summary header key: app build",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version (build)"
           }
         }
       }
     },
-    "Calibrated": {
-      "extractionState": "manual",
-      "comment": "Calibration screen title when done",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Calibré"
+    "Calibrated" : {
+      "comment" : "Calibration screen title when done",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calibré"
           }
         }
       }
     },
-    "Calibration": {
-      "extractionState": "manual",
-      "comment": "Screen / label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Calibration"
+    "CALIBRATING" : {
+      "comment" : "Calibration status pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CALIBRATION…"
           }
         }
       }
     },
-    "Cancel": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Annuler"
+    "Calibration" : {
+      "comment" : "Screen / label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calibration"
           }
         }
       }
+    },
+    "Calibration status: %@" : {
+
     },
-    "Clear filters": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effacer les filtres"
+    "Cancel" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler"
           }
         }
       }
     },
-    "Color ranked to your personal range": {
-      "extractionState": "manual",
-      "comment": "Legend caption",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couleur selon votre plage personnelle"
+    "Clear filters" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effacer les filtres"
           }
         }
       }
     },
-    "Complete a wheelie to see it here.": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réussissez un wheelie pour le voir ici."
+    "Color ranked to your personal range" : {
+      "comment" : "Legend caption",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couleur selon votre plage personnelle"
           }
         }
       }
     },
-    "Config": {
-      "extractionState": "manual",
-      "comment": "Session summary header key: config version",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Configuration"
+    "Complete a wheelie to see it here." : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réussissez un wheelie pour le voir ici."
           }
         }
       }
     },
-    "Confirm alignment": {
-      "extractionState": "manual",
-      "comment": "Swipe screen button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirmer l'alignement"
+    "Config" : {
+      "comment" : "Session summary header key: config version",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configuration"
           }
         }
       }
     },
-    "Copied": {
-      "extractionState": "manual",
-      "comment": "Copy button confirmation",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copié"
+    "Confirm alignment" : {
+      "comment" : "Swipe screen button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmer l'alignement"
           }
         }
       }
     },
-    "Copy": {
-      "extractionState": "manual",
-      "comment": "Copy visible log lines button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copier"
+    "Copied" : {
+      "comment" : "Copy button confirmation",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copié"
           }
         }
       }
     },
-    "Couldn't calibrate:\n%@": {
-      "extractionState": "manual",
-      "comment": "Calibration failed title; %@ is the failure detail",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Échec de la calibration :\n%@"
+    "Copy" : {
+      "comment" : "Copy visible log lines button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier"
           }
         }
       }
     },
-    "DOWN %@s": {
-      "extractionState": "manual",
-      "comment": "Timeline down label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "DESCENTE %@s"
+    "Couldn't calibrate:\n%@" : {
+      "comment" : "Calibration failed title; %@ is the failure detail",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de la calibration :\n%@"
           }
         }
       }
     },
-    "Data Integrity": {
-      "extractionState": "manual",
-      "comment": "Screen title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Intégrité des données"
+    "Data Integrity" : {
+      "comment" : "Screen title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intégrité des données"
           }
         }
       }
     },
-    "Data Quality": {
-      "extractionState": "manual",
-      "comment": "Section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Qualité des données"
+    "Data Quality" : {
+      "comment" : "Section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualité des données"
           }
         }
       }
     },
-    "Date Range": {
-      "extractionState": "manual",
-      "comment": "Filter section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plage de dates"
+    "Date Range" : {
+      "comment" : "Filter section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plage de dates"
           }
         }
       }
     },
-    "Delete %@": {
-      "extractionState": "manual",
-      "comment": "Delete a single log file; %@ is the file name",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer %@"
+    "Delete %@" : {
+      "comment" : "Delete a single log file; %@ is the file name",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer %@"
           }
         }
       }
     },
-    "Delete All Runs": {
-      "extractionState": "manual",
-      "comment": "Destructive button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer toutes les sessions"
+    "Delete all %lld log files?" : {
+      "comment" : "Confirm deleting all log files; %lld is the count",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer les %lld fichiers journaux?"
           }
         }
       }
     },
-    "Delete Run": {
-      "extractionState": "manual",
-      "comment": "Destructive button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer la session"
+    "Delete All %lld Runs" : {
+
+    },
+    "Delete all logs" : {
+      "comment" : "Destructive button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer tous les journaux"
           }
         }
       }
     },
-    "Delete all %lld log files?": {
-      "extractionState": "manual",
-      "comment": "Confirm deleting all log files; %lld is the count",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer les %lld fichiers journaux?"
+    "Delete all logs (%@)" : {
+      "comment" : "Confirm deleting all logs; %@ is the total size",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer tous les journaux (%@)"
           }
         }
       }
     },
-    "Delete all logs": {
-      "extractionState": "manual",
-      "comment": "Destructive button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer tous les journaux"
+    "Delete All Runs" : {
+      "comment" : "Destructive button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer toutes les sessions"
           }
         }
       }
+    },
+    "Delete all runs?" : {
+
     },
-    "Delete all logs (%@)": {
-      "extractionState": "manual",
-      "comment": "Confirm deleting all logs; %@ is the total size",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer tous les journaux (%@)"
+    "Delete Run" : {
+      "comment" : "Destructive button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer la session"
           }
         }
       }
     },
-    "Delete this log file?": {
-      "extractionState": "manual",
-      "comment": "Confirm deleting one log file",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprimer ce fichier journal?"
+    "Delete this log file?" : {
+      "comment" : "Confirm deleting one log file",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer ce fichier journal?"
           }
         }
       }
     },
-    "Deletes every recorded run, including runs hidden by the ": {
-      "extractionState": "manual",
-      "comment": "Destructive footnote (continues)",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprime toutes les sessions enregistrées, y compris celles masquées par les "
+    "Delete this run?" : {
+
+    },
+    "Deletes every recorded run, including runs hidden by the " : {
+      "comment" : "Destructive footnote (continues)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprime toutes les sessions enregistrées, y compris celles masquées par les "
           }
         }
       }
     },
-    "Deletes every recorded run, including runs hidden by the filters above. This cannot be undone.": {
-      "extractionState": "manual",
-      "comment": "Delete-all footer",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supprime toutes les sessions enregistrées, y compris celles masquées par les filtres ci-dessus. Cette action est irréversible."
+    "Deletes every recorded run, including runs hidden by the filters above. This cannot be undone." : {
+      "comment" : "Delete-all footer",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprime toutes les sessions enregistrées, y compris celles masquées par les filtres ci-dessus. Cette action est irréversible."
           }
         }
       }
     },
-    "Device": {
-      "extractionState": "manual",
-      "comment": "Session summary header key: device model",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Appareil"
+    "Device" : {
+      "comment" : "Session summary header key: device model",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appareil"
           }
         }
       }
     },
-    "Diagnostics": {
-      "extractionState": "manual",
-      "comment": "Screen title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagnostics"
+    "Diagnostics" : {
+      "comment" : "Screen title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostics"
           }
         }
       }
     },
-    "Discards this alignment and measures the gyro bias again": {
-      "extractionState": "manual",
-      "comment": "Accessibility hint",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abandonne cet alignement et remesure le biais du gyroscope"
+    "Discards this alignment and measures the gyro bias again" : {
+      "comment" : "Accessibility hint",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abandonne cet alignement et remesure le biais du gyroscope"
           }
         }
       }
     },
-    "Double tap to restart calibration from the beginning": {
-      "extractionState": "manual",
-      "comment": "Accessibility hint",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Touchez deux fois pour recommencer la calibration depuis le début"
+    "Double tap to restart calibration from the beginning" : {
+      "comment" : "Accessibility hint",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez deux fois pour recommencer la calibration depuis le début"
           }
         }
       }
     },
-    "Drag horizontally to scrub through time": {
-      "extractionState": "manual",
-      "comment": "Accessibility hint",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Faites glisser horizontalement pour parcourir le temps"
+    "DOWN %@s" : {
+      "comment" : "Timeline down label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DESCENTE %@s"
           }
         }
       }
     },
-    "Draw a line along the bike,\nback to front": {
-      "extractionState": "manual",
-      "comment": "Swipe screen instruction",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tracez une ligne le long de la moto,\nde l'arrière vers l'avant"
+    "Drag horizontally to scrub through time" : {
+      "comment" : "Accessibility hint",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faites glisser horizontalement pour parcourir le temps"
           }
         }
       }
+    },
+    "Draw a line along the bike first" : {
+
     },
-    "Environment": {
-      "extractionState": "manual",
-      "comment": "Section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Environnement"
+    "Draw a line along the bike,\nback to front" : {
+      "comment" : "Swipe screen instruction",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tracez une ligne le long de la moto,\nde l'arrière vers l'avant"
           }
         }
       }
     },
-    "Every recorded run is permanently deleted, including runs ": {
-      "extractionState": "manual",
-      "comment": "Destructive footnote (continues)",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chaque session enregistrée est définitivement supprimée, y compris les sessions "
+    "End" : {
+
+    },
+    "Environment" : {
+      "comment" : "Section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Environnement"
           }
         }
       }
     },
-    "Every recorded run is permanently deleted, including runs hidden by the current filters. This cannot be undone.": {
-      "extractionState": "manual",
-      "comment": "Delete-all confirm message",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Toutes les sessions enregistrées sont définitivement supprimées, y compris celles masquées par les filtres actuels. Cette action est irréversible."
+    "Every recorded run is permanently deleted, including runs " : {
+      "comment" : "Destructive footnote (continues)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque session enregistrée est définitivement supprimée, y compris les sessions "
           }
         }
       }
     },
-    "FAILED": {
-      "extractionState": "manual",
-      "comment": "Calibration status pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ÉCHEC"
+    "Every recorded run is permanently deleted, including runs hidden by the current filters. This cannot be undone." : {
+      "comment" : "Delete-all confirm message",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toutes les sessions enregistrées sont définitivement supprimées, y compris celles masquées par les filtres actuels. Cette action est irréversible."
           }
         }
       }
     },
-    "FASTEST": {
-      "extractionState": "manual",
-      "comment": "Run badge",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PLUS RAPIDE"
+    "FAILED" : {
+      "comment" : "Calibration status pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ÉCHEC"
           }
         }
       }
     },
-    "File": {
-      "extractionState": "manual",
-      "comment": "Log file kind: other/unknown file",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fichier"
+    "FASTEST" : {
+      "comment" : "Run badge",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PLUS RAPIDE"
           }
         }
       }
     },
-    "Filters and delete all runs": {
-      "extractionState": "manual",
-      "comment": "Accessibility label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Filtres et suppression de toutes les sessions"
+    "File" : {
+      "comment" : "Log file kind: other/unknown file",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fichier"
           }
         }
       }
     },
-    "Flags": {
-      "extractionState": "manual",
-      "comment": "Section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Indicateurs"
+    "Filters and delete all runs" : {
+      "comment" : "Accessibility label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtres et suppression de toutes les sessions"
           }
         }
       }
     },
-    "From": {
-      "extractionState": "manual",
-      "comment": "Date range",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "De"
+    "Flags" : {
+      "comment" : "Section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indicateurs"
           }
         }
       }
     },
-    "From date": {
-      "extractionState": "manual",
-      "comment": "Date picker label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Date de début"
+    "From" : {
+      "comment" : "Date range",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De"
           }
         }
       }
     },
-    "Gauge Maximum": {
-      "extractionState": "manual",
-      "comment": "Picker label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Maximum de la jauge"
+    "From date" : {
+      "comment" : "Date picker label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date de début"
           }
         }
       }
     },
-    "HIGHEST": {
-      "extractionState": "manual",
-      "comment": "Run badge",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PLUS HAUT"
+    "Gauge Maximum" : {
+      "comment" : "Picker label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximum de la jauge"
           }
         }
       }
     },
-    "Haptic feedback": {
-      "extractionState": "manual",
-      "comment": "Toggle",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retour haptique"
+    "Haptic feedback" : {
+      "comment" : "Toggle",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour haptique"
           }
         }
       }
     },
-    "Hold the bike upright and still,\nengine off": {
-      "extractionState": "manual",
-      "comment": "Calibration screen title while measuring",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tenez la moto droite et immobile,\nmoteur coupé"
+    "HIGHEST" : {
+      "comment" : "Run badge",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PLUS HAUT"
           }
         }
       }
     },
-    "In-range tone": {
-      "extractionState": "manual",
-      "comment": "Audio cue toggle",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tonalité en plage"
+    "Hold the bike upright and still,\nengine off" : {
+      "comment" : "Calibration screen title while measuring",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tenez la moto droite et immobile,\nmoteur coupé"
           }
         }
       }
     },
-    "Just now": {
-      "extractionState": "manual",
-      "comment": "Relative time floor",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "À l'instant"
+    "In-range tone" : {
+      "comment" : "Audio cue toggle",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tonalité en plage"
           }
         }
       }
     },
-    "LATEST": {
-      "extractionState": "manual",
-      "comment": "Run badge",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RÉCENT"
+    "Just now" : {
+      "comment" : "Relative time floor",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À l'instant"
           }
         }
       }
     },
-    "LIFT %@s": {
-      "extractionState": "manual",
-      "comment": "Timeline lift label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MONTÉE %@s"
+    "km/h" : {
+      "comment" : "Unit (unchanged)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "km/h"
           }
         }
       }
     },
-    "LONGEST": {
-      "extractionState": "manual",
-      "comment": "Run badge",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PLUS LONG"
+    "LATEST" : {
+      "comment" : "Run badge",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RÉCENT"
           }
         }
       }
     },
-    "Latest Session": {
-      "extractionState": "manual",
-      "comment": "Session summary card title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dernière session"
+    "Latest Session" : {
+      "comment" : "Session summary card title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière session"
           }
         }
       }
     },
-    "Live": {
-      "extractionState": "manual",
-      "comment": "Tab / screen",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Direct"
+    "LIFT %@s" : {
+      "comment" : "Timeline lift label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MONTÉE %@s"
           }
         }
       }
     },
-    "Log Files": {
-      "extractionState": "manual",
-      "comment": "Screen",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fichiers journaux"
+    "Live" : {
+      "comment" : "Tab / screen",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct"
           }
         }
       }
     },
-    "Logs are written while you record. Once you ride, session and raw sensor logs will appear here to view and export.": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les journaux sont écrits pendant l'enregistrement. Après un trajet, les journaux de session et de capteurs bruts apparaîtront ici pour consultation et exportation."
+    "Log Files" : {
+      "comment" : "Screen",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fichiers journaux"
           }
         }
       }
     },
-    "Logs exceed ~100 MB — consider deleting old logs after exporting.": {
-      "extractionState": "manual",
-      "comment": "Warning",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les journaux dépassent ~100 Mo — pensez à supprimer les anciens journaux après exportation."
+    "Logs are written while you record. Once you ride, session and raw sensor logs will appear here to view and export." : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les journaux sont écrits pendant l'enregistrement. Après un trajet, les journaux de session et de capteurs bruts apparaîtront ici pour consultation et exportation."
           }
         }
       }
     },
-    "Looks right": {
-      "extractionState": "manual",
-      "comment": "Confirmation button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ça semble correct"
+    "Logs exceed ~100 MB — consider deleting old logs after exporting." : {
+      "comment" : "Warning",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les journaux dépassent ~100 Mo — pensez à supprimer les anciens journaux après exportation."
           }
         }
       }
     },
-    "Low Confidence": {
-      "extractionState": "manual",
-      "comment": "Status",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confiance faible"
+    "LONGEST" : {
+      "comment" : "Run badge",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PLUS LONG"
           }
         }
       }
     },
-    "MAX %lld": {
-      "extractionState": "manual",
-      "comment": "Live meter sublabel, speed",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MAX %lld"
+    "Looks right" : {
+      "comment" : "Confirmation button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ça semble correct"
           }
         }
       }
     },
-    "MAX %lld°": {
-      "extractionState": "manual",
-      "comment": "Live meter sublabel, angle (° unchanged)",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MAX %lld°"
+    "Low Confidence" : {
+      "comment" : "Status",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confiance faible"
           }
         }
       }
     },
-    "MAX ANGLE": {
-      "extractionState": "manual",
-      "comment": "Run details stat label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ANGLE MAX"
+    "Lower" : {
+
+    },
+    "MAX %lld" : {
+      "comment" : "Live meter sublabel, speed",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MAX %lld"
           }
         }
       }
     },
-    "MAX SPEED": {
-      "extractionState": "manual",
-      "comment": "Run details stat label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VITESSE MAX"
+    "MAX %lld°" : {
+      "comment" : "Live meter sublabel, angle (° unchanged)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MAX %lld°"
           }
         }
       }
     },
-    "Min Angle": {
-      "extractionState": "manual",
-      "comment": "Filter label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Angle min."
+    "MAX ANGLE" : {
+      "comment" : "Run details stat label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ANGLE MAX"
           }
         }
       }
     },
-    "Min Duration": {
-      "extractionState": "manual",
-      "comment": "Filter label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Durée min."
+    "MAX SPEED" : {
+      "comment" : "Run details stat label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VITESSE MAX"
           }
         }
       }
     },
-    "Minimums": {
-      "extractionState": "manual",
-      "comment": "Filter section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Minimums"
+    "Min Angle" : {
+      "comment" : "Filter label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angle min."
           }
         }
       }
     },
-    "Motion sensors unavailable.\nCheck permissions in Settings.": {
-      "extractionState": "manual",
-      "comment": "Shown when Core Motion is unavailable / permission denied",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Capteurs de mouvement indisponibles.\nVérifiez les autorisations dans Réglages."
+    "Min Duration" : {
+      "comment" : "Filter label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durée min."
           }
         }
       }
     },
-    "No logs yet": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucun journal pour l'instant"
+    "Minimums" : {
+      "comment" : "Filter section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimums"
           }
         }
       }
     },
-    "No quality flags": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucun indicateur de qualité"
+    "Motion sensors unavailable.\nCheck permissions in Settings." : {
+      "comment" : "Shown when Core Motion is unavailable / permission denied",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capteurs de mouvement indisponibles.\nVérifiez les autorisations dans Réglages."
           }
         }
       }
     },
-    "No readable lines in this file": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucune ligne lisible dans ce fichier"
+    "No logs yet" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun journal pour l'instant"
           }
         }
       }
     },
-    "No runs match these filters": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucune session ne correspond à ces filtres"
+    "No quality flags" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun indicateur de qualité"
           }
         }
       }
     },
-    "No runs yet": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucune session pour l'instant"
+    "No readable lines in this file" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune ligne lisible dans ce fichier"
           }
         }
       }
     },
-    "No session data yet": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aucune donnée de session pour l'instant"
+    "No runs match these filters" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune session ne correspond à ces filtres"
           }
         }
       }
     },
-    "One or more quality checks failed. Data from this session may be unreliable.": {
-      "extractionState": "manual",
-      "comment": "Warning",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Une ou plusieurs vérifications de qualité ont échoué. Les données de cette session peuvent être peu fiables."
+    "No runs yet" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune session pour l'instant"
           }
         }
       }
     },
-    "PAST RUNS": {
-      "extractionState": "manual",
-      "comment": "Screen title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SESSIONS PASSÉES"
+    "No session data yet" : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune donnée de session pour l'instant"
           }
         }
       }
+    },
+    "not selected" : {
+
     },
-    "RECALIBRATE": {
-      "extractionState": "manual",
-      "comment": "Recalibrate pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RECALIBRER"
+    "One or more quality checks failed. Data from this session may be unreliable." : {
+      "comment" : "Warning",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une ou plusieurs vérifications de qualité ont échoué. Les données de cette session peuvent être peu fiables."
           }
         }
       }
     },
-    "RECENT": {
-      "extractionState": "manual",
-      "comment": "Sort chip",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RÉCENT"
+    "PAST RUNS" : {
+      "comment" : "Screen title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SESSIONS PASSÉES"
           }
         }
       }
     },
-    "RUN DETAILS": {
-      "extractionState": "manual",
-      "comment": "Screen title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "DÉTAILS DE LA SESSION"
+    "Range interval timeline, %lld angle intervals, %lld speed intervals" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Range interval timeline, %1$lld angle intervals, %2$lld speed intervals"
           }
         }
       }
     },
-    "Raw sensor": {
-      "extractionState": "manual",
-      "comment": "Log file kind: raw sensor trace",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Capteur brut"
+    "Raw sensor" : {
+      "comment" : "Log file kind: raw sensor trace",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capteur brut"
           }
         }
       }
     },
-    "Recalibrate": {
-      "extractionState": "manual",
-      "comment": "Button / pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recalibrer"
+    "Recalibrate" : {
+      "comment" : "Button / pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recalibrer"
           }
         }
       }
     },
-    "Record a ride to see its integrity report here.": {
-      "extractionState": "manual",
-      "comment": "Empty state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enregistrez un trajet pour voir son rapport d'intégrité ici."
+    "RECALIBRATE" : {
+      "comment" : "Recalibrate pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RECALIBRER"
           }
         }
       }
     },
-    "Redo gyro zero": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refaire le zéro du gyroscope"
+    "RECENT" : {
+      "comment" : "Sort chip",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RÉCENT"
           }
         }
       }
     },
-    "Reset Filters": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réinitialiser les filtres"
+    "Record a ride to see its integrity report here." : {
+      "comment" : "Empty state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrez un trajet pour voir son rapport d'intégrité ici."
           }
         }
       }
     },
-    "Run settings": {
-      "extractionState": "manual",
-      "comment": "Accessibility label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réglages de session"
+    "Redo gyro zero" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refaire le zéro du gyroscope"
           }
         }
       }
     },
-    "Runs": {
-      "extractionState": "manual",
-      "comment": "Tab / screen",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sessions"
+    "Reset Filters" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réinitialiser les filtres"
           }
         }
       }
     },
-    "SPEED": {
-      "extractionState": "manual",
-      "comment": "Speed meter label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VITESSE"
+    "RUN DETAILS" : {
+      "comment" : "Screen title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DÉTAILS DE LA SESSION"
           }
         }
       }
     },
-    "STALE": {
-      "extractionState": "manual",
-      "comment": "Calibration status pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PÉRIMÉ"
+    "Run settings" : {
+      "comment" : "Accessibility label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages de session"
           }
         }
       }
     },
-    "Sample Rate": {
-      "extractionState": "manual",
-      "comment": "Diagnostics label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fréquence d'échantillonnage"
+    "Runs" : {
+      "comment" : "Tab / screen",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sessions"
           }
         }
       }
     },
-    "Search message": {
-      "extractionState": "manual",
-      "comment": "Log viewer search field placeholder",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rechercher un message"
+    "s" : {
+
+    },
+    "Sample Rate" : {
+      "comment" : "Diagnostics label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fréquence d'échantillonnage"
           }
         }
       }
     },
-    "Sensor rate": {
-      "extractionState": "manual",
-      "comment": "Session summary derived label: sensor sampling rate",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fréquence du capteur"
+    "Saves this mount alignment and starts the live meter" : {
+
+    },
+    "Search message" : {
+      "comment" : "Log viewer search field placeholder",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher un message"
           }
         }
       }
+    },
+    "selected, ascending" : {
+
     },
-    "Session": {
-      "extractionState": "manual",
-      "comment": "Log file kind: structured session log",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Session"
+    "selected, descending" : {
+
+    },
+    "Sensor rate" : {
+      "comment" : "Session summary derived label: sensor sampling rate",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fréquence du capteur"
           }
         }
       }
     },
-    "Settings": {
-      "extractionState": "manual",
-      "comment": "Screen title",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réglages"
+    "Session" : {
+      "comment" : "Log file kind: structured session log",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session"
           }
         }
       }
     },
-    "Share newest session + raw": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Partager la session la plus récente + brut"
+    "Settings" : {
+      "comment" : "Screen title",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages"
           }
         }
       }
     },
-    "Showing the last %lld lines": {
-      "extractionState": "manual",
-      "comment": "Notice that only the tail of the file is shown",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Affichage des %lld dernières lignes"
+    "Share newest session + raw" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager la session la plus récente + brut"
           }
         }
       }
     },
-    "Speed": {
-      "extractionState": "manual",
-      "comment": "Label / toggle",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vitesse"
+    "Showing the last %lld lines" : {
+      "comment" : "Notice that only the tail of the file is shown",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affichage des %lld dernières lignes"
           }
         }
       }
     },
-    "Speed is off: the live speed meter is hidden, GNSS is not ": {
-      "extractionState": "manual",
-      "comment": "Footnote (continues)",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La vitesse est désactivée : le compteur en direct est masqué, le GNSS n'est pas "
+    "Sort by %@" : {
+
+    },
+    "Speed" : {
+      "comment" : "Label / toggle",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse"
           }
         }
       }
     },
-    "Speedometer": {
-      "extractionState": "manual",
-      "comment": "Toggle label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Compteur de vitesse"
+    "SPEED" : {
+      "comment" : "Speed meter label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VITESSE"
           }
         }
       }
     },
-    "Still moving — hold it steady": {
-      "extractionState": "manual",
-      "comment": "Calibration blocking reason: bike is rotating",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Encore en mouvement — tenez stable"
+    "Speed is off: the live speed meter is hidden, GNSS is not " : {
+      "comment" : "Footnote (continues)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La vitesse est désactivée : le compteur en direct est masqué, le GNSS n'est pas "
           }
         }
       }
     },
-    "Stream deaths": {
-      "extractionState": "manual",
-      "comment": "Session summary derived label: stream interruption count",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Interruptions du flux"
+    "Speedometer" : {
+      "comment" : "Toggle label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compteur de vitesse"
           }
         }
       }
     },
-    "Swipe here": {
-      "extractionState": "manual",
-      "comment": "Swipe screen prompt",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Balayez ici"
+    "STALE" : {
+      "comment" : "Calibration status pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PÉRIMÉ"
           }
         }
       }
+    },
+    "Start" : {
+
     },
-    "TARGET": {
-      "extractionState": "manual",
-      "comment": "Target band label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "CIBLE"
+    "Still moving — hold it steady" : {
+      "comment" : "Calibration blocking reason: bike is rotating",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encore en mouvement — tenez stable"
           }
         }
       }
     },
-    "TIME": {
-      "extractionState": "manual",
-      "comment": "Sort key / column",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TEMPS"
+    "Stream deaths" : {
+      "comment" : "Session summary derived label: stream interruption count",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interruptions du flux"
           }
         }
       }
     },
-    "Tap a segment for details": {
-      "extractionState": "manual",
-      "comment": "Chart hint",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Touchez un segment pour les détails"
+    "Swipe here" : {
+      "comment" : "Swipe screen prompt",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balayez ici"
           }
         }
       }
     },
-    "Thermal": {
-      "extractionState": "manual",
-      "comment": "Session summary header key: thermal state",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thermique"
+    "Tap a segment for details" : {
+      "comment" : "Chart hint",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez un segment pour les détails"
           }
         }
       }
     },
-    "This cannot be undone.": {
-      "extractionState": "manual",
-      "comment": "Destructive confirmation",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cette action est irréversible."
+    "TARGET" : {
+      "comment" : "Target band label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CIBLE"
           }
         }
       }
     },
-    "This permanently removes every session and raw log on this device. Export anything you need first.": {
-      "extractionState": "manual",
-      "comment": "Destructive confirmation",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ceci supprime définitivement toutes les sessions et journaux bruts sur cet appareil. Exportez ce dont vous avez besoin d'abord."
+    "Thermal" : {
+      "comment" : "Session summary header key: thermal state",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thermique"
           }
         }
       }
     },
-    "To": {
-      "extractionState": "manual",
-      "comment": "Date range",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "À"
+    "This cannot be undone." : {
+      "comment" : "Destructive confirmation",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette action est irréversible."
           }
         }
       }
     },
-    "To date": {
-      "extractionState": "manual",
-      "comment": "Date picker label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Date de fin"
+    "This permanently removes every session and raw log on this device. Export anything you need first." : {
+      "comment" : "Destructive confirmation",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ceci supprime définitivement toutes les sessions et journaux bruts sur cet appareil. Exportez ce dont vous avez besoin d'abord."
           }
         }
       }
     },
-    "Too much vibration — switch the engine off": {
-      "extractionState": "manual",
-      "comment": "Calibration blocking reason: vibrating",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trop de vibrations — coupez le moteur"
+    "Time" : {
+
+    },
+    "TIME" : {
+      "comment" : "Sort key / column",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TEMPS"
           }
         }
       }
     },
-    "Top warnings & errors": {
-      "extractionState": "manual",
-      "comment": "Diagnostics section",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Principaux avertissements et erreurs"
+    "To" : {
+      "comment" : "Date range",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À"
           }
         }
       }
     },
-    "Total on disk": {
-      "extractionState": "manual",
-      "comment": "Diagnostics label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total sur le disque"
+    "To date" : {
+      "comment" : "Date picker label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date de fin"
           }
         }
       }
     },
-    "Try again": {
-      "extractionState": "manual",
-      "comment": "Button",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réessayer"
+    "Too much vibration — switch the engine off" : {
+      "comment" : "Calibration blocking reason: vibrating",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trop de vibrations — coupez le moteur"
           }
         }
       }
     },
-    "UNAVAILABLE": {
-      "extractionState": "manual",
-      "comment": "Calibration status pill",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "INDISPONIBLE"
+    "Top warnings & errors" : {
+      "comment" : "Diagnostics section",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Principaux avertissements et erreurs"
           }
         }
       }
     },
-    "Vibration is off the scale — improve the mount": {
-      "extractionState": "manual",
-      "comment": "Calibration blocking reason: sensor saturated",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vibrations hors échelle — améliorez le support"
+    "Total on disk" : {
+      "comment" : "Diagnostics label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total sur le disque"
           }
         }
       }
     },
-    "WHEELIE TIME": {
-      "extractionState": "manual",
-      "comment": "Meter / stats label",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TEMPS DE WHEELIE"
+    "Try again" : {
+      "comment" : "Button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
           }
         }
       }
     },
-    "Worst gyro σ": {
-      "extractionState": "manual",
-      "comment": "Session summary derived label: worst gyro sigma",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pire σ gyroscope"
+    "UNAVAILABLE" : {
+      "comment" : "Calibration status pill",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "INDISPONIBLE"
           }
         }
       }
+    },
+    "Upper" : {
+
+    },
+    "Value" : {
+
+    },
+    "Version" : {
+
     },
-    "km/h": {
-      "extractionState": "manual",
-      "comment": "Unit (unchanged)",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "km/h"
+    "Vibration is off the scale — improve the mount" : {
+      "comment" : "Calibration blocking reason: sensor saturated",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibrations hors échelle — améliorez le support"
           }
         }
       }
     },
-    "· %@s in range": {
-      "extractionState": "manual",
-      "comment": "Interval detail: seconds in target range",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "· %@s dans la cible"
+    "WHEELIE TIME" : {
+      "comment" : "Meter / stats label",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TEMPS DE WHEELIE"
           }
         }
       }
     },
-    "≥ %@": {
-      "extractionState": "manual",
-      "comment": "Minimum log level filter chip; %@ is the level code",
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "≥ %@"
+    "Worst gyro σ" : {
+      "comment" : "Session summary derived label: worst gyro sigma",
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pire σ gyroscope"
           }
         }
       }
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }
