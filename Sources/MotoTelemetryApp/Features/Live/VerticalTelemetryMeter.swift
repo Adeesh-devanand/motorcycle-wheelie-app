@@ -280,6 +280,26 @@ struct VerticalTelemetryMeter: View {
                         style: StrokeStyle(lineWidth: 1, dash: [4, 3])
                     )
             )
+            // The pointer, sitting ON the band's outer edge and aimed OUTWARD, at the
+            // TARGET label.
+            //
+            // It used to be the last item in the label's own VStack — a triangle under
+            // the text, pointing back at the band from a distance, with nothing joining
+            // the two. Anchoring it to the band's edge instead means the band is the
+            // thing doing the pointing: the mark starts on the dashed line and leads the
+            // eye out to the text that describes it. It takes the band's stroke colour
+            // for the same reason — it is part of that line, not part of the label.
+            .overlay(alignment: labelsOnLeading ? .leading : .trailing) {
+                Image(systemName: labelsOnLeading
+                      ? "arrowtriangle.left.fill"
+                      : "arrowtriangle.right.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(AppColors.targetBandStroke)
+                    // Clear of the dashed edge it is attached to, and deliberately
+                    // outside the band's own frame — nothing in this ZStack clips, and
+                    // the label it points at is further out still.
+                    .offset(x: labelsOnLeading ? -7 : 7)
+            }
             .frame(width: trackWidth + 8, height: bandHeight)
             .offset(y: -bottomOffset)
     }
@@ -331,12 +351,6 @@ struct VerticalTelemetryMeter: View {
             let y = cursorY
             guard y >= 0, y <= size.height else { return }
 
-            let glowRect = CGRect(x: 0, y: y - 6, width: size.width, height: 12)
-            context.fill(
-                Ellipse().path(in: glowRect),
-                with: .color(.white.opacity(0.15))
-            )
-
             var linePath = Path()
             linePath.move(to: CGPoint(x: 0, y: y))
             linePath.addLine(to: CGPoint(x: size.width, y: y))
@@ -346,6 +360,20 @@ struct VerticalTelemetryMeter: View {
                 x: size.width / 2 - cursorDotSize / 2,
                 y: y - cursorDotSize / 2,
                 width: cursorDotSize, height: cursorDotSize
+            )
+
+            // Glow CONCENTRIC with the dot, drawn under it.
+            //
+            // This was an `Ellipse` spanning the full canvas width (42 pt) and 12 pt
+            // tall, meant to make the cursor pop. Because an ellipse is widest at its
+            // centre and the centre is covered by the dot and the meter fill, the only
+            // visible parts were its two tapered ends sticking out past the track edges
+            // — so instead of a glow on the dot it read as a smudge on either side of
+            // the bar, which is what it was. A concentric circle 4 pt larger than the
+            // dot puts the glow where the thing it is glowing actually is.
+            context.fill(
+                Circle().path(in: dotRect.insetBy(dx: -4, dy: -4)),
+                with: .color(.white.opacity(0.18))
             )
             context.fill(Circle().path(in: dotRect), with: .color(AppColors.cursor))
         }
@@ -435,13 +463,15 @@ struct VerticalTelemetryMeter: View {
     /// `TARGET` + range, as a readout. It is no longer a tap target: the band is set
     /// by dragging on the track (see `targetDragGesture`), so there is nothing for a
     /// tap here to open.
+    ///
+    /// The pointer triangle that used to close this VStack has moved onto the band's
+    /// outer edge (see `targetBandOverlay`), where it points outward at this text. It
+    /// was previously *below* the text and aimed back at the band across empty space,
+    /// which left the two things it was meant to connect unconnected.
     private func targetLabelView(band: MetricRange, height: CGFloat) -> some View {
         let rangeText: String = label == "ANGLE"
             ? "\(Int(band.lower))°-\(Int(band.upper))°"
             : "\(Int(band.lower))-\(Int(band.upper))"
-        let triangleIcon = labelsOnLeading
-            ? "arrowtriangle.right.fill"
-            : "arrowtriangle.left.fill"
 
         return VStack(spacing: AppSpacing.xxs) {
             Text("TARGET")
@@ -452,9 +482,6 @@ struct VerticalTelemetryMeter: View {
                 .foregroundStyle(AppColors.accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Image(systemName: triangleIcon)
-                .font(.system(size: 8))
-                .foregroundStyle(AppColors.accent)
         }
         .padding(.vertical, 6)
         // Not interactive, so keep it out of the accessibility tree — the meter
