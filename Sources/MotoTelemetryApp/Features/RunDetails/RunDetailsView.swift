@@ -400,7 +400,7 @@ struct RunDetailsView: View {
     /// legend taught what the label already shows, and it cost a row this page does not
     /// have to spare.
     private func chartTitle(_ text: String, color: Color) -> some View {
-        Text(text)
+        Text(LocalizedStringKey(text))
             .font(.system(size: 12, weight: .semibold))
             .tracking(0.5)
             .foregroundStyle(color)

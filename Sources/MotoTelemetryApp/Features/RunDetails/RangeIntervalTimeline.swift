@@ -347,7 +347,7 @@ struct RangeIntervalTimeline: View {
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(metricColor)
 
-            Text("· \(String(format: "%.1f", sel.interval.duration))s in range")
+            Text(String(localized: "· \(String(format: "%.1f", sel.interval.duration))s in range"))
                 .font(.system(size: 12))
                 .foregroundStyle(AppColors.textSecondary)
         }

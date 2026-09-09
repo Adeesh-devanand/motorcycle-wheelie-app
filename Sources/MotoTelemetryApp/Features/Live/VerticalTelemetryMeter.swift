@@ -154,7 +154,7 @@ struct VerticalTelemetryMeter: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.sm) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.system(size: 15, weight: .medium))
                 .tracking(1)
                 .foregroundStyle(AppColors.textSecondary)

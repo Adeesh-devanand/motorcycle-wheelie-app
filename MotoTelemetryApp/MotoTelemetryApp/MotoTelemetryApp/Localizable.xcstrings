@@ -397,6 +397,18 @@
         }
       }
     },
+    "Deletes every recorded run, including runs hidden by the filters above. This cannot be undone.": {
+      "extractionState": "manual",
+      "comment": "Delete-all footer",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprime toutes les sessions enregistrées, y compris celles masquées par les filtres ci-dessus. Cette action est irréversible."
+          }
+        }
+      }
+    },
     "Diagnostics": {
       "extractionState": "manual",
       "comment": "Screen title",
@@ -477,6 +489,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chaque session enregistrée est définitivement supprimée, y compris les sessions "
+          }
+        }
+      }
+    },
+    "Every recorded run is permanently deleted, including runs hidden by the current filters. This cannot be undone.": {
+      "extractionState": "manual",
+      "comment": "Delete-all confirm message",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toutes les sessions enregistrées sont définitivement supprimées, y compris celles masquées par les filtres actuels. Cette action est irréversible."
           }
         }
       }
@@ -1329,6 +1353,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "km/h"
+          }
+        }
+      }
+    },
+    "· %@s in range": {
+      "extractionState": "manual",
+      "comment": "Interval detail: seconds in target range",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· %@s dans la cible"
           }
         }
       }

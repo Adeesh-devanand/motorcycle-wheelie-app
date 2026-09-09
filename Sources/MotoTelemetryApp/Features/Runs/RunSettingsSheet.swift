@@ -110,8 +110,7 @@ struct RunSettingsSheet: View {
                     // States the scope up front, because this sits in the same sheet as
                     // the filters: "delete all" next to a set of filters invites the
                     // reading "delete all the ones I'm looking at".
-                    Text("Deletes every recorded run, including runs hidden by the "
-                         + "filters above. This cannot be undone.")
+                    Text("Deletes every recorded run, including runs hidden by the filters above. This cannot be undone.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -134,8 +133,7 @@ struct RunSettingsSheet: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Every recorded run is permanently deleted, including runs "
-                     + "hidden by the current filters. This cannot be undone.")
+                Text("Every recorded run is permanently deleted, including runs hidden by the current filters. This cannot be undone.")
             }
         }
         // No `presentationDetents` — matches the Live tab's sheet: full height, one
