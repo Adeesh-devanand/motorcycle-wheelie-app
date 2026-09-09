@@ -253,6 +253,16 @@ struct PastRunsView: View {
 
     // MARK: - Run Rows
 
+    /// A run earns a metric badge only when it holds the field maximum, there is
+    /// more than one run to compare against (a lone run is not "the longest"),
+    /// and that maximum is a real positive value — so a set of runs that all
+    /// recorded zero speed does not light up FASTEST on every row. Ties award the
+    /// badge to every run holding the max, which is correct: two identical-max
+    /// runs are jointly the best.
+    private func isSuperlative(_ value: Double, max: Double) -> Bool {
+        viewModel.filteredRuns.count > 1 && max > 0 && value == max
+    }
+
     private var runRows: some View {
         LazyVStack(spacing: AppSpacing.sm) {
             ForEach(Array(viewModel.filteredRuns.enumerated()), id: \.element.id) { index, run in
@@ -262,7 +272,9 @@ struct PastRunsView: View {
                         colorScale: viewModel.colorScale,
                         fieldAnchors: viewModel.fieldAnchors,
                         isLatest: index == 0 && viewModel.sortKey == .recency && viewModel.sortDescending,
-                        isLongest: run.duration == viewModel.fieldAnchors.durationMax && viewModel.filteredRuns.count > 1
+                        isLongest: isSuperlative(run.duration, max: viewModel.fieldAnchors.durationMax),
+                        isFastest: isSuperlative(run.maxSpeed, max: viewModel.fieldAnchors.speedMax),
+                        isHighest: isSuperlative(run.maxAngle, max: viewModel.fieldAnchors.angleMax)
                     )
                 }
                 .buttonStyle(.plain)

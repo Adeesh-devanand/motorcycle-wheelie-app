@@ -8,6 +8,8 @@ struct RunHistoryRow: View {
     let fieldAnchors: PastRunsViewModel.FieldAnchors
     var isLatest: Bool = false
     var isLongest: Bool = false
+    var isFastest: Bool = false
+    var isHighest: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -56,7 +58,7 @@ struct RunHistoryRow: View {
         }
         .padding(.vertical, AppSpacing.lg)
         .padding(.horizontal, AppSpacing.cardPadding)
-        .frame(minHeight: 76, maxHeight: 84)
+        .frame(minHeight: 76)
         .background(AppColors.surfaceCard)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.card))
         .overlay(
@@ -81,12 +83,36 @@ struct RunHistoryRow: View {
                 .foregroundStyle(AppColors.textSecondary)
                 .lineLimit(1)
 
-            // Badge (if applicable)
-            if isLatest {
-                badgePill(text: "LATEST")
-            } else if isLongest {
-                badgePill(text: "LONGEST")
+            // Badges — a run can be several superlatives at once (its single run
+            // is the latest AND could be the longest, fastest and highest), so
+            // render every one that applies, wrapping within the narrow column.
+            if !activeBadges.isEmpty {
+                badgeCluster
             }
+        }
+    }
+
+    /// LATEST first (it is about the whole run), then the metric superlatives in
+    /// the same left-to-right order as the metric columns: LONGEST (time),
+    /// HIGHEST (angle), FASTEST (speed).
+    private var activeBadges: [String] {
+        var badges: [String] = []
+        if isLatest { badges.append("LATEST") }
+        if isLongest { badges.append("LONGEST") }
+        if isHighest { badges.append("HIGHEST") }
+        if isFastest { badges.append("FASTEST") }
+        return badges
+    }
+
+    /// A 2-wide wrapping grid, so up to four pills stack in two compact rows
+    /// inside the 96pt time column without pushing the card past its max height.
+    private var badgeCluster: some View {
+        let columns = [
+            GridItem(.flexible(), spacing: AppSpacing.xxs, alignment: .leading),
+            GridItem(.flexible(), spacing: AppSpacing.xxs, alignment: .leading)
+        ]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.xxs) {
+            ForEach(activeBadges, id: \.self) { badgePill(text: $0) }
         }
     }
 
@@ -130,17 +156,20 @@ struct RunHistoryRow: View {
 
             // Mini bar — inset within its column so adjacent bars never touch,
             // with the unfilled track drawn as a dark shade of the fill colour.
+            // The whole bar (track + fill) spans ~3/4 of the column, leading-aligned,
+            // so it reads shorter without changing where empty/filled meet.
             GeometryReader { geo in
+                let barWidth = geo.size.width * 0.75
                 ZStack(alignment: .leading) {
                     // Track — a darkened shade of the fill colour, not a blank grey.
                     Capsule()
                         .fill(trackColor)
-                        .frame(height: 4)
+                        .frame(width: barWidth, height: 4)
 
                     // Fill
                     Capsule()
                         .fill(color)
-                        .frame(width: max(geo.size.width * normalised, 4), height: 4)
+                        .frame(width: max(barWidth * normalised, 4), height: 4)
                 }
             }
             .frame(height: 4)
@@ -207,10 +236,8 @@ struct RunHistoryRow: View {
 
     private var accessibilityDescription: String {
         let time = run.startedAt.formatted(date: .omitted, time: .shortened)
-        let badge: String
-        if isLatest { badge = ", latest" }
-        else if isLongest { badge = ", longest" }
-        else { badge = "" }
-        return "\(time), \(String(format: "%.1f", run.duration)) seconds, \(String(format: "%.0f", run.maxAngle)) degrees, \(String(format: "%.0f", run.maxSpeed)) km/h\(badge)"
+        let badges = activeBadges
+        let badgeSuffix = badges.isEmpty ? "" : ", " + badges.map { $0.lowercased() }.joined(separator: ", ")
+        return "\(time), \(String(format: "%.1f", run.duration)) seconds, \(String(format: "%.0f", run.maxAngle)) degrees, \(String(format: "%.0f", run.maxSpeed)) km/h\(badgeSuffix)"
     }
 }
