@@ -32,6 +32,8 @@
 		6FF47EE91FA923CE160A2D9E /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7849EC04C6F5594BE1A33D5B /* RootTabView.swift */; };
 		998E722D3F8720FB1F85088E /* RiderPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */; };
 		9D956BF7303F37E10071582A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D956BF6303F37E10071582A /* Assets.xcassets */; };
+		9DL0CA7A303F37E10071582A /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9DL0CA7B303F37E10071582A /* Localizable.xcstrings */; };
+		9DL0CB7A303F37E10071582A /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9DL0CB7B303F37E10071582A /* InfoPlist.xcstrings */; };
 		9D956BFA303F37E10071582A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D956BF9303F37E10071582A /* Preview Assets.xcassets */; };
 		9D956C09303F37E10071582A /* MotoTelemetryAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */; };
 		9D956C13303F37E10071582A /* MotoTelemetryAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */; };
@@ -109,6 +111,8 @@
 		9891B30483FE6C3270B64D2B /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppSpacing.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppSpacing.swift"; sourceTree = SOURCE_ROOT; };
 		9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MotoTelemetryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D956BF6303F37E10071582A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9DL0CA7B303F37E10071582A /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		9DL0CB7B303F37E10071582A /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		9D956BF9303F37E10071582A /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		9D956C04303F37E10071582A /* MotoTelemetryAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MotoTelemetryAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppTests.swift; sourceTree = "<group>"; };
@@ -179,6 +183,8 @@
 			children = (
 				9D956C26303F43D40071582A /* Info.plist */,
 				9D956BF6303F37E10071582A /* Assets.xcassets */,
+				9DL0CA7B303F37E10071582A /* Localizable.xcstrings */,
+				9DL0CB7B303F37E10071582A /* InfoPlist.xcstrings */,
 				308F5348665941F9F428E1DD /* AppColors.swift */,
 				9891B30483FE6C3270B64D2B /* AppSpacing.swift */,
 				B80DE1911D70D3E949201E7E /* AppTypography.swift */,
@@ -340,6 +346,7 @@
 			knownRegions = (
 				en,
 				Base,
+				fr,
 			);
 			mainGroup = 9D956BE6303F37DE0071582A;
 			packageReferences = (
@@ -363,6 +370,8 @@
 			files = (
 				9D956BFA303F37E10071582A /* Preview Assets.xcassets in Resources */,
 				9D956BF7303F37E10071582A /* Assets.xcassets in Resources */,
+				9DL0CA7A303F37E10071582A /* Localizable.xcstrings in Resources */,
+				9DL0CB7A303F37E10071582A /* InfoPlist.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

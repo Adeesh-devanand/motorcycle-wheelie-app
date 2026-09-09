@@ -1,0 +1,114 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Hold the bike upright and still,\nengine off" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration screen title while measuring",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tenez la moto droite et immobile,\nmoteur coupé"
+          }
+        }
+      }
+    },
+    "Calibrated" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration screen title when done",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calibré"
+          }
+        }
+      }
+    },
+    "Couldn't calibrate:\n%@" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration failed title; %@ is the failure detail",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de la calibration :\n%@"
+          }
+        }
+      }
+    },
+    "Still moving — hold it steady" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration blocking reason: bike is rotating",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encore en mouvement — tenez stable"
+          }
+        }
+      }
+    },
+    "Being moved or tilted — let it settle" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration blocking reason: specific force out of band",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déplacé ou incliné — laissez stabiliser"
+          }
+        }
+      }
+    },
+    "Too much vibration — switch the engine off" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration blocking reason: vibrating",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trop de vibrations — coupez le moteur"
+          }
+        }
+      }
+    },
+    "Vibration is off the scale — improve the mount" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration blocking reason: sensor saturated",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibrations hors échelle — améliorez le support"
+          }
+        }
+      }
+    },
+    "Almost — keep it still a moment longer" : {
+      "extractionState" : "manual",
+      "comment" : "Calibration blocking reason: dwell not yet met",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Presque — gardez-le immobile un instant de plus"
+          }
+        }
+      }
+    },
+    "Motion sensors unavailable.\nCheck permissions in Settings." : {
+      "extractionState" : "manual",
+      "comment" : "Shown when Core Motion is unavailable / permission denied",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capteurs de mouvement indisponibles.\nVérifiez les autorisations dans Réglages."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

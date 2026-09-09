@@ -125,7 +125,7 @@ struct CalibrationScreen: View {
         }
     }
 
-    private var title: String {
+    private var title: LocalizedStringKey {
         switch service.phase {
         case .measuring:
             "Hold the bike upright and still,\nengine off"

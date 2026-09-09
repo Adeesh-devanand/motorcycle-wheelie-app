@@ -343,11 +343,11 @@ final class CalibrationService: @unchecked Sendable {
     static func riderText(for reason: ValidityGate.Reason) -> String? {
         switch reason {
         case .open, .noData:            return nil
-        case .rotating:                 return "Still moving — hold it steady"
-        case .specificForceOutOfBand:   return "Being moved or tilted — let it settle"
-        case .vibrating:                return "Too much vibration — switch the engine off"
-        case .saturated:                return "Vibration is off the scale — improve the mount"
-        case .dwellNotMet:              return "Almost — keep it still a moment longer"
+        case .rotating:                 return String(localized: "Still moving — hold it steady")
+        case .specificForceOutOfBand:   return String(localized: "Being moved or tilted — let it settle")
+        case .vibrating:                return String(localized: "Too much vibration — switch the engine off")
+        case .saturated:                return String(localized: "Vibration is off the scale — improve the mount")
+        case .dwellNotMet:              return String(localized: "Almost — keep it still a moment longer")
         }
     }
 }
