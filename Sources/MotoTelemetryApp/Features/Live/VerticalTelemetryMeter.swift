@@ -80,13 +80,15 @@ struct VerticalTelemetryMeter: View {
     /// Whether `value` is a real measurement.
     ///
     /// False means the source has nothing to report — no GNSS speed solution — and the
-    /// meter shows a dash with no fill and no cursor rather than a number.
+    /// meter renders that AS ZERO: readout 0, no fill, cursor at the bottom of the scale.
     ///
-    /// This exists because the SPEED card below the meters already distinguished the two
-    /// cases and the meter did not: the view model deliberately HOLDS the last displayed
-    /// speed while no fix exists (smoothing toward 0 would invent a stationary bike), and
-    /// the meter rendered that held number as a live reading. A device log caught it stuck
-    /// at 8 km/h, indefinitely, with the card beside it correctly showing "—".
+    /// The flag still has to exist even though the display no longer distinguishes the two
+    /// cases, and this is the reason. The view model deliberately HOLDS the last displayed
+    /// speed while no fix exists (smoothing toward 0 would invent a stationary bike), so
+    /// `value` is a STALE reading in that state. Without this flag the meter renders the
+    /// held number as a live one, which is what a device log caught stuck at 8 km/h,
+    /// indefinitely, while the card beside it was still correct. `displayedValue` and
+    /// `fillFraction` both consult it so nothing on the meter can reach the held value.
     var valueAvailable: Bool = true
 
     /// How far each meter's whole track is nudged toward the centre of the screen.
@@ -261,12 +263,13 @@ struct VerticalTelemetryMeter: View {
             tickCanvas(height: height)
                 .frame(width: tickCanvasWidth, height: height)
 
-            // Cursor line + dot + glow. Omitted with no reading: a cursor pinned at the
-            // bottom of the scale is a claim that the value is zero.
-            if valueAvailable {
-                cursorOverlayView(cursorY: cursorY, height: height)
-                    .frame(width: totalTrackWidth, height: height)
-            }
+            // Cursor line + dot + glow. Drawn even with no reading, because the meter now
+            // presents "no reading" AS zero: suppressing the cursor while the readout says
+            // 0 would leave the bar looking dead rather than stopped. `cursorY` comes from
+            // `fillFraction`, which is 0 in that state, so it sits at the bottom of the
+            // scale exactly where a genuine 0 puts it.
+            cursorOverlayView(cursorY: cursorY, height: height)
+                .frame(width: totalTrackWidth, height: height)
         }
         .frame(width: totalTrackWidth, height: height)
         // Widen the touch target without changing anything visible. The track is
@@ -605,21 +608,14 @@ struct VerticalTelemetryMeter: View {
 
     private var valueReadoutView: some View {
         VStack(spacing: 0) {
-            if !valueAvailable {
-                // A dash, not a zero. 0 km/h is a perfectly plausible reading for a bike
-                // waiting at a light, so showing it for "no GNSS speed solution" gives the
-                // rider no way to tell the two apart (R15.3).
-                Text("—")
-                    .font(.system(size: 34, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.textSecondary)
-            } else if label == "ANGLE" {
-                Text("\(Int(value))°")
+            if label == "ANGLE" {
+                Text("\(Int(displayedValue))°")
                     .font(.system(size: 34, weight: .bold, design: .monospaced))
                     .foregroundStyle(AppColors.accentBright)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             } else {
-                Text("\(Int(value))")
+                Text("\(Int(displayedValue))")
                     .font(.system(size: 34, weight: .bold, design: .monospaced))
                     .foregroundStyle(AppColors.accentBright)
                     .minimumScaleFactor(0.6)
@@ -630,6 +626,23 @@ struct VerticalTelemetryMeter: View {
                     .lineLimit(1)
             }
         }
+    }
+
+    /// What the readout shows: the reading, or 0 when there is none.
+    ///
+    /// A rider's call, made knowingly against R15.3's "never a fabricated 0": with no GNSS
+    /// speed solution the meter reads 0 km/h rather than a dash, so "stopped" and "no
+    /// satellites" look the same on screen. The distinction survives where it costs nothing
+    /// visually — the accessibility value still says so, and the log still records
+    /// `speedAvailable`.
+    ///
+    /// It is a LITERAL 0 and deliberately not `value`, and that is what keeps the
+    /// stuck-reading bug from coming back. The view model HOLDS the last displayed speed
+    /// while no fix exists (smoothing toward 0 would invent a stationary bike), so `value`
+    /// is a stale number in that state — rendering it is precisely what pinned this meter
+    /// at 8 km/h indefinitely. Showing 0 never consults it.
+    private var displayedValue: Double {
+        valueAvailable ? value : 0
     }
 
     // MARK: - Target Label
@@ -697,16 +710,16 @@ struct VerticalTelemetryMeter: View {
     }
 
     private var accessibilityValueText: String {
-        guard valueAvailable else {
-            if let band = targetBand {
-                return "no reading, target \(Int(band.lower)) to \(Int(band.upper))"
-            }
-            return "no reading"
-        }
+        // The number matches the screen — 0 when there is no fix — but the spoken value
+        // ALSO says the signal is missing. Additive rather than a different reading, and
+        // the one place the distinction survives at no visual cost now that the meter
+        // shows 0 instead of a dash.
+        let reading = "\(Int(displayedValue)) \(unit)"
+        let signal = valueAvailable ? "" : ", no GNSS signal"
         if let band = targetBand {
-            return "\(Int(value)) \(unit), target \(Int(band.lower)) to \(Int(band.upper))"
+            return "\(reading)\(signal), target \(Int(band.lower)) to \(Int(band.upper))"
         }
-        return "\(Int(value)) \(unit)"
+        return "\(reading)\(signal)"
     }
 }
 

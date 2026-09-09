@@ -210,11 +210,15 @@ final class LiveWheelieViewModel {
         currentAngle += alpha * (recorder.livePitch - currentAngle)
 
         // `recorder.liveSpeed` stays 0 until the first GNSS fix, so EMA-ing it
-        // unconditionally rendered "0 km/h" for BOTH a stationary bike and a total
-        // absence of GNSS — R15.3 says those must not look identical. Drive an
-        // explicit `speedAvailable` flag from the recorder and, while no fix exists,
-        // HOLD the last displayed speed rather than smoothing toward a fabricated 0.
-        // The view shows a dash / "—" when `speedAvailable` is false (see the view).
+        // unconditionally would smooth toward a fabricated 0. Drive an explicit
+        // `speedAvailable` flag from the recorder and, while no fix exists, HOLD the last
+        // value rather than decaying toward one.
+        //
+        // The VIEWS no longer render a dash for that state — both the meter and the speed
+        // card show a literal 0 (a deliberate call against R15.3). The hold still matters,
+        // and this is the subtle part: it is exactly WHY they must show a literal 0 rather
+        // than this property, which is a stale reading in that state. `speedAvailable` also
+        // still gates `speedInRange`, so a held value cannot light the meter green.
         speedAvailable = recorder.liveSpeedAvailable
         if speedAvailable {
             currentSpeed += alpha * (recorder.liveSpeed - currentSpeed)

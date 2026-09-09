@@ -280,17 +280,21 @@ struct LiveScreen: View {
                     label: "SPEED",
                     valueContent: AnyView(
                         HStack(alignment: .lastTextBaseline, spacing: 2) {
-                            // A dash, not a zero, when GNSS has no fix. `liveSpeed` sits at
-                            // 0 until the first fix arrives, so rendering it unconditionally
-                            // made "stationary" and "no satellites yet" identical on screen —
-                            // and 0 km/h is a perfectly plausible reading for a bike waiting
-                            // at a light, so the rider had no way to tell. The view model now
-                            // publishes `speedAvailable` for exactly this.
+                            // 0, not a dash, when GNSS has no speed solution — matching the
+                            // meter above. A rider's call, made knowingly against R15.3:
+                            // "stopped" and "no satellites" now look the same here.
+                            //
+                            // The "0" is a LITERAL and deliberately not `currentSpeed`,
+                            // which is what stops the stuck-reading bug returning: the view
+                            // model HOLDS the last displayed speed while no fix exists, so
+                            // rendering it would put a stale number back on screen — the
+                            // reading that pinned this at 8 km/h. `speedAvailable` is still
+                            // published, still logged, and still forces `speedInRange` to
+                            // `.outOfRange`, so a held value cannot light the meter green.
                             Text(viewModel.speedAvailable
-                                 ? "\(Int(viewModel.currentSpeed))" : "—")
+                                 ? "\(Int(viewModel.currentSpeed))" : "0")
                                 .font(.system(size: 34, weight: .bold, design: .monospaced))
-                                .foregroundStyle(viewModel.speedAvailable
-                                                 ? AppColors.textPrimary : AppColors.textSecondary)
+                                .foregroundStyle(AppColors.textPrimary)
                             Text("km/h")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(AppColors.accentBright)
