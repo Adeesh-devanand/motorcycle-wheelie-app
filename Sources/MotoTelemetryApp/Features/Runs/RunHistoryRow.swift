@@ -184,7 +184,7 @@ struct RunHistoryRow: View {
 
     /// Fixed bar width shared by all three metric columns, so the bars read as
     /// one consistent size rather than scaling with each column's width.
-    private static let barWidth: CGFloat = 72
+    private static let barWidth: CGFloat = 43
 
     // MARK: - Normalisation
 
