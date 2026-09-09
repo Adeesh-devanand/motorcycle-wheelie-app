@@ -37,7 +37,17 @@ struct SwipeAlignmentScreen: View {
             AppColors.background.ignoresSafeArea()
 
             VStack(spacing: AppSpacing.lg) {
-                Text("Draw a line along the bike,\nfront to back")
+                // "back to front", NOT "front to back", which is what this said.
+                //
+                // `MountAlignment.fromSwipe` takes `atan2(-screenDY, screenDX)` over
+                // `end - start` AS the bike's forward axis, so the direction of the drag
+                // IS forward. A rider who followed the old wording literally — start at
+                // the nose, finish at the tail — handed the solver a reversed forward
+                // axis, which is the silent 180-degree error `fromSwipe`'s own
+                // documentation warns reports every wheelie as a stoppie. The glyph made
+                // it *catchable* (it would draw the bike facing the way they dragged,
+                // i.e. backwards) but the instruction was actively steering them into it.
+                Text("Draw a line along the bike,\nback to front")
                     .font(AppTypography.bodyText)
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
@@ -58,20 +68,10 @@ struct SwipeAlignmentScreen: View {
                         .padding(AppSpacing.xl)
                         .allowsHitTesting(false)
 
-                    // The drawn line.
+                    // The drawn line, in two segments with a gap for the bike.
                     if let s = startPoint, let e = endPoint {
-                        Path { p in p.move(to: s); p.addLine(to: e) }
-                            .stroke(AppColors.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .allowsHitTesting(false)
-                        // Bike glyph oriented ALONG the drawn line, pointing at the
-                        // end (the front the rider indicated). This is the visible
-                        // check: wrong orientation -> re-swipe.
-                        Image(systemName: "bicycle")
-                            .font(.system(size: 40))
-                            .foregroundStyle(AppColors.accentBright)
-                            .rotationEffect(.radians(atan2(e.y - s.y, e.x - s.x)))
-                            .position(x: (s.x + e.x) / 2, y: (s.y + e.y) / 2)
-                            .allowsHitTesting(false)
+                        lineWithGapForGlyph(from: s, to: e)
+                        bikeGlyph(from: s, to: e)
                     } else {
                         Text("Swipe here")
                             .font(AppTypography.cardSubtitle)
@@ -181,6 +181,77 @@ struct SwipeAlignmentScreen: View {
                 .padding(.bottom, AppSpacing.xl)
             }
         }
+    }
+
+    // MARK: - Line and glyph
+
+    /// Length of the bike glyph ALONG the drawn line.
+    private let bikeGlyphLength: CGFloat = 96
+
+    /// How far short of the midpoint each half of the line stops. Half the glyph plus a
+    /// little air, so the stroke meets the bike's nose and tail without touching them.
+    private var bikeGlyphGap: CGFloat { bikeGlyphLength / 2 + 8 }
+
+    /// The rider's line, drawn as TWO segments with the middle left empty for the bike.
+    ///
+    /// One continuous stroke ran straight through the glyph, which on a top-down bike
+    /// reads as a spear through the tank rather than as an axis along it.
+    @ViewBuilder
+    private func lineWithGapForGlyph(from s: CGPoint, to e: CGPoint) -> some View {
+        let dx = e.x - s.x
+        let dy = e.y - s.y
+        let length = (dx * dx + dy * dy).squareRoot()
+
+        // Below twice the gap there is no line left to draw on either side, and forcing
+        // one would poke a stub out of each end of the bike. The glyph alone carries it.
+        if length > bikeGlyphGap * 2 {
+            let ux = dx / length
+            let uy = dy / length
+            let mid = CGPoint(x: (s.x + e.x) / 2, y: (s.y + e.y) / 2)
+
+            Path { p in
+                p.move(to: s)
+                p.addLine(to: CGPoint(x: mid.x - ux * bikeGlyphGap,
+                                      y: mid.y - uy * bikeGlyphGap))
+                p.move(to: CGPoint(x: mid.x + ux * bikeGlyphGap,
+                                   y: mid.y + uy * bikeGlyphGap))
+                p.addLine(to: e)
+            }
+            .stroke(AppColors.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// The bike, laid along the drawn line with its NOSE at the end of the drag.
+    ///
+    /// Pointing at `end` is not a style choice — it is what `MountAlignment.fromSwipe`
+    /// decided. That takes `atan2(-screenDY, screenDX)` over `end - start` AS the bike's
+    /// forward axis, so the direction the rider dragged IS forward. Drawing the bike any
+    /// other way would show them something the estimator does not believe, and this glyph
+    /// exists precisely so a 180-degree error is visible instead of silent.
+    ///
+    /// `BikeTopDown` is authored pointing UP the screen (nose at the asset's top, mirrors
+    /// just below it), i.e. its forward is −Y. Rotation is therefore the line's angle PLUS
+    /// a quarter turn: at zero rotation the glyph faces −Y, and `rotationEffect` turns
+    /// clockwise in this coordinate space, so `+.pi / 2` brings its nose onto +X before
+    /// the line's own angle carries it the rest of the way.
+    ///
+    /// Template-rendered so `foregroundStyle` tints it, and tinted with `accent` — the
+    /// line's own colour — rather than `accentBright`, so the bike and the axis it sits on
+    /// read as one mark.
+    private func bikeGlyph(from s: CGPoint, to e: CGPoint) -> some View {
+        Image("BikeTopDown")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            // The box is deliberately wider in ratio (0.7) than the asset (0.536), so the
+            // HEIGHT is what binds and the glyph's length along the line is exactly
+            // `bikeGlyphLength` at any aspect the artwork happens to have.
+            .frame(width: bikeGlyphLength * 0.7, height: bikeGlyphLength)
+            .foregroundStyle(AppColors.accent)
+            .rotationEffect(.radians(atan2(Double(e.y - s.y), Double(e.x - s.x)) + .pi / 2))
+            .position(x: (s.x + e.x) / 2, y: (s.y + e.y) / 2)
+            .allowsHitTesting(false)
     }
 
     private func resolve(from start: CGPoint, to end: CGPoint) {

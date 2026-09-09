@@ -34,7 +34,11 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         public var message: String {
             switch self {
             case .noSwipeDirection:
-                return "Draw a line along the length of the bike, front to back."
+                // "back to front": this function reads the swipe direction AS the bike's
+                // forward axis (see `fromSwipe`), so telling the rider to draw front to
+                // back would instruct them into a reversed forward axis — the silent
+                // 180-degree error documented there.
+                return "Draw a line along the length of the bike, back to front."
             }
         }
     }
