@@ -1,84 +1,86 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "CFBundleDisplayName" : {
-      "comment" : "Bundle display name",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Loftmeter"
+  "sourceLanguage": "en",
+  "strings": {
+    "CFBundleDisplayName": {
+      "comment": "Bundle display name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Loftmeter"
           }
         }
-      }
+      },
+      "shouldTranslate": false
     },
-    "CFBundleName" : {
-      "comment" : "Bundle name",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "MotoTelemetryApp"
+    "CFBundleName": {
+      "comment": "Bundle name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "MotoTelemetryApp"
           }
         }
-      }
+      },
+      "shouldTranslate": false
     },
-    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
-      "comment" : "Location (background) permission prompt",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Records your speed and distance from GPS while a run is active, including when the app is in the background during a ride."
+    "NSLocationAlwaysAndWhenInUseUsageDescription": {
+      "comment": "Location (background) permission prompt",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records your speed and distance from GPS while a run is active, including when the app is in the background during a ride."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enregistre votre vitesse et votre distance par GPS pendant une session, y compris lorsque l'application est en arrière-plan durant un trajet."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistre votre vitesse et votre distance par GPS pendant une session, y compris lorsque l'application est en arrière-plan durant un trajet."
           }
         }
       }
     },
-    "NSLocationWhenInUseUsageDescription" : {
-      "comment" : "Location (when in use) permission prompt",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Speed from GPS for distance and GNSS aiding"
+    "NSLocationWhenInUseUsageDescription": {
+      "comment": "Location (when in use) permission prompt",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speed from GPS for distance and GNSS aiding"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vitesse par GPS pour la distance et l'assistance GNSS"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vitesse par GPS pour la distance et l'assistance GNSS"
           }
         }
       }
     },
-    "NSMotionUsageDescription" : {
-      "comment" : "Motion permission prompt",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Measures motorcycle pitch angle during wheelies"
+    "NSMotionUsageDescription": {
+      "comment": "Motion permission prompt",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Measures motorcycle pitch angle during wheelies"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mesure l'angle de tangage de la moto pendant les wheelies"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mesure l'angle de tangage de la moto pendant les wheelies"
           }
         }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }
