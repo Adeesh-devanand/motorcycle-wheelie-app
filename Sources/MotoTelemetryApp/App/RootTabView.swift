@@ -1,15 +1,35 @@
 import SwiftUI
 
 /// Two short vertical rounded bars — the Live tab glyph from the mockup (M-UI7).
-/// Rendered as a template image so the tab bar tints it for selected/unselected.
-struct TwinMeterGlyph: View {
-    var body: some View {
-        HStack(spacing: 3) {
-            Capsule().frame(width: 4, height: 15)
-            Capsule().frame(width: 4, height: 20)
+///
+/// Rasterised to a template `UIImage` rather than composed as a SwiftUI view,
+/// because `.tabItem` accepts ONLY `Text` and `Image`. The glyph used to be an
+/// `HStack` of two `Capsule`s passed to `Label`'s `icon:` slot, and SwiftUI
+/// silently discarded it — the Live tab rendered its title with no icon above it
+/// while the code looked correct and the Runs tab beside it (an SF Symbol) worked
+/// fine. Nothing warns about this; the view is simply dropped.
+///
+/// Drawn with `UIGraphicsImageRenderer` because it needs no main-actor isolation
+/// and no macro plugin, and `.alwaysTemplate` lets the tab bar tint it for
+/// selected/unselected exactly as it tints a symbol.
+enum TwinMeterGlyph {
+    static let image: UIImage = {
+        let size = CGSize(width: 24, height: 24)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let drawn = renderer.image { context in
+            UIColor.black.setFill()
+            // Two capsules, unequal heights, bottom-aligned — a short bar and a
+            // tall one, as on the Live screen itself.
+            for (x, height) in [(CGFloat(8.5), CGFloat(15)), (CGFloat(15.5), CGFloat(20))] {
+                let rect = CGRect(x: x - 2, y: size.height - 2 - height,
+                                  width: 4, height: height)
+                context.cgContext.addPath(
+                    UIBezierPath(roundedRect: rect, cornerRadius: 2).cgPath)
+                context.cgContext.fillPath()
+            }
         }
-        .frame(width: 24, height: 24)
-    }
+        return drawn.withRenderingMode(.alwaysTemplate)
+    }()
 }
 
 /// Owns the service graph for the whole app. `RunRecorder` is the live data
@@ -42,15 +62,14 @@ struct RootTabView: View {
             LiveWheelieView(
                 calibrationService: services.calibration,
                 preferences: services.preferences,
-                recorder: services.recorder,
-                bikeStore: services.bikeStore
+                recorder: services.recorder
             )
             .tag(0)
             .tabItem {
                 Label {
                     Text("Live")
                 } icon: {
-                    TwinMeterGlyph()
+                    Image(uiImage: TwinMeterGlyph.image)
                 }
             }
 
@@ -79,7 +98,6 @@ final class ServiceGraph {
     let calibration: CalibrationService
     let repository: RunRepository
     let recorder: RunRecorder
-    let bikeStore: BikeProfileStore
 
     init() {
         let preferences = RiderPreferences()
@@ -89,7 +107,10 @@ final class ServiceGraph {
         self.preferences = preferences
         self.calibration = calibration
         self.repository = repository
-        self.bikeStore = BikeProfileStore()
+        // No BikeProfileStore. It existed to back a Settings "Active Bike" picker,
+        // and `WheelieRun` has no bike field for the selection to reach, so nothing
+        // downstream ever read it. Removed with that section rather than left
+        // constructed and unused.
         self.recorder = RunRecorder(
             motionService: MotionService(),
             speedService: SpeedService(),
@@ -99,7 +120,7 @@ final class ServiceGraph {
         )
         DiagnosticLog.shared.log(.info, "app", "ServiceGraph constructed",
                                  ["motion": 1, "speed": 1, "calibration": 1,
-                                  "repository": 1, "bikeStore": 1, "recorder": 1,
+                                  "repository": 1, "recorder": 1,
                                   "cueRenderer": 1])
     }
 }

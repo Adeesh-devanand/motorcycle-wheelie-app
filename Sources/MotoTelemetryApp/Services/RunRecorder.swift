@@ -118,6 +118,13 @@ final class RunRecorder: @unchecked Sendable {
     private var sessionStartMonotonic: TimeInterval?
     private var bikeProfileID: UUID?
     private var angleTarget: MetricRange?
+    /// Session speed settings, captured at `startSession` so a saved run records the
+    /// configuration it was ridden under rather than a constant.
+    private var speedTarget: MetricRange = MetricRange(lower: 0, upper: 0)
+    private var speedGaugeMaximum: Double = 100
+    /// When false the rider has switched the speedometer off: GNSS is not consulted,
+    /// no speed reaches the display, and a saved run stores 0 for every speed field.
+    private var speedEnabled: Bool = true
 
     private var motionTask: Task<Void, Never>?
     private var speedTask: Task<Void, Never>?
@@ -231,7 +238,10 @@ final class RunRecorder: @unchecked Sendable {
     @MainActor
     func startSession(bikeProfileID: UUID,
                       mountAlignment: MountAlignment,
-                      angleTarget: MetricRange) {
+                      angleTarget: MetricRange,
+                      speedTarget: MetricRange,
+                      speedGaugeMaximum: Double,
+                      speedEnabled: Bool) {
         // Reachable from .idle (no prior sensing) OR .sensing (calibration ran
         // first, the normal path). Refuse from .running AND .paused: the guard used
         // to be `!= .running`, which let a .paused session fall through and start a
@@ -243,6 +253,14 @@ final class RunRecorder: @unchecked Sendable {
 
         self.bikeProfileID = bikeProfileID
         self.angleTarget = angleTarget
+        // Recorded so a saved run carries the target the rider was ACTUALLY riding
+        // to. These used to be hardcoded at the point of use — `MetricRange(0...100)`
+        // and a `100` ceiling — while `angleTarget` correctly used the session value,
+        // so every run ever saved claimed a speed target spanning the whole gauge and
+        // Run Details drew the blue band across the entire chart.
+        self.speedTarget = speedEnabled ? speedTarget : MetricRange(lower: 0, upper: 0)
+        self.speedGaugeMaximum = speedGaugeMaximum
+        self.speedEnabled = speedEnabled
         self.sessionStartDate = Date()
         self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
         self.collectedSamples = []
@@ -287,6 +305,23 @@ final class RunRecorder: @unchecked Sendable {
         if recordingState != .sensing {
             startSensorTasks()
         }
+
+        // Speedometer off: release GNSS rather than merely discarding its output.
+        // `bestForNavigation` location is the most expensive thing this app asks the
+        // OS for, and holding it to feed a meter that is not on screen is the kind of
+        // silent cost the rider cannot see. Suppression downstream (the pipeline read
+        // and the telemetry bridge) is what guarantees 0 in the record; this is what
+        // stops paying for the fix. Re-enabling takes effect on the next session,
+        // which the re-calibrate path already restarts.
+        if !speedEnabled {
+            speedTask?.cancel()
+            speedTask = nil
+            speedService.stop()
+            diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
+                        level: .info, message: "speedometer disabled — GNSS released",
+                        values: ["speedEnabled": 0])
+        }
+
         cueRenderer?.start()
 
         recordingState = .running
@@ -532,8 +567,13 @@ final class RunRecorder: @unchecked Sendable {
         let pitchDeg = output.pitch * 180 / .pi
         let pitchRateDeg = output.pitchRate * 180 / .pi
         let rollDeg = output.roll * 180 / .pi
-        let speedAvailable = output.speed != nil
-        let speedKPH = (output.speed ?? 0) * 3.6
+        // With the speedometer switched off there is no speed reading at all: not a
+        // held value, not a zero standing in for one. `speedAvailable` false is the
+        // same signal the app already uses for "no GNSS fix", so the display shows a
+        // dash (and the card is hidden), the attempt max stays 0, and the saved run
+        // records 0 — rather than a number nobody was watching.
+        let speedAvailable = speedEnabled && output.speed != nil
+        let speedKPH = speedEnabled ? (output.speed ?? 0) * 3.6 : 0
         let vibration = output.vibration
 
         // No calibrationService.process(output): the beta pipeline has no live gate,
@@ -696,8 +736,8 @@ final class RunRecorder: @unchecked Sendable {
             samples: windowed,
             configuration: RunConfigurationSnapshot(
                 angleTarget: angleTarget,
-                speedTarget: MetricRange(lower: 0, upper: 100),
-                speedGaugeMaximum: 100,
+                speedTarget: speedTarget,
+                speedGaugeMaximum: speedGaugeMaximum,
                 calibrationID: calibID
             ),
             qualityFlags: flags
@@ -730,7 +770,11 @@ final class RunRecorder: @unchecked Sendable {
             id: UUID(),
             elapsed: elapsed,
             angleDegrees: output.pitch * 180 / .pi,
-            speedKPH: (output.speed ?? 0) * 3.6
+            // 0, not the pipeline's speed, when the speedometer is off. `maxSpeed`
+            // and `averageSpeed` on `WheelieRun` are derived from this field, so this
+            // is the single place that makes a run recorded with speed off report 0
+            // everywhere it is read.
+            speedKPH: speedEnabled ? (output.speed ?? 0) * 3.6 : 0
         )
     }
 }

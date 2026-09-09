@@ -46,14 +46,22 @@ final class DiagnosticsTests: XCTestCase {
 
         // Now flip the reason exactly once: a sustained lean pushes |f| out of band.
         // It must be SUSTAINED — `Config.gateCloseConfirm` means a violation shorter
-        // than ~60 ms is treated as engine buzz and does not close the gate at all, so
-        // a single leaned sample correctly produces no transition. Feeding 70 ms of
-        // lean crosses the window exactly once, which is still one reason change.
+        // than that window is treated as engine buzz and does not close the gate at
+        // all, so a single leaned sample correctly produces no transition.
+        //
+        // The lean length is DERIVED from `gateCloseConfirm` rather than hardcoded.
+        // It used to be a literal 70 ms chosen against a 60 ms window, so raising the
+        // window to 150 ms in v8 made this fail — not because one change stopped
+        // emitting one event, which is what the test is about, but because 70 ms no
+        // longer closes the gate at all. Derived, it asserts the invariant at whatever
+        // the window is tuned to.
+        let step = 0.01
+        let leanSamples = Int(((Config().gateCloseConfirm + 0.02) / step).rounded(.up))
         var leanTime = 0.04
-        for _ in 0..<8 {
+        for _ in 0..<leanSamples {
             _ = gate.process(IMUSample(time: leanTime, rotationRate: .zero,
                                        specificForce: Vector3(0, 0, -g / cos(30 * .pi / 180))))
-            leanTime += 0.01
+            leanTime += step
         }
         let gateEvents = sink.events(category: "gate")
         XCTAssertEqual(gateEvents.count, 2,

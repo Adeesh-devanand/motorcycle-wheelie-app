@@ -146,7 +146,10 @@ final class LiveWheelieViewModel {
             // real capture. `.portraitMount` was removed precisely because a guessed
             // alignment silently swapped lean and pitch.
             mountAlignment: alignment,
-            angleTarget: preferences.angleTarget
+            angleTarget: preferences.angleTarget,
+            speedTarget: preferences.speedTarget,
+            speedGaugeMaximum: preferences.speedGaugeMaximum,
+            speedEnabled: preferences.speedEnabled
         )
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "session started (subscribed)", values: [:])
@@ -154,11 +157,13 @@ final class LiveWheelieViewModel {
 
     // MARK: - User Actions
 
-    /// Sends the rider back to recalibrate — the live screen has no re-zero of its
-    /// own now, because a re-zero also needs a fresh swipe to rebuild the alignment.
-    func requestRecalibration() {
-        calibrationService.restart()
-    }
+    // `requestRecalibration()` was removed. It called
+    // `calibrationService.restart()` and nothing else, which restarted the
+    // measurement but could not move the flow's `phase` — that lives in
+    // `LiveWheelieView`. So tapping the pill left the rider on the live screen
+    // reading an angle derived from the very bias being replaced, with no swipe to
+    // rebuild the alignment. `LiveWheelieView.restart()` now owns the whole
+    // transition, and the pill calls it directly.
 
     // MARK: - Private
 

@@ -96,29 +96,37 @@ struct PastRunsView: View {
             Spacer()
 
             if viewModel.hasRuns {
+                // ONE control, top right, gear. There used to be two: an `ellipsis`
+                // menu here holding Delete All, and a separate `slider.horizontal.3`
+                // button down in the sort-chip row for Filters. Two icons with
+                // different glyphs in different places for the same class of thing
+                // (act on this list) is a guessing game. Merging also fixes a real
+                // dead end: the filter button lived inside `runListContent`, so
+                // filtering down to zero runs swapped in the empty state and took the
+                // only way to loosen the filters off screen with it.
                 Menu {
+                    Button {
+                        showingFilters = true
+                    } label: {
+                        Label("Filters", systemImage: "line.3.horizontal.decrease")
+                    }
+
+                    Divider()
+
                     Button(role: .destructive) {
                         showingDeleteAllConfirm = true
                     } label: {
                         Label("Delete All Runs", systemImage: "trash")
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "gearshape.fill")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(AppColors.textSecondary)
                         .frame(width: 44, height: 44)
                         .background(AppColors.surfaceButton, in: Circle())
                 }
-                .accessibilityLabel("More run actions")
+                .accessibilityLabel("Run options")
             }
-
-            // Removed: a gearshape Button labelled "Settings" whose action was
-            // empty. It announced a "Settings" button to VoiceOver that opened
-            // nothing. Settings is not reachable from here without new plumbing
-            // — this view is built with only a RunRepository, while SettingsView
-            // needs preferences + bikeStore — so the honest fix is to drop the
-            // control rather than wire a fake one. Settings remains reachable
-            // from the live screen (LiveWheelieView → SettingsView).
         }
         .padding(.horizontal, AppSpacing.screenPadding)
         .padding(.vertical, AppSpacing.sm)
@@ -169,32 +177,19 @@ struct PastRunsView: View {
 
     // MARK: - Sort Chip Row
 
-    /// Four sort chips plus the filter control. Four no longer fit across a
-    /// 390 pt screen, so the chips scroll horizontally while the filter button
-    /// stays pinned at the trailing edge.
+    /// Four sort chips. The filter control that used to sit at the trailing edge
+    /// here has moved into the single gear menu in the nav row, which also gives the
+    /// chips the full width instead of scrolling them under a pinned button.
     private var sortChipRow: some View {
-        HStack(spacing: AppSpacing.sm) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppSpacing.sm) {
-                    sortChip(key: .recency, label: "RECENT")
-                    sortChip(key: .time, label: "TIME")
-                    sortChip(key: .angle, label: "ANGLE")
-                    sortChip(key: .speed, label: "SPEED")
-                }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AppSpacing.sm) {
+                sortChip(key: .recency, label: "RECENT")
+                sortChip(key: .time, label: "TIME")
+                sortChip(key: .angle, label: "ANGLE")
+                sortChip(key: .speed, label: "SPEED")
             }
-            .frame(height: 44)
-
-            Button {
-                showingFilters = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
-                    .frame(width: 44, height: 44)
-                    .background(AppColors.surfaceButton, in: Circle())
-            }
-            .accessibilityLabel("Filters")
         }
+        .frame(height: 44)
     }
 
     private func sortChip(key: PastRunsViewModel.SortKey, label: String) -> some View {

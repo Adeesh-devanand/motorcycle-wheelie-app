@@ -18,17 +18,14 @@ struct LiveWheelieView: View {
     private let calibrationService: CalibrationService
     private let preferences: RiderPreferences
     private let recorder: RunRecorder
-    private let bikeStore: BikeProfileStore
     private let bikeProfileID = UUID()
 
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
-         recorder: RunRecorder,
-         bikeStore: BikeProfileStore) {
+         recorder: RunRecorder) {
         self.calibrationService = calibrationService
         self.preferences = preferences
         self.recorder = recorder
-        self.bikeStore = bikeStore
     }
 
     var body: some View {
@@ -46,10 +43,7 @@ struct LiveWheelieView: View {
                     config: Config(),
                     bikeProfileID: bikeProfileID,
                     onConfirmed: { alignment in phase = .live(alignment) },
-                    onRecalibrate: {
-                        calibrationService.restart()
-                        phase = .calibrating
-                    }
+                    onRecalibrate: restart
                 )
 
             case .live(let alignment):
@@ -59,10 +53,30 @@ struct LiveWheelieView: View {
                     recorder: recorder,
                     alignment: alignment,
                     bikeProfileID: bikeProfileID,
-                    bikeStore: bikeStore
+                    onRecalibrate: restart
                 )
             }
         }
+    }
+
+    /// Return to the front of the flow: the calibration screen, then the swipe.
+    ///
+    /// Owned here rather than in `LiveWheelieViewModel` because `phase` lives here.
+    /// The view model's old `requestRecalibration()` did half the job — it restarted
+    /// the service but could not move the phase it does not own, so the rider stayed
+    /// on the live screen watching a pill that said CALIBRATING while the angle they
+    /// were reading was derived from the bias being replaced.
+    ///
+    /// Ordering is deliberate and matches the swipe screen's own path: restart the
+    /// service, then change phase. `LiveScreen` disappearing runs
+    /// `LiveWheelieViewModel.onDisappear` -> `recorder.stopSession()`, which returns
+    /// the recorder to `.idle`, and `CalibrationScreen.onAppear` then calls
+    /// `startSensing` whose guard requires exactly that. A new alignment is required
+    /// too: a re-zero without a fresh swipe would keep an alignment measured against
+    /// the old reference.
+    private func restart() {
+        calibrationService.restart()
+        phase = .calibrating
     }
 }
 
@@ -78,19 +92,17 @@ struct LiveWheelieView: View {
 struct LiveScreen: View {
     @State private var viewModel: LiveWheelieViewModel
     @State private var showSettings = false
-    /// Which target range the rider asked to edit, or nil for none. An enum
-    /// rather than a Bool: a Bool cannot carry *which* meter was tapped, which
-    /// is why one sheet used to open both ranges at once.
-    @State private var editingTarget: TargetRangeEditor.Field?
-    private let bikeStore: BikeProfileStore
+    /// Sends the rider back to the calibration screen. Owned by `LiveWheelieView`,
+    /// which holds the phase.
+    private let onRecalibrate: () -> Void
 
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
          alignment: MountAlignment,
          bikeProfileID: UUID,
-         bikeStore: BikeProfileStore) {
-        self.bikeStore = bikeStore
+         onRecalibrate: @escaping () -> Void) {
+        self.onRecalibrate = onRecalibrate
         _viewModel = State(wrappedValue: LiveWheelieViewModel(
             calibrationService: calibrationService,
             preferences: preferences,
@@ -116,14 +128,9 @@ struct LiveScreen: View {
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
         .sheet(isPresented: $showSettings) {
-            SettingsView(preferences: viewModel.preferences, bikeStore: bikeStore)
-        }
-        .sheet(item: $editingTarget) { field in
-            TargetRangeEditor(
-                preferences: viewModel.preferences,
-                field: field,
-                isDisabled: viewModel.eventActive || !viewModel.isCalibrated
-            )
+            NavigationStack {
+                SettingsView(preferences: viewModel.preferences)
+            }
         }
     }
 
@@ -133,10 +140,8 @@ struct LiveScreen: View {
     private var headerBar: some View {
         ZStack {
             // Centered status pill
-            StatusPill(state: viewModel.calibrationState) {
-                viewModel.requestRecalibration()
-            }
-            .frame(width: UIScreen.main.bounds.width * 0.62)
+            StatusPill(state: viewModel.calibrationState, onTapRecalibrate: onRecalibrate)
+                .frame(width: UIScreen.main.bounds.width * 0.62)
 
             // Gear button at trailing edge
             HStack {
@@ -163,13 +168,16 @@ struct LiveScreen: View {
 
     private var metersSection: some View {
         HStack(spacing: 0) {
-            // ANGLE meter — centered in the left half of the screen
+            // ANGLE meter — centered in the left half, or in the whole width when
+            // speed is switched off.
             angleMeter
                 .frame(maxWidth: .infinity)
 
-            // SPEED meter — centered in the right half of the screen
-            speedMeter
-                .frame(maxWidth: .infinity)
+            if viewModel.preferences.speedEnabled {
+                // SPEED meter — centered in the right half of the screen
+                speedMeter
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -184,17 +192,20 @@ struct LiveScreen: View {
             rangeStatus: viewModel.angleInRange
         )
         meter.labelsOnLeading = true
-        meter.onTargetEdit = targetEditDisabled ? nil : { editingTarget = .angle }
+        meter.targetDragStep = 2.5
+        meter.onTargetChange = targetEditDisabled ? nil : { band in
+            viewModel.preferences.angleTarget = clamped(band, to: 0...90)
+        }
         return meter
     }
 
-    /// Speed meter. The gauge maximum is fixed at 100 km/h for now and the old
-    /// editable MAX chip has been removed (M-UI3), so the speed and angle meters
-    /// share the same header height (M-UI10).
+    /// Speed meter. The gauge maximum is a rider setting (50–300 km/h), so the
+    /// scale's top label is how they see the ceiling they chose.
     private var speedMeter: some View {
+        let ceiling = viewModel.preferences.speedGaugeMaximum
         var meter = VerticalTelemetryMeter(
             value: viewModel.currentSpeed,
-            range: 0...viewModel.preferences.speedGaugeMaximum,
+            range: 0...ceiling,
             targetBand: viewModel.preferences.speedTarget,
             unit: "km/h",
             label: "SPEED",
@@ -202,8 +213,19 @@ struct LiveScreen: View {
             rangeStatus: viewModel.speedInRange
         )
         meter.labelsOnLeading = false
-        meter.onTargetEdit = targetEditDisabled ? nil : { editingTarget = .speed }
+        meter.targetDragStep = 2.5
+        meter.onTargetChange = targetEditDisabled ? nil : { band in
+            viewModel.preferences.speedTarget = clamped(band, to: 0...ceiling)
+        }
         return meter
+    }
+
+    /// Final guard on a dragged band. The meter already clamps to its own scale;
+    /// this repeats it at the write so a band can never be stored outside the range
+    /// it will be drawn in, whatever the caller passed as a scale.
+    private func clamped(_ band: MetricRange, to bounds: ClosedRange<Double>) -> MetricRange {
+        MetricRange(lower: min(max(band.lower, bounds.lowerBound), bounds.upperBound),
+                    upper: min(max(band.upper, bounds.lowerBound), bounds.upperBound))
     }
 
     // MARK: - Bottom Metrics (three equal cards)
@@ -237,29 +259,32 @@ struct LiveScreen: View {
                 sublabel: nil
             )
 
-            // SPEED card
-            metricCard(
-                label: "SPEED",
-                valueContent: AnyView(
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        // A dash, not a zero, when GNSS has no fix. `liveSpeed` sits at
-                        // 0 until the first fix arrives, so rendering it unconditionally
-                        // made "stationary" and "no satellites yet" identical on screen —
-                        // and 0 km/h is a perfectly plausible reading for a bike waiting
-                        // at a light, so the rider had no way to tell. The view model now
-                        // publishes `speedAvailable` for exactly this.
-                        Text(viewModel.speedAvailable
-                             ? "\(Int(viewModel.currentSpeed))" : "—")
-                            .font(.system(size: 34, weight: .bold, design: .monospaced))
-                            .foregroundStyle(viewModel.speedAvailable
-                                             ? AppColors.textPrimary : AppColors.textSecondary)
-                        Text("km/h")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(AppColors.accentBright)
-                    }
-                ),
-                sublabel: "MAX \(Int(viewModel.attemptMaxSpeed))"
-            )
+            // SPEED card — omitted entirely when speed is switched off, rather than
+            // shown reading zero. A zero there is a claim about the bike.
+            if viewModel.preferences.speedEnabled {
+                metricCard(
+                    label: "SPEED",
+                    valueContent: AnyView(
+                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                            // A dash, not a zero, when GNSS has no fix. `liveSpeed` sits at
+                            // 0 until the first fix arrives, so rendering it unconditionally
+                            // made "stationary" and "no satellites yet" identical on screen —
+                            // and 0 km/h is a perfectly plausible reading for a bike waiting
+                            // at a light, so the rider had no way to tell. The view model now
+                            // publishes `speedAvailable` for exactly this.
+                            Text(viewModel.speedAvailable
+                                 ? "\(Int(viewModel.currentSpeed))" : "—")
+                                .font(.system(size: 34, weight: .bold, design: .monospaced))
+                                .foregroundStyle(viewModel.speedAvailable
+                                                 ? AppColors.textPrimary : AppColors.textSecondary)
+                            Text("km/h")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(AppColors.accentBright)
+                        }
+                    ),
+                    sublabel: "MAX \(Int(viewModel.attemptMaxSpeed))"
+                )
+            }
         }
     }
 

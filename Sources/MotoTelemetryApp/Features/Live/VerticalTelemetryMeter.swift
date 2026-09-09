@@ -20,8 +20,19 @@ struct VerticalTelemetryMeter: View {
 
     /// Whether labels sit on the leading (left) side. Angle = true, Speed = false.
     var labelsOnLeading: Bool = true
-    /// Optional action for editing the target; invoked by tapping the TARGET label.
-    var onTargetEdit: (() -> Void)?
+
+    /// Snap increment for a target-band drag, in this meter's own units (degrees
+    /// for angle, km/h for speed).
+    var targetDragStep: Double = 2.5
+
+    /// Called continuously while the rider drags a new target band directly on the
+    /// track. Nil disables dragging — during an attempt, and before calibration.
+    ///
+    /// This replaced a tap that opened a modal two-thumb slider. Dragging on the
+    /// bar itself means the band follows your finger against the same scale you are
+    /// about to ride, instead of being set on a different scale in a sheet that
+    /// covers the meter.
+    var onTargetChange: ((MetricRange) -> Void)?
 
     init(
         value: Double,
@@ -75,6 +86,17 @@ struct VerticalTelemetryMeter: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label) meter")
         .accessibilityValue(accessibilityValueText)
+        // A drag gesture is unreachable with VoiceOver, and dropping the modal
+        // editor removed the only accessible way to set a target. This moves the
+        // whole band by one snap step, preserving its width.
+        .accessibilityAdjustableAction { direction in
+            guard let onTargetChange, let current = targetBand else { return }
+            let delta = direction == .increment ? targetDragStep : -targetDragStep
+            let width = current.upper - current.lower
+            let lower = min(max(current.lower + delta, range.lowerBound),
+                            range.upperBound - width)
+            onTargetChange(MetricRange(lower: lower, upper: lower + width))
+        }
     }
 
     // MARK: - Main Layout
@@ -156,6 +178,64 @@ struct VerticalTelemetryMeter: View {
                 .frame(width: totalTrackWidth, height: height)
         }
         .frame(width: totalTrackWidth, height: height)
+        // Widen the touch target without changing anything visible. The track is
+        // 42 pt, under the 44 pt minimum, and this is now a control the rider drags
+        // — possibly with gloves on. The padding is transparent and symmetric, so
+        // the bar stays centred in its half of the screen, and it is horizontal only
+        // so the y-to-value mapping in `snappedValue(atY:height:)` is unaffected.
+        .padding(.horizontal, 9)
+        // The Canvases above are not hit-testable, so without this the gesture
+        // would only fire over the track Capsule and the fill.
+        .contentShape(Rectangle())
+        .gesture(targetDragGesture(height: height))
+    }
+
+    // MARK: - Target Drag
+
+    /// Drag anywhere on the track to set the target band: the value under where you
+    /// pressed is one edge, the value under your finger is the other.
+    ///
+    /// `minimumDistance` is deliberately non-zero. At 0 this would win against the
+    /// enclosing `TabView`'s page swipe and against simple taps; 8 pt lets a tap and
+    /// a horizontal page swipe through while still feeling immediate vertically.
+    private func targetDragGesture(height: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { drag in
+                guard let onTargetChange else { return }
+                let pressed = snappedValue(atY: drag.startLocation.y, height: height)
+                let current = snappedValue(atY: drag.location.y, height: height)
+                onTargetChange(band(from: pressed, to: current))
+            }
+    }
+
+    /// The value at a y offset on the track, snapped to `targetDragStep`.
+    ///
+    /// y grows downward and the scale grows upward, hence `1 - fraction`. Clamped
+    /// before snapping so a drag past either end of the track saturates at the end
+    /// of the scale rather than producing a value outside it.
+    private func snappedValue(atY y: CGFloat, height: CGFloat) -> Double {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0, height > 0, targetDragStep > 0 else { return range.lowerBound }
+        let fraction = 1 - min(max(Double(y / height), 0), 1)
+        let raw = range.lowerBound + fraction * span
+        let snapped = (raw / targetDragStep).rounded() * targetDragStep
+        return min(max(snapped, range.lowerBound), range.upperBound)
+    }
+
+    /// Build a band from the two drag endpoints.
+    ///
+    /// Direction-agnostic by construction: 60 dragged to 75 and 75 dragged to 60 both
+    /// give 60–75, which is what "auto correct for dragging up or down" means. A
+    /// zero-width band is not a target and would draw as a hairline, so a drag that
+    /// snaps to a single value is widened to one step, pushed inward at the ends.
+    private func band(from a: Double, to b: Double) -> MetricRange {
+        var lower = min(a, b)
+        var upper = max(a, b)
+        if upper - lower < targetDragStep {
+            upper = min(lower + targetDragStep, range.upperBound)
+            lower = max(upper - targetDragStep, range.lowerBound)
+        }
+        return MetricRange(lower: lower, upper: upper)
     }
 
     // MARK: - Target Band Overlay
@@ -335,8 +415,9 @@ struct VerticalTelemetryMeter: View {
 
     // MARK: - Target Label
 
-    /// `TARGET` + range. The block itself is the tap target — there is no
-    /// separate sliders button (M-UI13).
+    /// `TARGET` + range, as a readout. It is no longer a tap target: the band is set
+    /// by dragging on the track (see `targetDragGesture`), so there is nothing for a
+    /// tap here to open.
     private func targetLabelView(band: MetricRange, height: CGFloat) -> some View {
         let rangeText: String = label == "ANGLE"
             ? "\(Int(band.lower))°-\(Int(band.upper))°"
@@ -345,7 +426,7 @@ struct VerticalTelemetryMeter: View {
             ? "arrowtriangle.right.fill"
             : "arrowtriangle.left.fill"
 
-        let stack = VStack(spacing: AppSpacing.xxs) {
+        return VStack(spacing: AppSpacing.xxs) {
             Text("TARGET")
                 .font(.system(size: 11))
                 .foregroundStyle(AppColors.accent)
@@ -358,18 +439,10 @@ struct VerticalTelemetryMeter: View {
                 .font(.system(size: 8))
                 .foregroundStyle(AppColors.accent)
         }
-        .contentShape(Rectangle())
         .padding(.vertical, 6)
-
-        return Group {
-            if let action = onTargetEdit {
-                Button(action: action) { stack }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Edit \(label.lowercased()) target, currently \(rangeText)")
-            } else {
-                stack
-            }
-        }
+        // Not interactive, so keep it out of the accessibility tree — the meter
+        // element already announces the target in its value.
+        .accessibilityHidden(true)
     }
 
     // MARK: - Computed

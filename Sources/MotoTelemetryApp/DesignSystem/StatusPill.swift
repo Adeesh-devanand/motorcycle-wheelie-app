@@ -23,8 +23,17 @@ struct StatusPill: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Calibration status: \(label.lowercased())")
-        .accessibilityHint("Double tap to recalibrate")
+        .accessibilityLabel(isCalibrated
+                            ? "Re-calibrate"
+                            : "Calibration status: \(label.lowercased())")
+        .accessibilityHint("Double tap to restart calibration from the beginning")
+    }
+
+    /// `.calibrated` carries associated values, so this is a pattern match rather
+    /// than an `==` against the bare case.
+    private var isCalibrated: Bool {
+        if case .calibrated = state { return true }
+        return false
     }
 
     // MARK: - Status Indicator
@@ -51,7 +60,11 @@ struct StatusPill: View {
         switch state {
         case .unavailable: return "UNAVAILABLE"
         case .calibrating: return "CALIBRATING"
-        case .calibrated: return "CALIBRATED"
+        // Not "CALIBRATED". This pill is only ever on screen once calibration has
+        // succeeded, so a state readout there tells the rider something they can
+        // already see, on the one control whose whole purpose is to start over. The
+        // label names the action instead.
+        case .calibrated: return "RE-CALIBRATE"
         case .stale: return "STALE"
         case .failed: return "FAILED"
         }

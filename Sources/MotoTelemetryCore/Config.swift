@@ -94,9 +94,36 @@ import Foundation
 /// anti-zipper implementation detail — they shape how the tone glides, not what
 /// angle maps to what sound — so they are not rider-facing policy and their
 /// value does not change what a replay must reproduce.
+///
+/// ### v7 -> v8
+/// More tolerance for real-world noise during calibration, bought from DURATION and
+/// not from amplitude: `gateCloseConfirm` 0.06 -> 0.15 s and `biasGateGracePeriod`
+/// 0.25 -> 0.5 s. Both govern only whether a transient breach costs the rider the
+/// dwell or the progress already accumulated. Neither changes which samples are
+/// averaged — `ValidityGate.sampleWithinBand` still refuses every individual
+/// violating sample — so the bias budget is untouched. This is what addresses
+/// "calibration keeps restarting": the 17:52 device log is a run of `dwellNotMet`
+/// where each short tremor burst reset a 0.5 s dwell and one window took 60 s.
+///
+/// `calibrationMaxRotationRate` was ALSO raised 5 -> 12 deg/s here and REVERTED in
+/// the same session. That is the amplitude knob, and it is not safe: a one-sided
+/// spike moves the mean directly (one 20 deg/s sample in 600 shifts the bias
+/// 0.033 deg/s, most of the 0.05 deg/s budget), and a sustained rotation has zero
+/// variance so `biasSigmaLimit` cannot see it at all — a steady 10 deg/s turn was
+/// adopted AS the bias, 100 deg of error over a 10 s hold. Two existing tests caught
+/// it. The lesson is the v3 lesson again: for a stillness gate, duration
+/// discriminates and amplitude does not.
+///
+/// Note also that `gateMaxRotationRate` and `gateSpecificForceLow/High` no longer
+/// have a live consumer: `AttitudeESKF` was deleted in the beta, `BiasEstimator`
+/// overrides all three with its `calibration*` counterparts, and the only other
+/// `ValidityGate` is the one `motolog replay` builds for gate-open reporting. Their
+/// documented "the estimator must not inherit this" reasoning is kept because it is
+/// the record of why the split exists, but it now describes an estimator that is
+/// gone — do not read those two as live tuning.
 
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 7
+    public var version: Int = 8
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -157,7 +184,22 @@ public struct Config: Codable, Sendable, Equatable {
     /// This does NOT address aliasing: a twin at 6000 rpm folds to DC and looks like
     /// a steady tilt at any window length. That is attenuated mechanically, at the
     /// mount.
-    public var gateCloseConfirm: TimeInterval = 0.06            // seconds
+    ///
+    /// Raised 0.06 -> 0.15 s in v8, and this is the RIGHT knob for noise tolerance
+    /// because of what it does not touch. It decides only whether a breach costs the
+    /// rider the dwell; `ValidityGate.sampleWithinBand` still refuses every
+    /// individual violating sample, so nothing extra enters the bias mean and the
+    /// accuracy budget is untouched. Contrast `calibrationMaxRotationRate`, where
+    /// widening admits contaminated samples into the average.
+    ///
+    /// 150 ms sits between the two timescales that matter: a tremor or buzz burst is
+    /// tens of milliseconds, while acceleration, braking and lean persist for as long
+    /// as they last, so real motion still closes the gate ~150 ms in and keeps it
+    /// shut. What this fixes is the reported "calibration keeps restarting" — the
+    /// 17:52 log is a run of `dwellNotMet` where every short tremor burst reset a
+    /// 0.5 s dwell, so the continuous-quiet stretch never assembled and one window
+    /// took 60 s.
+    public var gateCloseConfirm: TimeInterval = 0.15            // seconds
 
     /// Specific-force band for the CALIBRATION gate only, m/s^2. +/-0.10 g.
     ///
@@ -185,11 +227,27 @@ public struct Config: Codable, Sendable, Equatable {
     /// Calibration's rotation ceiling, rad/s. 5 deg/s against the estimator's 3.
     ///
     /// Split for the same reason as the band above, though the argument is different:
-    /// here 5 deg/s DOES enter the 8-second gyro mean, but `biasSigmaLimit` (0.05 deg/s
-    /// on the SEM) is the real backstop on a contaminated zeroing, and a measured
-    /// healthy SEM of 0.0018 deg/s leaves 28x of margin. Widening it cuts the
-    /// `rotating` rejections that stopped an 8-second window from ever assembling on an
-    /// idling bike — the 17:52 log took 60 s to finish one 8-second calibration.
+    /// here the admitted rotation DOES enter the gyro mean, but `biasSigmaLimit`
+    /// (0.05 deg/s on the SEM) bounds a NOISY zeroing, and a measured healthy SEM of
+    /// 0.0018 deg/s leaves 28x of margin.
+    ///
+    /// **Do not raise this to buy noise tolerance.** Tried in v8 at 12 deg/s and
+    /// reverted the same session. Two things make it unsafe, and sigma catches
+    /// neither:
+    ///
+    /// - A one-sided spike moves the mean directly. `ValidityGate.sampleWithinBand`
+    ///   carries the arithmetic: one 20 deg/s sample among 600 quiet ones shifts the
+    ///   bias by 0.033 deg/s, most of the 0.05 deg/s budget.
+    /// - A SUSTAINED rotation has zero variance, so the SEM is ~0 and
+    ///   `biasSigmaLimit` passes it. At a 12 deg/s ceiling a bike turning steadily at
+    ///   10 deg/s was adopted AS THE BIAS — 100 deg of error over a 10 s hold.
+    ///   `CalibrationTests.testMovingBikeIsRejectedWithTheGatesReason` and
+    ///   `testAttemptWindowGivesUpAndExplainsWhy` both caught exactly this.
+    ///
+    /// Amplitude is the wrong discriminator here, as it was for the specific-force
+    /// band in v3. Noise tolerance is bought with `gateCloseConfirm` instead: it
+    /// decides how long a breach must persist before the DWELL is lost, and changes
+    /// nothing about which samples are averaged.
     ///
     /// The estimator must NOT inherit this: see `gateMaxRotationRate` for the device
     /// evidence that a wider shared limit makes the live angle stick at zero during a
@@ -377,7 +435,14 @@ public struct Config: Codable, Sendable, Equatable {
     /// been closed long enough that the bike may genuinely have moved or been
     /// re-oriented. Paused time does not count toward the required duration, so
     /// the estimate is still built from a full 8 s of quiet samples.
-    public var biasGateGracePeriod: TimeInterval = 0.25         // seconds
+    ///
+    /// Raised 0.25 -> 0.5 s in v8, alongside `gateCloseConfirm`, and safe for the same
+    /// reason: a grace period governs whether ACCUMULATED progress survives a
+    /// dropout, never which samples are averaged. Every sample taken during the
+    /// dropout is still refused by `sampleWithinBand`. Paired with the longer
+    /// confirmation window so a tremor burst neither closes the gate nor, if it does,
+    /// throws away the seconds already collected.
+    public var biasGateGracePeriod: TimeInterval = 0.5          // seconds
     /// Bias process-noise multiplier by ProcessInfo.ThermalState raw value
     /// (nominal, fair, serious, critical).
     public var thermalBiasNoiseScale: [Double] = [1.0, 2.0, 4.0, 8.0]

@@ -49,7 +49,38 @@ final class ConfigTests: XCTestCase {
         // literals, `maxIntegrationDt` (was a bare 1.0 in the estimator) and
         // `maxSampleGap` (was a bare 0.5 in the pipeline's gap warning), and gave the
         // latter a second consumer in `EventSegmenter`'s dwell restart.
-        XCTAssertEqual(Config().version, 7)
+        // v7 -> v8: calibration tolerates more real-world noise, bought from
+        // duration (`gateCloseConfirm`, `biasGateGracePeriod`) and NOT from
+        // amplitude. See the type doc for why the rotation ceiling was reverted.
+        XCTAssertEqual(Config().version, 8)
+    }
+
+    /// The v8 loosening, stated as the property that makes it safe: what moved is how
+    /// long a transient breach is tolerated, and what did NOT move is any amplitude
+    /// limit deciding which samples reach the bias mean.
+    ///
+    /// Guards a real regression. Raising `calibrationMaxRotationRate` to 12 deg/s was
+    /// tried, and a sustained 10 deg/s rotation was then adopted as the bias — sigma
+    /// cannot catch it, because a constant rate has zero variance.
+    func testNoiseToleranceComesFromDurationNotAmplitude() {
+        let config = Config()
+
+        // Loosened: both are duration-only.
+        XCTAssertEqual(config.gateCloseConfirm, 0.15, accuracy: 1e-12)
+        XCTAssertEqual(config.biasGateGracePeriod, 0.5, accuracy: 1e-12)
+
+        // Unmoved: every amplitude limit that decides what enters the average.
+        XCTAssertEqual(config.calibrationMaxRotationRate * 180 / .pi, 5.0, accuracy: 1e-9)
+        XCTAssertEqual(config.gateMaxRotationRate * 180 / .pi, 3.0, accuracy: 1e-9)
+        XCTAssertEqual(config.biasSigmaLimit * 180 / .pi, 0.05, accuracy: 1e-9)
+
+        // The confirmation window must stay well clear of both timescales it sits
+        // between: longer than a buzz/tremor burst, far shorter than the dwell it
+        // protects, or it would let real sustained motion hold the gate open.
+        XCTAssertGreaterThan(config.gateCloseConfirm, 0.05,
+                             "must outlast an engine-excitation burst")
+        XCTAssertLessThan(config.gateCloseConfirm, config.gateDwell,
+                          "a breach must still cost the dwell before the dwell elapses")
     }
 
     func testExitThresholdMatchesTheUISpec() {
