@@ -61,6 +61,16 @@ struct VerticalTelemetryMeter: View {
     private let cursorThickness: CGFloat = 2
     private let cursorDotSize: CGFloat = 10
 
+    /// How far the target band spills past the track on the side carrying the TARGET
+    /// label and its pointer — kept narrow, because that side also carries the scale
+    /// numbers (at `scaleInset`), the value readout and the label itself.
+    private let bandSpillArrowSide: CGFloat = 4
+    /// How far it spills on the opposite side, which holds nothing but tick marks and
+    /// is therefore where the band has room to be wide. The fill fades to nothing
+    /// across this part, so the band reads as light spilling out of the meter rather
+    /// than as a box drawn around it.
+    private let bandSpillOpenSide: CGFloat = 22
+
     /// Gap between the end of a major tick and the scale label text.
     private let scaleLabelGap: CGFloat = 4
     /// Column widths for the outboard content.
@@ -271,16 +281,33 @@ struct VerticalTelemetryMeter: View {
         let bandHeight = max((upperFrac - lowerFrac) * height, 4)
         let bottomOffset = lowerFrac * height
 
+        // Asymmetric on purpose. Every outboard element — scale numbers, value readout,
+        // TARGET label — sits on ONE side of the track, so that side has no room to
+        // spare; the other side carries only tick marks. Spilling 22 pt into the empty
+        // side and 4 pt into the crowded one makes the band visibly wider without
+        // pushing the fill under the scale numbers, and leaves the pointer exactly where
+        // it was (track half-width + 4 = the old symmetric edge).
+        let bandWidth = trackWidth + bandSpillArrowSide + bandSpillOpenSide
+        let openSideSign: CGFloat = labelsOnLeading ? 1 : -1
+        let xShift = openSideSign * (bandSpillOpenSide - bandSpillArrowSide) / 2
+        // Where the track's far edge lands in the band's own width. The fill holds full
+        // strength from the pointer edge all the way across the meter and fades ONLY in
+        // the part that spills past it — no gradient starts at the centre.
+        let holdUntil = (bandSpillArrowSide + trackWidth) / bandWidth
+
         return Rectangle()
-            .fill(AppColors.targetBandFill)
+            .fill(bandFillGradient(holdUntil: holdUntil))
+            // Three sides, not four: top and bottom are the target's actual bounds and
+            // stay crisp, the pointer side is closed because the arrow hangs off it, and
+            // the open side has no dashed edge at all — the fill simply runs out.
             .overlay(
-                Rectangle()
+                BandBracket(closedEdgeLeading: labelsOnLeading)
                     .stroke(
                         AppColors.targetBandStroke,
                         style: StrokeStyle(lineWidth: 1, dash: [4, 3])
                     )
             )
-            // The pointer, sitting ON the band's outer edge and aimed OUTWARD, at the
+            // The pointer, sitting ON the band's closed edge and aimed OUTWARD, at the
             // TARGET label.
             //
             // It used to be the last item in the label's own VStack — a triangle under
@@ -300,8 +327,24 @@ struct VerticalTelemetryMeter: View {
                     // the label it points at is further out still.
                     .offset(x: labelsOnLeading ? -7 : 7)
             }
-            .frame(width: trackWidth + 8, height: bandHeight)
-            .offset(y: -bottomOffset)
+            .frame(width: bandWidth, height: bandHeight)
+            .offset(x: xShift, y: -bottomOffset)
+    }
+
+    /// Full strength across the meter, then a fade to nothing over the spill on the open
+    /// side. The gradient always runs from the CLOSED (pointer) edge toward the open one,
+    /// which is why its start/end flip with `labelsOnLeading`.
+    private func bandFillGradient(holdUntil: CGFloat) -> LinearGradient {
+        let solid = AppColors.targetBandFill
+        return LinearGradient(
+            stops: [
+                .init(color: solid, location: 0),
+                .init(color: solid, location: holdUntil),
+                .init(color: solid.opacity(0), location: 1)
+            ],
+            startPoint: labelsOnLeading ? .leading : .trailing,
+            endPoint: labelsOnLeading ? .trailing : .leading
+        )
     }
 
     // MARK: - Tick Canvas
@@ -523,6 +566,31 @@ struct VerticalTelemetryMeter: View {
             return "\(Int(value)) \(unit), target \(Int(band.lower)) to \(Int(band.upper))"
         }
         return "\(Int(value)) \(unit)"
+    }
+}
+
+/// The target band's outline, with ONE vertical edge instead of two.
+///
+/// Top and bottom are the band's real information — the lower and upper bound of the
+/// target — so they are always drawn. Only the edge on the TARGET label's side is closed,
+/// because that is where the pointer attaches. The opposite edge is deliberately absent:
+/// the fill fades out across that spill, and a crisp dashed line at the end of a fade
+/// contradicts it.
+private struct BandBracket: Shape {
+    /// True when the closed vertical edge is the leading one (the angle meter, whose
+    /// labels sit on the left).
+    var closedEdgeLeading: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        let closedX = closedEdgeLeading ? rect.minX : rect.maxX
+        path.move(to: CGPoint(x: closedX, y: rect.minY))
+        path.addLine(to: CGPoint(x: closedX, y: rect.maxY))
+        return path
     }
 }
 
