@@ -2,14 +2,28 @@ import SwiftUI
 
 /// §8.2 — Run settings: the history filters plus the destructive delete-all action.
 ///
-/// This was `RunFiltersSheet`, reachable only through a gear MENU whose two items were
-/// "Filters" and "Delete All Runs". A menu of two, one of which just opens this sheet,
-/// is a tap that carries no decision — so the gear now presents this sheet directly and
-/// the delete action moved in here, at the bottom, behind its own confirmation.
+/// Deliberately built to match `SettingsView` (the Live tab's sheet) so the two gear
+/// buttons in this app open the same KIND of surface. What that alignment means
+/// concretely, and why each difference went away:
 ///
-/// The confirmation lives HERE rather than on `PastRunsView` deliberately. A
-/// `confirmationDialog` attached to the view underneath a presented sheet does not
-/// appear while the sheet is up; the rider would tap Delete All and see nothing happen.
+///   - **No `presentationDetents`.** A full-height sheet with one detent: it is either
+///     up or dismissed, with nothing to get stuck half-way. This sheet used to declare
+///     `[.medium, .large]`, and a detent SET opens at its SMALLEST member, so it came up
+///     half-height with the Delete All Runs warning below the fold.
+///   - **`List`, not `Form`.** Same container as `SettingsView`, so section headers,
+///     row insets and separators match.
+///   - **A large navigation title**, not `.inline`.
+///   - **No toolbar.** `SettingsView` has no Cancel/Apply because its changes take
+///     effect as you make them, and filters now behave the same way — see below. Reset
+///     moved into the list as a row, beside the other action, which is where Delete All
+///     already lives.
+///
+/// The Reset/Apply toolbar it replaced was not just extra chrome: it meant edits sat in
+/// local copies until committed, so dragging the sheet down silently discarded them.
+/// `PastRunsViewModel.applyFilters()` is a no-op — the list observes `filters` directly —
+/// so applying live costs nothing and the run count behind the sheet moves as you set a
+/// filter. `onApply` is still called on every change and kept in the signature: it is
+/// the seam the parent owns, and preserving it means this rewrite touches no other file.
 struct RunSettingsSheet: View {
     @Binding var filters: PastRunsViewModel.Filters
     let onApply: () -> Void
@@ -19,76 +33,83 @@ struct RunSettingsSheet: View {
     let onDeleteAll: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    // Local editing copies
-    @State private var dateFrom: Date?
-    @State private var dateTo: Date?
-    @State private var minDuration: String = ""
-    @State private var minAngle: String = ""
+    /// Draft text for the two numeric filters. Held separately from `filters` so a
+    /// partially-typed value ("1" on the way to "15") is not applied as a filter under
+    /// the rider's fingers — the same reason `SettingsView` drafts its gauge maximum.
+    @State private var minDurationDraft: String = ""
+    @State private var minAngleDraft: String = ""
+    @FocusState private var focusedField: NumericField?
     @State private var showingDeleteAllConfirm = false
-    /// Which detent the sheet is showing. Seeded to `.large` because a
-    /// `presentationDetents` SET opens at its SMALLEST member — so declaring
-    /// `[.medium, .large]` without a selection opened the sheet half-height and cut off
-    /// the Delete All Runs footer, which is the one line explaining that the button
-    /// ignores the filters above it. A warning you have to scroll to find is not a
-    /// warning. Both detents are still offered, so the sheet can be dragged down.
-    @State private var detent: PresentationDetent = .large
+
+    private enum NumericField: Hashable { case duration, angle }
+
+    private var hasActiveFilters: Bool { filters != PastRunsViewModel.Filters() }
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 Section("Date Range") {
-                    Toggle("From date", isOn: dateFromBinding)
-                    if dateFrom != nil {
-                        DatePicker("From", selection: Binding(
-                            get: { dateFrom ?? Date() },
-                            set: { dateFrom = $0 }
-                        ), displayedComponents: .date)
+                    Toggle("From date", isOn: dateFromEnabled)
+                    if filters.dateFrom != nil {
+                        DatePicker("From", selection: dateFromValue,
+                                   displayedComponents: .date)
                     }
 
-                    Toggle("To date", isOn: dateToBinding)
-                    if dateTo != nil {
-                        DatePicker("To", selection: Binding(
-                            get: { dateTo ?? Date() },
-                            set: { dateTo = $0 }
-                        ), displayedComponents: .date)
+                    Toggle("To date", isOn: dateToEnabled)
+                    if filters.dateTo != nil {
+                        DatePicker("To", selection: dateToValue,
+                                   displayedComponents: .date)
                     }
                 }
 
                 Section("Minimums") {
                     HStack {
-                        Text("Min Duration (s)")
+                        Text("Min Duration")
                         Spacer()
-                        TextField("0", text: $minDuration)
+                        TextField("0", text: $minDurationDraft)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 80)
+                            .focused($focusedField, equals: .duration)
+                            .frame(width: 70)
+                            .onSubmit { commitDrafts() }
+                        Text("s")
+                            .foregroundStyle(AppColors.textSecondary)
                     }
 
                     HStack {
-                        Text("Min Angle (°)")
+                        Text("Min Angle")
                         Spacer()
-                        TextField("0", text: $minAngle)
+                        TextField("0", text: $minAngleDraft)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 80)
+                            .focused($focusedField, equals: .angle)
+                            .frame(width: 70)
+                            .onSubmit { commitDrafts() }
+                        Text("°")
+                            .foregroundStyle(AppColors.textSecondary)
                     }
+                }
+
+                Section {
+                    Button("Reset Filters") {
+                        filters = PastRunsViewModel.Filters()
+                        loadDrafts()
+                        onApply()
+                    }
+                    .disabled(!hasActiveFilters)
                 }
 
                 Section {
                     Button(role: .destructive) {
                         showingDeleteAllConfirm = true
                     } label: {
-                        HStack {
-                            Spacer()
-                            Label("Delete All Runs", systemImage: "trash")
-                            Spacer()
-                        }
+                        Label("Delete All Runs", systemImage: "trash")
                     }
                     .disabled(totalRunCount == 0)
                 } footer: {
-                    // States the scope up front, because the sheet the button sits in is
-                    // the filter sheet: "delete all" next to a set of filters invites
-                    // the reading "delete all the ones I'm looking at".
+                    // States the scope up front, because this sits in the same sheet as
+                    // the filters: "delete all" next to a set of filters invites the
+                    // reading "delete all the ones I'm looking at".
                     Text("Deletes every recorded run, including runs hidden by the "
                          + "filters above. This cannot be undone.")
                 }
@@ -96,21 +117,12 @@ struct RunSettingsSheet: View {
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Reset") {
-                        resetAll()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        applyAndDismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
+            .onAppear { loadDrafts() }
+            .onChange(of: focusedField) { _, focused in
+                // Commit when focus LEAVES a field, so intermediate keystrokes are
+                // never applied as a filter.
+                if focused == nil { commitDrafts() }
             }
-            .onAppear { loadFromBinding() }
             .confirmationDialog(
                 "Delete all runs?",
                 isPresented: $showingDeleteAllConfirm,
@@ -126,52 +138,64 @@ struct RunSettingsSheet: View {
                      + "hidden by the current filters. This cannot be undone.")
             }
         }
-        // `selection:` is what makes this open at `.large`. Without it the set's
-        // smallest member wins and the destructive action's explanation sits below the
-        // fold — see `detent` above.
-        .presentationDetents([.medium, .large], selection: $detent)
+        // No `presentationDetents` — matches the Live tab's sheet: full height, one
+        // detent, either up or dismissed.
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Helpers
+    // MARK: - Date bindings
+    //
+    // These write straight through to `filters` rather than into local copies, so the
+    // list behind the sheet re-filters as the control moves.
 
-    private var dateFromBinding: Binding<Bool> {
+    private var dateFromEnabled: Binding<Bool> {
         Binding(
-            get: { dateFrom != nil },
-            set: { dateFrom = $0 ? (filters.dateFrom ?? Date()) : nil }
+            get: { filters.dateFrom != nil },
+            set: { on in
+                filters.dateFrom = on ? (filters.dateFrom ?? Date()) : nil
+                onApply()
+            }
         )
     }
 
-    private var dateToBinding: Binding<Bool> {
+    private var dateToEnabled: Binding<Bool> {
         Binding(
-            get: { dateTo != nil },
-            set: { dateTo = $0 ? (filters.dateTo ?? Date()) : nil }
+            get: { filters.dateTo != nil },
+            set: { on in
+                filters.dateTo = on ? (filters.dateTo ?? Date()) : nil
+                onApply()
+            }
         )
     }
 
-    private func loadFromBinding() {
-        dateFrom = filters.dateFrom
-        dateTo = filters.dateTo
-        minDuration = filters.minDuration.map { String(format: "%.1f", $0) } ?? ""
-        minAngle = filters.minAngle.map { String(format: "%.0f", $0) } ?? ""
+    private var dateFromValue: Binding<Date> {
+        Binding(
+            get: { filters.dateFrom ?? Date() },
+            set: { filters.dateFrom = $0; onApply() }
+        )
     }
 
-    private func applyAndDismiss() {
-        filters.dateFrom = dateFrom
-        filters.dateTo = dateTo
-        filters.minDuration = Double(minDuration)
-        filters.minAngle = Double(minAngle)
-        onApply()
-        dismiss()
+    private var dateToValue: Binding<Date> {
+        Binding(
+            get: { filters.dateTo ?? Date() },
+            set: { filters.dateTo = $0; onApply() }
+        )
     }
 
-    private func resetAll() {
-        dateFrom = nil
-        dateTo = nil
-        minDuration = ""
-        minAngle = ""
-        filters = PastRunsViewModel.Filters()
+    // MARK: - Numeric drafts
+
+    private func loadDrafts() {
+        minDurationDraft = filters.minDuration.map { String(format: "%.1f", $0) } ?? ""
+        minAngleDraft = filters.minAngle.map { String(format: "%.0f", $0) } ?? ""
+    }
+
+    /// An empty field clears that filter rather than storing 0 — a "minimum 0" filter
+    /// excludes nothing and would leave `hasActiveFilters` true forever, so the empty
+    /// state and the no-filter state must be the same thing.
+    private func commitDrafts() {
+        filters.minDuration = Double(minDurationDraft)
+        filters.minAngle = Double(minAngleDraft)
+        loadDrafts()
         onApply()
-        dismiss()
     }
 }
