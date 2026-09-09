@@ -24,7 +24,7 @@ struct StatusPill: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isCalibrated
-                            ? "Re-calibrate"
+                            ? "Recalibrate"
                             : "Calibration status: \(label.lowercased())")
         .accessibilityHint("Double tap to restart calibration from the beginning")
     }
@@ -64,7 +64,11 @@ struct StatusPill: View {
         // succeeded, so a state readout there tells the rider something they can
         // already see, on the one control whose whole purpose is to start over. The
         // label names the action instead.
-        case .calibrated: return "RE-CALIBRATE"
+        //
+        // One word, no hyphen: `re-` closes up before a consonant. A hyphen is for a
+        // vowel collision (re-enter, re-elect) or to separate homographs (re-cover a
+        // seat vs recover from flu), and "recalibrate" is neither.
+        case .calibrated: return "RECALIBRATE"
         case .stale: return "STALE"
         case .failed: return "FAILED"
         }

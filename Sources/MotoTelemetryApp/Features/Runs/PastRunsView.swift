@@ -3,10 +3,9 @@ import SwiftUI
 /// §8 — Past Runs list. Custom nav, sort chips, column headers, filtered history.
 struct PastRunsView: View {
     @State private var viewModel: PastRunsViewModel
-    @State private var showingFilters = false
+    @State private var showingSettings = false
     @State private var runPendingDelete: WheelieRun?
     @State private var showingDeleteRunConfirm = false
-    @State private var showingDeleteAllConfirm = false
     @Environment(\.dismiss) private var dismiss
 
     init(repository: RunRepository) {
@@ -27,10 +26,13 @@ struct PastRunsView: View {
             .navigationDestination(for: UUID.self) { runID in
                 RunDetailsView(runID: runID, repository: viewModel.repository)
             }
-            .sheet(isPresented: $showingFilters) {
-                RunFiltersSheet(filters: $viewModel.filters) {
-                    viewModel.applyFilters()
-                }
+            .sheet(isPresented: $showingSettings) {
+                RunSettingsSheet(
+                    filters: $viewModel.filters,
+                    onApply: { viewModel.applyFilters() },
+                    totalRunCount: viewModel.repository.allRuns.count,
+                    onDeleteAll: { viewModel.deleteAllRuns() }
+                )
             }
             .confirmationDialog(
                 "Delete this run?",
@@ -53,20 +55,10 @@ struct PastRunsView: View {
                     Text("This cannot be undone.")
                 }
             }
-            .confirmationDialog(
-                "Delete all runs?",
-                isPresented: $showingDeleteAllConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Delete All \(viewModel.repository.allRuns.count) Runs",
-                       role: .destructive) {
-                    viewModel.deleteAllRuns()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Every recorded run is permanently deleted, including runs "
-                     + "hidden by the current filters. This cannot be undone.")
-            }
+            // The delete-all confirmation that used to be attached here moved INTO
+            // `RunSettingsSheet`. A `confirmationDialog` on the view beneath a presented
+            // sheet does not appear while that sheet is up, so triggering it from inside
+            // the sheet would have looked like a dead button.
         }
         .preferredColorScheme(.dark)
     }
@@ -96,28 +88,19 @@ struct PastRunsView: View {
             Spacer()
 
             if viewModel.hasRuns {
-                // ONE control, top right, gear. There used to be two: an `ellipsis`
-                // menu here holding Delete All, and a separate `slider.horizontal.3`
-                // button down in the sort-chip row for Filters. Two icons with
-                // different glyphs in different places for the same class of thing
-                // (act on this list) is a guessing game. Merging also fixes a real
-                // dead end: the filter button lived inside `runListContent`, so
-                // filtering down to zero runs swapped in the empty state and took the
-                // only way to loosen the filters off screen with it.
-                Menu {
-                    Button {
-                        showingFilters = true
-                    } label: {
-                        Label("Filters", systemImage: "line.3.horizontal.decrease")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        showingDeleteAllConfirm = true
-                    } label: {
-                        Label("Delete All Runs", systemImage: "trash")
-                    }
+                // ONE control, top right, gear, opening ONE sheet. There used to be two
+                // icons — an `ellipsis` menu here holding Delete All and a separate
+                // `slider.horizontal.3` button down in the sort-chip row for Filters —
+                // then briefly one gear presenting a menu of two items. The menu is gone
+                // too: a menu whose entries are "Filters" (which just opens the sheet)
+                // and "Delete All Runs" (which belongs beside the filters it warns you
+                // it ignores) is a tap that carries no decision.
+                //
+                // Merging also fixed a real dead end: the filter button lived inside
+                // `runListContent`, so filtering down to zero runs swapped in the empty
+                // state and took the only way to loosen the filters off screen with it.
+                Button {
+                    showingSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 16, weight: .semibold))
@@ -125,7 +108,8 @@ struct PastRunsView: View {
                         .frame(width: 44, height: 44)
                         .background(AppColors.surfaceButton, in: Circle())
                 }
-                .accessibilityLabel("Run options")
+                .accessibilityLabel("Run settings")
+                .accessibilityHint("Filters and delete all runs")
             }
         }
         .padding(.horizontal, AppSpacing.screenPadding)

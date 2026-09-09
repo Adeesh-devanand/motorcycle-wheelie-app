@@ -133,17 +133,55 @@ final class RunRepository: @unchecked Sendable {
         }
 
         var loaded: [WheelieRun] = []
+        var recoveredCount = 0
+        var failedCount = 0
         for file in files where file.pathExtension == "json" {
             do {
                 let data = try Data(contentsOf: file)
                 let run = try decoder.decode(WheelieRun.self, from: data)
+                if run.qualityFlags.contains(.qualityRecordMissing) { recoveredCount += 1 }
                 loaded.append(run)
             } catch {
-                log.warning("Skipped corrupt run file: \(file.lastPathComponent)")
+                // Was `log.warning("Skipped corrupt run file: \(name)")` — a label that
+                // named a CAUSE it had not established, and then swallowed the error
+                // that would have disproved it. 27 files carried that message for three
+                // sessions while the actual reason was one absent key. Report what the
+                // decoder said, so the next schema break is diagnosable from the log
+                // instead of from a guess.
+                failedCount += 1
+                log.warning("""
+                    Could not read run file \(file.lastPathComponent, privacy: .public): \
+                    \(Self.describe(error), privacy: .public)
+                    """)
             }
         }
 
         allRuns = loaded.sorted { $0.startedAt > $1.startedAt }
-        log.info("Loaded \(self.allRuns.count) runs from disk")
+        log.info("Loaded \(self.allRuns.count) runs from disk (\(recoveredCount) with no quality record, \(failedCount) unreadable)")
+    }
+
+    /// A short, greppable reason for a decode failure — the coding path and the kind of
+    /// problem, which is what identifies a schema break. `localizedDescription` on a
+    /// `DecodingError` returns a generic "data couldn't be read", naming neither.
+    private static func describe(_ error: Error) -> String {
+        guard let decoding = error as? DecodingError else {
+            return error.localizedDescription
+        }
+        func path(_ context: DecodingError.Context) -> String {
+            let keys = context.codingPath.map(\.stringValue).filter { !$0.isEmpty }
+            return keys.isEmpty ? "<root>" : keys.joined(separator: ".")
+        }
+        switch decoding {
+        case .keyNotFound(let key, let context):
+            return "missing key '\(key.stringValue)' at \(path(context))"
+        case .typeMismatch(let type, let context):
+            return "type mismatch, expected \(type) at \(path(context))"
+        case .valueNotFound(let type, let context):
+            return "null where \(type) required at \(path(context))"
+        case .dataCorrupted(let context):
+            return "malformed JSON at \(path(context)): \(context.debugDescription)"
+        @unknown default:
+            return "unrecognized decoding error"
+        }
     }
 }

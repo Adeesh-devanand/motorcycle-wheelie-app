@@ -1,9 +1,22 @@
 import SwiftUI
 
-/// §8.2 — Filter sheet: date range, bike, min duration, min angle. Apply/Reset.
-struct RunFiltersSheet: View {
+/// §8.2 — Run settings: the history filters plus the destructive delete-all action.
+///
+/// This was `RunFiltersSheet`, reachable only through a gear MENU whose two items were
+/// "Filters" and "Delete All Runs". A menu of two, one of which just opens this sheet,
+/// is a tap that carries no decision — so the gear now presents this sheet directly and
+/// the delete action moved in here, at the bottom, behind its own confirmation.
+///
+/// The confirmation lives HERE rather than on `PastRunsView` deliberately. A
+/// `confirmationDialog` attached to the view underneath a presented sheet does not
+/// appear while the sheet is up; the rider would tap Delete All and see nothing happen.
+struct RunSettingsSheet: View {
     @Binding var filters: PastRunsViewModel.Filters
     let onApply: () -> Void
+    /// Number of runs on disk — every run, not the filtered subset, because that is
+    /// what the button deletes.
+    let totalRunCount: Int
+    let onDeleteAll: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     // Local editing copies
@@ -11,6 +24,7 @@ struct RunFiltersSheet: View {
     @State private var dateTo: Date?
     @State private var minDuration: String = ""
     @State private var minAngle: String = ""
+    @State private var showingDeleteAllConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -52,10 +66,29 @@ struct RunFiltersSheet: View {
                             .frame(width: 80)
                     }
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteAllConfirm = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Label("Delete All Runs", systemImage: "trash")
+                            Spacer()
+                        }
+                    }
+                    .disabled(totalRunCount == 0)
+                } footer: {
+                    // States the scope up front, because the sheet the button sits in is
+                    // the filter sheet: "delete all" next to a set of filters invites
+                    // the reading "delete all the ones I'm looking at".
+                    Text("Deletes every recorded run, including runs hidden by the "
+                         + "filters above. This cannot be undone.")
+                }
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
-            .navigationTitle("Filters")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -71,8 +104,25 @@ struct RunFiltersSheet: View {
                 }
             }
             .onAppear { loadFromBinding() }
+            .confirmationDialog(
+                "Delete all runs?",
+                isPresented: $showingDeleteAllConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete All \(totalRunCount) Runs", role: .destructive) {
+                    onDeleteAll()
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Every recorded run is permanently deleted, including runs "
+                     + "hidden by the current filters. This cannot be undone.")
+            }
         }
-        .presentationDetents([.medium])
+        // `.large` as well as `.medium`: the delete section pushes the form past what a
+        // half sheet shows, and the destructive action must not be the thing that is
+        // off screen.
+        .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
     }
 

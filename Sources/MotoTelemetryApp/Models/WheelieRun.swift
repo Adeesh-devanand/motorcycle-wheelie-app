@@ -11,6 +11,69 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
     /// could not run, so a raw-only run is never shown as if it were cleaned.
     var qualityFlags: QualityFlags = []
 
+    // MARK: - Decoding older files
+    //
+    // 27 runs on the device were being dropped every launch as "corrupt run file".
+    // They are not corrupt. `qualityFlags` was added to this struct in the
+    // calibrate-once beta (6667875), and Swift's SYNTHESIZED `Codable` does NOT fall
+    // back to a stored property's default value when the key is absent — it calls
+    // `decode(_:forKey:)` and throws `keyNotFound`. Verified directly rather than
+    // assumed: an old-schema payload against a synthesized decoder throws
+    // `keyNotFound(CodingKeys(stringValue: "flags"))`, while the same payload against
+    // a `decodeIfPresent` decoder succeeds.
+    //
+    // So one additive field with a default silently orphaned every run recorded before
+    // it. `speedGaugeMaximum` was the earlier suspicion and is NOT the cause; it has
+    // been present since the first app commit (78f4a98). `qualityFlags` is the only
+    // stored key added since.
+    //
+    // Every field below except `qualityFlags` uses plain `decode`, deliberately: those
+    // five ARE the run, and a file missing one of them is genuinely unreadable. Only
+    // the additive field is tolerated, so this stays a compatibility shim rather than
+    // a decoder that accepts anything.
+
+    enum CodingKeys: String, CodingKey {
+        case id, startedAt, endedAt, samples, configuration, qualityFlags
+    }
+
+    init(id: UUID,
+         startedAt: Date,
+         endedAt: Date,
+         samples: [TelemetrySample],
+         configuration: RunConfigurationSnapshot,
+         qualityFlags: QualityFlags = []) {
+        self.id = id
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.samples = samples
+        self.configuration = configuration
+        self.qualityFlags = qualityFlags
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decode(Date.self, forKey: .endedAt)
+        samples = try container.decode([TelemetrySample].self, forKey: .samples)
+        configuration = try container.decode(RunConfigurationSnapshot.self,
+                                             forKey: .configuration)
+
+        if let stored = try container.decodeIfPresent(QualityFlags.self, forKey: .qualityFlags) {
+            qualityFlags = stored
+        } else {
+            // No quality record in the file. `[]` would claim a clean run, which this
+            // file never said — so record the gap itself, and add the one flag that IS
+            // derivable from the data present: if not a single sample carries a blurred
+            // angle then the backward pass demonstrably never ran on this run.
+            var derived: QualityFlags = .qualityRecordMissing
+            if samples.allSatisfy({ $0.blurredAngleDegrees == nil }) {
+                derived.insert(.smoothingUnavailable)
+            }
+            qualityFlags = derived
+        }
+    }
+
     var duration: TimeInterval {
         endedAt.timeIntervalSince(startedAt)
     }

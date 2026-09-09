@@ -114,6 +114,28 @@ final class QualityMonitorTests: XCTestCase {
         XCTAssertTrue(QualityFlags.smoothingUnavailable.isTrustworthy)
     }
 
+    /// A run whose quality was never recorded is not a clean run — it is an unknown
+    /// one. `WheelieRun`'s decoder sets this when the `qualityFlags` key is absent
+    /// (runs saved before the field existed), and it must keep those runs out of
+    /// personal bests: they cannot be shown to be trustworthy, so they must not take a
+    /// record from a run that can.
+    func testAMissingQualityRecordIsNotTrustworthy() {
+        XCTAssertFalse(QualityFlags.qualityRecordMissing.isTrustworthy)
+        XCTAssertTrue(QualityFlags.disqualifying.contains(.qualityRecordMissing))
+    }
+
+    /// The new bit must not collide with an existing one, or a recovered run would
+    /// silently claim a problem it never measured.
+    func testQualityRecordMissingOccupiesItsOwnBit() {
+        let existing: QualityFlags = [
+            .saturatedInEvent, .highVibration, .aliasingSuspect, .lowRate,
+            .gapExceeded, .recovered, .smoothingUnavailable, .estimatorDegraded,
+            .lowConfidence
+        ]
+        XCTAssertTrue(existing.isDisjoint(with: .qualityRecordMissing))
+        XCTAssertEqual(QualityFlags.qualityRecordMissing.rawValue, 1 << 9)
+    }
+
     func testFlagsRoundTripThroughCoding() throws {
         let flags: QualityFlags = [.highVibration, .lowRate, .lowConfidence]
         let data = try JSONEncoder().encode(flags)

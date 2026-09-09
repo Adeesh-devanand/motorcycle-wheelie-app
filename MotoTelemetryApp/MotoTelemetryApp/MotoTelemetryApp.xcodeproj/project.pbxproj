@@ -25,7 +25,7 @@
 		DA6C1057100000000000005B /* SessionSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000005A /* SessionSummaryCard.swift */; };
 		DA6C1057100000000000006B /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000006A /* LogViewerView.swift */; };
 		DA6C1057100000000000007B /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000007A /* DiagnosticsView.swift */; };
-		5533FCC9E912C0276401749A /* RunFiltersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */; };
+		5533FCC9E912C0276401749A /* RunSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */; };
 		584BA9209CE4274BD5D7A77E /* RunDetailsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F01A8933247C8727399794 /* RunDetailsViewModel.swift */; };
 		62E9E071FB66022474F1A321 /* RunHistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */; };
 		6A85CD5B581EEF89C22CA672 /* MotionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1074D78E8227A2DB2F2310 /* MotionService.swift */; };
@@ -105,7 +105,7 @@
 		8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetricRange.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/MetricRange.swift"; sourceTree = SOURCE_ROOT; };
 		92A3F54540EEBFF633E593CC /* RunDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsView.swift"; sourceTree = SOURCE_ROOT; };
 		9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryCard.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/TelemetryCard.swift"; sourceTree = SOURCE_ROOT; };
-		972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunFiltersSheet.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunFiltersSheet.swift"; sourceTree = SOURCE_ROOT; };
+		972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunSettingsSheet.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunSettingsSheet.swift"; sourceTree = SOURCE_ROOT; };
 		9891B30483FE6C3270B64D2B /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppSpacing.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppSpacing.swift"; sourceTree = SOURCE_ROOT; };
 		9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MotoTelemetryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D956BF6303F37E10071582A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -199,7 +199,7 @@
 				A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */,
 				B9D13738221370270E218612 /* PastRunsView.swift */,
 				5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */,
-				972C10E128D63A89B8ED0AA3 /* RunFiltersSheet.swift */,
+				972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */,
 				0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */,
 				0AD62C6C8782A12897D1A787 /* CalibrationState.swift */,
 				8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */,
@@ -407,7 +407,7 @@
 				FDC86A23A1030C87A13C8175 /* VerticalTelemetryMeter.swift in Sources */,
 				A21CBF14EC802ECD27AEE6AF /* PastRunsView.swift in Sources */,
 				F3BC3173131F861014ADC8A5 /* PastRunsViewModel.swift in Sources */,
-				5533FCC9E912C0276401749A /* RunFiltersSheet.swift in Sources */,
+				5533FCC9E912C0276401749A /* RunSettingsSheet.swift in Sources */,
 				62E9E071FB66022474F1A321 /* RunHistoryRow.swift in Sources */,
 				393F3B62D94B50BD7C28653C /* CalibrationState.swift in Sources */,
 				F0CDCD7D52FC5A19F994AC4D /* MetricRange.swift in Sources */,

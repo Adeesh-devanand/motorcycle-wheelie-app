@@ -110,19 +110,54 @@ struct SwipeAlignmentScreen: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .frame(height: 34)
+                    .padding(.horizontal, AppSpacing.screenPadding)
 
-                HStack(spacing: AppSpacing.xl) {
-                    Button("Recalibrate") { onRecalibrate() }
-                        .foregroundStyle(AppColors.textSecondary)
-
-                    Button("Looks right") {
-                        if let resolved { onConfirmed(resolved) }
+                // Two real buttons of equal size. They were a plain `Button("Recalibrate")`
+                // in secondary grey beside a `Button("Looks right")` at a different font
+                // — two different sizes for the two halves of one decision, which reads
+                // as one label and one control rather than a choice.
+                //
+                // Both labels also said the wrong thing. "Recalibrate" names the screen
+                // it returns to, not what the rider is doing (abandoning this alignment
+                // and re-zeroing the gyro), and "Looks right" is an opinion, not an
+                // action — it does not say that tapping it commits the alignment and
+                // moves on.
+                HStack(spacing: AppSpacing.md) {
+                    Button { onRecalibrate() } label: {
+                        Text("Redo gyro zero")
+                            .font(AppTypography.bodyText.weight(.semibold))
+                            .foregroundStyle(AppColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppColors.surfaceButton)
+                            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.button))
                     }
-                    .font(AppTypography.bodyText)
-                    .foregroundStyle(resolved == nil ? AppColors.textSecondary : AppColors.accent)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Discards this alignment and measures the gyro bias again")
+
+                    Button {
+                        if let resolved { onConfirmed(resolved) }
+                    } label: {
+                        Text("Confirm alignment")
+                            .font(AppTypography.bodyText.weight(.semibold))
+                            .foregroundStyle(resolved == nil
+                                             ? AppColors.textTertiary
+                                             : AppColors.badgeSuccessText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(resolved == nil
+                                        ? AppColors.surfaceButton
+                                        : AppColors.badgeSuccessFill)
+                            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.CornerRadius.button))
+                    }
+                    .buttonStyle(.plain)
                     .disabled(resolved == nil)
+                    .accessibilityHint(resolved == nil
+                                       ? "Draw a line along the bike first"
+                                       : "Saves this mount alignment and starts the live meter")
                 }
-                .padding(.bottom, AppSpacing.xxl)
+                .padding(.horizontal, AppSpacing.screenPadding)
+                .padding(.bottom, AppSpacing.xl)
             }
         }
     }

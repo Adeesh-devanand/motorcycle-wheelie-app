@@ -34,11 +34,23 @@ public struct QualityFlags: OptionSet, Codable, Sendable, Hashable {
     /// Reported uncertainty exceeded the limit, or any of the above applies.
     /// Excluded from personal bests.
     public static let lowConfidence         = QualityFlags(rawValue: 1 << 8)
+    /// The run was recorded before this flag set was persisted, so its quality is
+    /// UNKNOWN rather than clean.
+    ///
+    /// Its own file carries no quality record at all. Decoding such a run as `[]`
+    /// would assert every other flag's absence — and the contract at the top of this
+    /// type is that absence of flags is a claim. This flag makes the gap explicit and
+    /// keeps it distinguishable from a run that measured a problem and passed.
+    public static let qualityRecordMissing  = QualityFlags(rawValue: 1 << 9)
 
     /// Flags that disqualify a run from personal bests and leaderboards.
+    ///
+    /// `qualityRecordMissing` belongs here for the same reason the measured flags do:
+    /// a run whose quality was never recorded cannot be shown to be trustworthy, so it
+    /// must not take a record from a run that can.
     public static let disqualifying: QualityFlags =
         [.saturatedInEvent, .highVibration, .aliasingSuspect, .lowRate,
-         .gapExceeded, .estimatorDegraded, .lowConfidence]
+         .gapExceeded, .estimatorDegraded, .lowConfidence, .qualityRecordMissing]
 
     public var isTrustworthy: Bool { isDisjoint(with: .disqualifying) }
 }
