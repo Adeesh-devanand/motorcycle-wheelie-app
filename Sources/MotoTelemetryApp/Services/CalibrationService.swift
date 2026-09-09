@@ -49,6 +49,35 @@ final class CalibrationService: @unchecked Sendable {
     /// resets — "too much vibration", "still moving" — rather than a generic wait.
     private(set) var blockingReason: String?
 
+    // MARK: - Authoritative state
+    //
+    // The three properties ABOVE are `@Observable` MIRRORS, written only on the main
+    // actor. The three below are the AUTHORITATIVE state, written on the sensor
+    // thread under `lock`.
+    //
+    // They used to be one and the same, and that is what hung the app on
+    // re-calibrate. `feedIMU` runs on the sensor task at 100 Hz from inside
+    // `RunRecorder.processLock`, and wrote these `@Observable` properties directly.
+    // So the sensor thread took `processLock` -> `lock` -> the observation
+    // registrar's internal state, while the main thread took the registrar's state
+    // (re-rendering `CalibrationScreen`, which reads `phase` and `blockingReason`)
+    // and then wanted `processLock` inside `stopSession()`. Two locks, acquired in
+    // opposite orders.
+    //
+    // Re-calibrate is the ONE action that does all of it in a single run-loop turn —
+    // mutate `phase` on the main actor, swap the view hierarchy so SwiftUI re-tracks
+    // its dependencies, and call `stopSession` — which is why it hung every time and
+    // why nothing else did. The 2026-09-08 device log shows it exactly:
+    // "Calibration (re)started", then "onDisappear", and then `stopSession`'s FIRST
+    // diagnostic never prints while only MotionService's lock-free `sensor heartbeat`
+    // survives, forever.
+    private var internalPhase: Phase = .measuring(progress: nil)
+    private var internalBlockingReason: String?
+    private var internalHasSeenSample = false
+    /// At most one publish hop in flight, so 100 Hz of samples costs one main-actor
+    /// hop per turn instead of a `Task` per sample.
+    private var publishScheduled = false
+
     /// The completed estimate, once `.measured`. Read by the swipe flow.
     var estimate: BiasEstimate? {
         if case .measured(let e) = phase { return e }
@@ -96,33 +125,84 @@ final class CalibrationService: @unchecked Sendable {
     }
 
     /// Feed one raw IMU sample. Called from `RunRecorder` on the sensor task.
+    ///
+    /// Writes only the lock-guarded authoritative state and asks for a main-actor
+    /// publish. It must never touch the `@Observable` mirrors — see the note on
+    /// `internalPhase` for the deadlock that caused.
     func feedIMU(_ sample: IMUSample) {
         lock.lock()
         defer { lock.unlock() }
 
-        if !hasSeenSample {
-            hasSeenSample = true
-            if phase == .unavailable {
+        if !internalHasSeenSample {
+            internalHasSeenSample = true
+            if internalPhase == .unavailable {
                 // A sample IS the sensors working: clear a prior unavailable verdict.
-                phase = .measuring(progress: nil)
+                internalPhase = .measuring(progress: nil)
                 restartLocked()
             }
             diag.always(time: sample.time, level: .info,
                         message: "first IMU sample — cal path live", values: [:])
+            schedulePublishLocked()
         }
 
         guard var est = estimator else { return }
         guard let progress = est.process(sample) else { estimator = est; return }
         estimator = est
         handle(progress, at: sample.time)
+        schedulePublishLocked()
+    }
+
+    // MARK: - Publishing
+
+    /// Ask for the mirrors to be refreshed on the main actor. Call with `lock` held.
+    ///
+    /// Coalesced: while a hop is already pending, further samples are free. Progress
+    /// still lands within one main-actor turn, and the sensor thread never blocks on
+    /// the main actor — it only enqueues.
+    private func schedulePublishLocked() {
+        guard !publishScheduled else { return }
+        publishScheduled = true
+        Task { @MainActor [weak self] in
+            self?.publish()
+        }
+    }
+
+    /// Copy authoritative state onto the `@Observable` mirrors. Main actor only.
+    @MainActor
+    private func publish() {
+        lock.lock()
+        publishScheduled = false
+        let newPhase = internalPhase
+        let newReason = internalBlockingReason
+        let newSeen = internalHasSeenSample
+        lock.unlock()
+
+        // Guarded so an unchanged value does not invalidate a SwiftUI view — the
+        // `.collecting` path re-publishes the same phase on most samples.
+        if phase != newPhase { phase = newPhase }
+        if blockingReason != newReason { blockingReason = newReason }
+        if hasSeenSample != newSeen { hasSeenSample = newSeen }
     }
 
     /// Rider tapped "recalibrate", or the swipe screen sent them back. Discards the
     /// current attempt and starts a fresh still-window.
+    ///
+    /// `@MainActor` so the mirrors are updated SYNCHRONOUSLY, which matters: the
+    /// caller swaps the view hierarchy to `CalibrationScreen` in the same turn, and
+    /// that screen calls `onCompleted` the moment it sees `.measured`. Publishing
+    /// asynchronously would leave the stale `.measured` visible for a frame and bounce
+    /// the rider straight back to the swipe screen. Both callers — the pill and the
+    /// screen's own "Try again" — are already on the main actor.
+    @MainActor
     func restart() {
         lock.lock()
-        defer { lock.unlock() }
         restartLocked()
+        let newPhase = internalPhase
+        let newReason = internalBlockingReason
+        lock.unlock()
+
+        phase = newPhase
+        blockingReason = newReason
     }
 
     private func restartLocked() {
@@ -130,8 +210,8 @@ final class CalibrationService: @unchecked Sendable {
                                   bikeProfileID: bikeProfileID,
                                   thermalState: ProcessInfo.processInfo.thermalState.rawValue,
                                   sink: DiagnosticLog.shared)
-        blockingReason = nil
-        phase = .measuring(progress: nil)
+        internalBlockingReason = nil
+        internalPhase = .measuring(progress: nil)
         log.info("Calibration (re)started")
     }
 
@@ -141,32 +221,35 @@ final class CalibrationService: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         log.error("Motion sensors unavailable: \(reason)")
-        phase = .unavailable
+        internalPhase = .unavailable
+        schedulePublishLocked()
     }
 
     // MARK: - Progress handling
 
+    /// Call with `lock` held. Writes authoritative state only; the caller schedules
+    /// the main-actor publish.
     private func handle(_ progress: BiasEstimator.Progress, at time: TimeInterval) {
         switch progress {
         case .collecting(_, _, _, _):
-            blockingReason = nil
-            phase = .measuring(progress: progress.fraction)
+            internalBlockingReason = nil
+            internalPhase = .measuring(progress: progress.fraction)
 
         case .rejected(let reason):
             // The dwell reset. Name WHY on the sample that reset it — this is the
             // "too much vibration / still moving" feedback the calibration screen
             // surfaces in real time, and the behaviour the rider valued on the ride.
-            blockingReason = Self.riderText(for: reason)
-            phase = .measuring(progress: nil)
+            internalBlockingReason = Self.riderText(for: reason)
+            internalPhase = .measuring(progress: nil)
 
         case .done(let estimate):
-            blockingReason = nil
-            phase = .measured(estimate)
+            internalBlockingReason = nil
+            internalPhase = .measured(estimate)
             log.info("Calibration complete. Sigma \(estimate.worstSigma * 180 / .pi, format: .fixed(precision: 4)) deg/s, gravity \(estimate.measuredGravity != nil ? "captured" : "MISSING")")
 
         case .failed(let failure):
-            blockingReason = nil
-            phase = .failed(message: failure.message)
+            internalBlockingReason = nil
+            internalPhase = .failed(message: failure.message)
             log.warning("Calibration failed: \(failure.message)")
         }
     }

@@ -238,7 +238,24 @@ final class RunRecorder: @unchecked Sendable {
     /// this path awaits, so hoisting the critical section into a non-async function
     /// states that fact in a form the checker accepts. `defer` also makes the unlock
     /// survive an early return added later.
+    ///
+    /// Calibration is fed FIRST and OUTSIDE the lock. `CalibrationService` has a lock
+    /// of its own, so calling it from inside `processLock` nested two locks in one
+    /// order while the main thread took them in the reverse order — the re-calibrate
+    /// hang. Feeding it outside means this thread never holds two locks at once.
     private func processLocked(_ sample: Sample, epoch: UInt64) {
+        // The same staleness check `processSample` makes, taken under the lock so the
+        // read is ordered against `stopSession`'s bump. Without it a cancelled task's
+        // in-flight sample could feed calibration for a session that has ended.
+        processLock.lock()
+        let isCurrent = epoch == sessionEpoch
+        processLock.unlock()
+        guard isCurrent else { return }
+
+        if case .imu(let imu) = sample {
+            calibrationService.feedIMU(imu)
+        }
+
         processLock.lock()
         defer { processLock.unlock() }
         processSample(sample, epoch: epoch)
@@ -582,13 +599,13 @@ final class RunRecorder: @unchecked Sendable {
         // against `stopSession`'s bump.
         guard epoch == sessionEpoch else { return }
 
-        // Raw trace and calibration run BEFORE the pipeline guard, so they work
-        // during the sensing-only phase (calibration + swipe) when `pipeline` is
-        // still nil. The rider is calibrating precisely when there is no pipeline yet.
+        // Raw trace runs BEFORE the pipeline guard, so it works during the
+        // sensing-only phase (calibration + swipe) when `pipeline` is still nil.
+        //
+        // Calibration is NOT fed here any more — `processLocked` feeds it before
+        // taking this lock, so `processLock` is never held across
+        // `CalibrationService.lock`. See `processLocked`.
         rawRecorder?.record(sample)
-        if case .imu(let imu) = sample {
-            calibrationService.feedIMU(imu)
-        }
 
         // No pipeline until the swipe is confirmed and `startSession` builds it.
         // During calibration + swipe this is the normal, expected early return.

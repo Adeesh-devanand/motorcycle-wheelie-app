@@ -6,7 +6,7 @@ import SwiftUI
 /// Tapping calls `onTapRecalibrate`.
 struct StatusPill: View {
     let state: CalibrationState
-    let onTapRecalibrate: () -> Void
+    let onTapRecalibrate: @MainActor () -> Void
 
     var body: some View {
         Button(action: { onTapRecalibrate() }) {

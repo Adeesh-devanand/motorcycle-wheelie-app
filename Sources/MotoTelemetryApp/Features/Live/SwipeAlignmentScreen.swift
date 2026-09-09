@@ -22,7 +22,10 @@ struct SwipeAlignmentScreen: View {
     /// Called with the resolved alignment when the rider confirms.
     let onConfirmed: (MountAlignment) -> Void
     /// Sends the rider back to recalibrate.
-    let onRecalibrate: () -> Void
+    /// `@MainActor` so the isolation of the handler survives being stored here.
+    /// It is invoked from a SwiftUI Button and calls main-actor state; a plain
+    /// `() -> Void` silently drops that, which Swift 6 makes an error.
+    let onRecalibrate: @MainActor () -> Void
 
     @State private var startPoint: CGPoint?
     @State private var endPoint: CGPoint?

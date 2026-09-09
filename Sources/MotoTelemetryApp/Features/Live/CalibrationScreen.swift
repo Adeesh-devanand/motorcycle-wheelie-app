@@ -14,6 +14,11 @@ import MotoTelemetryCore
 /// service sets `blockingReason` — "too much vibration — switch the engine off",
 /// "still moving" — and this shows it the instant it changes, which is the
 /// behaviour the rider valued: the countdown visibly restarts and says why.
+/// `@MainActor` because it reads `CalibrationService`'s `@Observable` mirrors and
+/// calls `restart()`, which is main-actor isolated so it can publish those mirrors
+/// synchronously. SwiftUI's `body` is not itself isolated in Swift 5, so without this
+/// the "Try again" button is a main-actor call from a nonisolated context.
+@MainActor
 struct CalibrationScreen: View {
     let service: CalibrationService
     /// Called once calibration reaches `.measured`, carrying the completed estimate

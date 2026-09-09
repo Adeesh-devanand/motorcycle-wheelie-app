@@ -11,6 +11,10 @@ import MotoTelemetryCore
 /// rider confirms the swipe. That ordering resolves the chicken-and-egg — calibration
 /// needs the sensor stream, and the alignment the live view needs is what calibration
 /// produces — without starting the stream twice.
+/// `@MainActor` for the same reason `LiveScreen` and `CalibrationScreen` are: it owns
+/// the flow `phase` and calls `CalibrationService.restart()`, which is main-actor
+/// isolated so it can publish the observable mirrors synchronously.
+@MainActor
 struct LiveWheelieView: View {
     private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment) }
 
@@ -94,14 +98,14 @@ struct LiveScreen: View {
     @State private var showSettings = false
     /// Sends the rider back to the calibration screen. Owned by `LiveWheelieView`,
     /// which holds the phase.
-    private let onRecalibrate: () -> Void
+    private let onRecalibrate: @MainActor () -> Void
 
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
          alignment: MountAlignment,
          bikeProfileID: UUID,
-         onRecalibrate: @escaping () -> Void) {
+         onRecalibrate: @escaping @MainActor () -> Void) {
         self.onRecalibrate = onRecalibrate
         _viewModel = State(wrappedValue: LiveWheelieViewModel(
             calibrationService: calibrationService,
