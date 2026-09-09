@@ -105,7 +105,20 @@ struct VerticalTelemetryMeter: View {
     /// lands at 37 either way, against a band edge at 27.
     private let scaleLabelGap: CGFloat = 6
     /// Column widths for the outboard content.
-    private let readoutWidth: CGFloat = 56
+    ///
+    /// The readout column is wider when the unit sits BESIDE the number rather than being
+    /// baked into the string: the angle reads "45°" in one run of glyphs, speed reads
+    /// "120" + "km/h".
+    ///
+    /// 70 and not more, because the column starts at `scaleInset` and grows OUTWARD toward
+    /// the screen edge: on a 375 pt phone the track centre has about 94 pt to the edge, the
+    /// 16 pt inboard shift gives back 16, and the column starts 37 out — leaving roughly
+    /// 73. An 84 pt column overflowed the screen on every phone narrower than a Pro Max.
+    /// At 70, a two-digit speed ("45 km/h", ~69 pt) renders at full size and only a
+    /// three-digit one leans on `minimumScaleFactor`.
+    private var readoutWidth: CGFloat { unitSitsBesideValue ? 70 : 56 }
+    /// True for every meter except angle, whose degree sign is part of the value text.
+    private var unitSitsBesideValue: Bool { label != "ANGLE" }
     private let targetLabelWidth: CGFloat = 62
 
     /// Horizontal distance from the track centre to where scale labels sit — just beyond
@@ -615,15 +628,29 @@ struct VerticalTelemetryMeter: View {
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             } else {
-                Text("\(Int(displayedValue))")
-                    .font(.system(size: 34, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.accentBright)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                Text(unit)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppColors.accentBright)
-                    .lineLimit(1)
+                // Unit BESIDE the number, not under it. Stacked, the readout was two lines
+                // tall, and its lower line reached down far enough that at a reading of 0 —
+                // when the readout is clamped near the bottom of the track — the "km/h" sat
+                // on top of the y-axis's own "0" label. Side by side it is one line, which
+                // removes about 16 pt of height from exactly the end where the collision
+                // happened.
+                //
+                // `lastTextBaseline` so the small unit sits on the digits' baseline rather
+                // than centred against their full cap height.
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text("\(Int(displayedValue))")
+                        .font(.system(size: 34, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppColors.accentBright)
+                    Text(unit)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppColors.accentBright)
+                }
+                .lineLimit(1)
+                // The enclosing `.frame(width: readoutWidth)` is what this scales against.
+                // Needed because "300 km/h" is the widest this can get and it is wider than
+                // a two-digit speed by half a digit — without it a three-digit reading
+                // would overflow the column outward, toward the screen edge.
+                .minimumScaleFactor(0.6)
             }
         }
     }
@@ -691,9 +718,16 @@ struct VerticalTelemetryMeter: View {
 
     /// Keep the value readout fully on-screen: it rides the cursor in the
     /// mid-range but stops at a safe margin from the track ends (M-UI12).
+    ///
+    /// The margin also has to clear the y-axis's END labels, which live in the same
+    /// column: the readout is offset from `scaleInset`, exactly where the scale numbers
+    /// start, so the two only avoid each other by being at different heights. 40 rather
+    /// than the previous 32 because at a reading of 0 the readout is pinned at its lowest
+    /// and the "0" label is directly beneath it — 32 left the readout's bottom edge inside
+    /// that label's box. Worth pairing with the one-line readout: both were needed.
     private func clampedReadoutOffset(cursorY: CGFloat, height: CGFloat) -> CGFloat {
         let raw = cursorY - height / 2
-        let margin: CGFloat = 32
+        let margin: CGFloat = 40
         guard height > margin * 2 else { return 0 }
         return min(max(raw, -height / 2 + margin), height / 2 - margin)
     }
