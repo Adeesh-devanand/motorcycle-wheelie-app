@@ -136,6 +136,25 @@ struct TelemetryChart: View {
                     yEnd: .value("Upper", targetBand.upper)
                 )
                 .foregroundStyle(bandFillColor)
+                // The range caption, drawn as the BAND's own annotation rather than as a
+                // sibling overlay. `.overlay` centers it on the mark in both axes, which
+                // is exactly "inside the highlight, in the middle" — and it comes from
+                // the chart's own coordinate space, so it is exact at any plot height.
+                //
+                // The previous version was a separate `Canvas`-era overlay offset a
+                // fixed 40 pt from the top of the whole chart frame and right-aligned:
+                // on the 0-90 deg axis that is ~70 deg, so it sat above the band it was
+                // labelling, and it needed manual geometry that went wrong the moment
+                // the plot height stopped being a constant 180.
+                .annotation(position: .overlay) {
+                    Text(bandRangeText)
+                        .font(.system(size: 11, weight: .semibold))
+                        // The band's own colour family, dimmed so it reads as the band's
+                        // label rather than competing with the trace drawn in the full
+                        // strength of the same hue.
+                        .foregroundStyle(traceColor.opacity(0.75))
+                        .fixedSize()
+                }
 
                 // Trace line
                 ForEach(Array(points.enumerated()), id: \.offset) { _, pt in
@@ -167,7 +186,13 @@ struct TelemetryChart: View {
                 // shared line spanning both charts is drawn by the parent
                 // (RunDetailsView) so it reads as one continuous line (M-UI8).
 
-                // Scrubber value dot (stays inside this chart's plot area)
+                // Scrubber value DOT only. The value text used to ride along here as
+                // `.annotation(position: .trailing)` — immediately to the right of the
+                // dot, which is precisely where the trace continues, so the reading was
+                // drawn on top of its own line and became unreadable as soon as the
+                // scrubber was anywhere but the far right. The text is now drawn by the
+                // parent, centered on the shared scrubber line above this dot, where
+                // nothing else lives.
                 if let time = selectedTime {
                     let val = valueAt(time)
                     PointMark(
@@ -176,11 +201,6 @@ struct TelemetryChart: View {
                     )
                     .foregroundStyle(traceColor)
                     .symbolSize(50)
-                    .annotation(position: .trailing, spacing: 4) {
-                        Text(scrubberValueText(val))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundStyle(traceColor)
-                    }
                 }
             }
             .chartXScale(domain: 0...runDuration)
@@ -233,9 +253,6 @@ struct TelemetryChart: View {
             }
             .frame(height: fixedPlotHeight)
             .frame(maxHeight: flexiblePlotMax)
-
-            // Target band label at right edge inside the band
-            targetBandLabel
         }
         .accessibilityLabel("\(metric == .angle ? "Angle" : "Speed") chart")
         .accessibilityHint("Drag horizontally to scrub through time")
@@ -249,51 +266,32 @@ struct TelemetryChart: View {
         guard metric == .angle || metric == .speed else { return nil }
         let plot = geo.frame(in: .global)
         var scrubX: CGFloat?
-        if let time = selectedTime, let localX = proxy.position(forX: time) {
-            scrubX = plot.minX + localX
+        var dotY: CGFloat?
+        var text: String?
+        if let time = selectedTime {
+            if let localX = proxy.position(forX: time) {
+                scrubX = plot.minX + localX
+            }
+            // Same space as `scrubX`: `chartOverlay`'s geometry covers the plot area and
+            // `proxy.position(forY:)` is relative to it, so one origin shift converts
+            // both. Reported even when `scrubX` is nil is not useful, but harmless.
+            let value = valueAt(time)
+            if let localY = proxy.position(forY: value) {
+                dotY = plot.minY + localY
+            }
+            text = scrubberValueText(value)
         }
-        return ScrubberFrame(metric: metric, plotRect: plot, scrubberX: scrubX)
+        return ScrubberFrame(metric: metric, plotRect: plot, scrubberX: scrubX,
+                             dotY: dotY, valueText: text)
     }
 
     // MARK: - Target Band Label
-
-    private var targetBandLabel: some View {
-        GeometryReader { geo in
-            HStack {
-                Spacer()
-                Text(bandRangeText)
-                    .font(.system(size: 11))
-                    .foregroundStyle(AppColors.textSecondary)
-                    .padding(.trailing, AppSpacing.sm)
-            }
-            .frame(width: geo.size.width)
-            .position(x: geo.size.width / 2, y: bandCaptionY(in: geo.size.height))
-        }
-        .frame(height: fixedPlotHeight)
-        .frame(maxHeight: flexiblePlotMax)
-        .allowsHitTesting(false)
-    }
-
-    /// Where the band caption sits, as a FRACTION of the plot height rather than a
-    /// fixed offset.
-    ///
-    /// This was `Spacer().frame(height: 40)` — 40 pt from the top of a 180 pt chart,
-    /// which on the 0-90 deg angle axis is up around 70 deg, nowhere near a 35-45 deg
-    /// band. It happened to look plausible and was never on the band. Once the plot
-    /// height stopped being a constant it would have been wrong at every size.
-    ///
-    /// Still approximate in one respect: the frame includes the x-axis label strip
-    /// along the bottom, so the caption sits a few points low. Reading the true plot
-    /// rect needs `ChartProxy.plotAreaFrame`, which is deprecated on the SDK this
-    /// project builds against, and the caption is a label on a band it already visibly
-    /// overlaps — not worth an availability fork.
-    private func bandCaptionY(in height: CGFloat) -> CGFloat {
-        let span = yDomain.upperBound - yDomain.lowerBound
-        guard span > 0, height > 0 else { return height / 2 }
-        let center = (targetBand.lower + targetBand.upper) / 2
-        let fractionFromTop = 1 - (center - yDomain.lowerBound) / span
-        return max(10, min(height - 10, CGFloat(fractionFromTop) * height))
-    }
+    //
+    // There is no overlay here any more. The caption is the band `RectangleMark`'s own
+    // `.annotation(position: .overlay)`, which centers it on the band in both axes using
+    // the chart's coordinate space. That deleted a `GeometryReader`, a fraction-of-height
+    // positioning helper, and the approximation they carried (the outer frame includes
+    // the x-axis label strip, so any offset measured from it sits a few points low).
 
     private var bandRangeText: String {
         if metric == .angle {
@@ -361,6 +359,13 @@ struct ScrubberFrame: Equatable {
     let metric: MetricKind
     let plotRect: CGRect
     let scrubberX: CGFloat?
+    /// Global y of the scrubbed value's dot on the trace. The parent places this
+    /// chart's reading chip just above it, so the number sits next to the point it
+    /// describes instead of at a fixed height far from it.
+    let dotY: CGFloat?
+    /// The already-formatted reading ("42°", "38 km/h"). Formatting stays with the
+    /// chart because only the chart knows its metric's unit.
+    let valueText: String?
 }
 
 /// Collects the per-chart `ScrubberFrame`s reported up to the parent.

@@ -15,19 +15,32 @@ SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 # which looks like a source problem and is not one.
 TARGET=arm64-apple-ios17.2
 PLUGIN_DIR=$(dirname "$(dirname "$(xcrun -f swiftc)")")/lib/swift/host/plugins
-MODULE_DIR=/tmp/mtcmod
-STAGE_DIR=/tmp/mtcapp
 
-# Both directories are recreated and their generated contents cleared file-by-file
-# rather than with a recursive delete. `rm -rf` on a variable-expanded path is exactly
-# the shape a safety policy should refuse, and it buys nothing here: these two
-# directories hold only files this script itself writes, so deleting the extensions it
-# produces is sufficient and cannot reach anything else.
-mkdir -p "$MODULE_DIR" "$STAGE_DIR"
-find "$MODULE_DIR" -maxdepth 1 -type f \
-    \( -name '*.swiftmodule' -o -name '*.swiftdoc' -o -name '*.swiftsourceinfo' \
-       -o -name '*.abi.json' \) -delete
-find "$STAGE_DIR" -maxdepth 1 -type f -name '*.swift' -delete
+# PER-INVOCATION temp dirs. These were fixed paths (/tmp/mtcmod, /tmp/mtcapp) cleared at
+# startup, which is a race as soon as TWO agent sessions run this script on the same
+# machine: the second run's cleanup deletes the first run's freshly built module between
+# its stage 1 and stage 2, and stage 2 then fails with "no such module
+# 'MotoTelemetryCore'" plus "stat error: No such file or directory" — a compiler error
+# that looks like broken source and is not. Observed exactly that way: stage 1 reported
+# "core module built", stage 2 reported "staged 41 files", and both directories were
+# empty by the time the typecheck ran.
+#
+# `mktemp -d` also removes the need to delete anything on the way in.
+MODULE_DIR=$(mktemp -d -t mtcmod)
+STAGE_DIR=$(mktemp -d -t mtcapp)
+# Scoped cleanup on exit: only the extensions this script writes, then the empty dirs.
+# Deliberately not a recursive delete on a variable-expanded path.
+cleanup() {
+    find "$MODULE_DIR" -maxdepth 1 -type f -delete 2>/dev/null
+    find "$STAGE_DIR" -maxdepth 1 -type f -name '*.swift' -delete 2>/dev/null
+    rmdir "$MODULE_DIR" "$STAGE_DIR" 2>/dev/null
+}
+trap cleanup EXIT
+
+# Per-run log for the same reason: a shared /tmp/mtc_typecheck.log would have one
+# session counting the OTHER session's errors.
+LOG=$(mktemp -t mtc_typecheck)
+
 echo "== stage 1: MotoTelemetryCore as an iOS module =="
 xcrun --sdk iphoneos swiftc -emit-module -module-name MotoTelemetryCore \
     -target "$TARGET" -sdk "$SDK" \
@@ -47,11 +60,11 @@ xcrun --sdk iphoneos swiftc -typecheck -target "$TARGET" -sdk "$SDK" \
     -I "$MODULE_DIR" \
     -load-plugin-library "$PLUGIN_DIR/libObservationMacros.dylib" \
     -load-plugin-library "$PLUGIN_DIR/libSwiftMacros.dylib" \
-    -swift-version 5 "$STAGE_DIR"/*.swift 2>&1 | tee /tmp/mtc_typecheck.log
+    -swift-version 5 "$STAGE_DIR"/*.swift 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 echo "----"
-echo "errors:   $(grep -c ': error:' /tmp/mtc_typecheck.log)"
-echo "warnings: $(grep -c ': warning:' /tmp/mtc_typecheck.log)"
+echo "errors:   $(grep -c ': error:' "$LOG")"
+echo "warnings: $(grep -c ': warning:' "$LOG")"
 echo "files:    $(ls "$STAGE_DIR"/*.swift | wc -l | tr -d ' ')"
 echo "exit:     $STATUS"
 exit $STATUS

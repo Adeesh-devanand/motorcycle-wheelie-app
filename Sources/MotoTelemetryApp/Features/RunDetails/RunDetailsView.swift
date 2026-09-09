@@ -221,9 +221,19 @@ struct RunDetailsView: View {
                     .font(.system(size: valueSize, weight: .bold, design: .monospaced))
                     .foregroundStyle(color)
                 if let unit {
-                    Text(unit)
-                        .font(.system(size: valueSize * 0.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(color)
+                    if unit == "°" {
+                        // The degree sign rides on TOP of the number as a superscript
+                        // (44°), hugging the last digit — not a spaced unit sitting
+                        // beside it on the baseline like "s" or "km/h".
+                        Text(unit)
+                            .font(.system(size: valueSize * 0.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(color)
+                            .baselineOffset(valueSize * 0.42)
+                    } else {
+                        Text(unit)
+                            .font(.system(size: valueSize * 0.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(color)
+                    }
                 }
             }
             .lineLimit(1)
@@ -291,6 +301,57 @@ struct RunDetailsView: View {
                     .position(x: x, y: max(topY - 14, 10))
                     .allowsHitTesting(false)
             }
+
+            // Each chart's reading, centered ON the scrubber line just above that
+            // chart's dot. Drawn AFTER the line and with an opaque background, so the
+            // line is occluded behind the chip rather than striking through the digits
+            // — which is the "line disappears around it" effect without having to
+            // measure the text and split the path into segments.
+            //
+            // The reading used to sit immediately right of the dot, where the trace
+            // continues, so it was drawn over its own line. Above the dot on the
+            // scrubber is empty by construction: the trace cannot be there, because the
+            // trace passes through the dot.
+            ForEach([angle, speed], id: \.metric) { frame in
+                readingChip(frame: frame, x: x, origin: origin)
+            }
+        }
+    }
+
+    /// The scrubber reading for one chart. Positioned above the dot, clamped so it stays
+    /// inside that chart's plot, and flipped below the dot when the reading is high
+    /// enough that there is no room above it.
+    @ViewBuilder
+    private func readingChip(frame: ScrubberFrame, x: CGFloat, origin: CGPoint) -> some View {
+        if let text = frame.valueText, let gy = frame.dotY {
+            let dotY = gy - origin.y
+            let plotTop = frame.plotRect.minY - origin.y
+            let plotBottom = frame.plotRect.maxY - origin.y
+            // Half the chip's height plus the dot's radius and a small gap. A constant
+            // rather than a measurement: the chip is one short monospaced line at a
+            // fixed size, so its height does not vary with the value.
+            let offset: CGFloat = 20
+            let above = dotY - offset
+            // If the chip would leave the plot, put it below the dot instead. A peak
+            // reading sits at the very top of the axis, which is exactly when "above"
+            // has nowhere to go.
+            let y = above < plotTop + 10 ? min(dotY + offset, plotBottom - 10) : above
+            let color = frame.metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
+
+            Text(text)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(color)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color(hex: 0x1A1A20).opacity(0.95))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(color.opacity(0.45), lineWidth: 1)
+                )
+                .fixedSize()
+                .position(x: x, y: y)
+                .allowsHitTesting(false)
         }
     }
 
