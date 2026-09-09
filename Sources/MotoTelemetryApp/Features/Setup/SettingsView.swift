@@ -20,17 +20,9 @@ import SwiftUI
 struct SettingsView: View {
     @State private var preferences: RiderPreferences
 
-    /// Draft text for the gauge-maximum field. Held separately from the preference
-    /// so a partially-typed value ("5" on the way to "50") is not committed and
-    /// clamped to the minimum under the rider's fingers.
-    @State private var gaugeMaximumDraft: String = ""
-    @FocusState private var gaugeFieldFocused: Bool
-
     init(preferences: RiderPreferences) {
         _preferences = State(wrappedValue: preferences)
     }
-
-    private var gaugeBounds: ClosedRange<Double> { RiderPreferences.gaugeMaximumRange }
 
     var body: some View {
         List {
@@ -69,58 +61,26 @@ struct SettingsView: View {
         .background(AppColors.background)
         .navigationTitle("Settings")
         .preferredColorScheme(.dark)
-        .onAppear { gaugeMaximumDraft = String(Int(preferences.speedGaugeMaximum)) }
-        .onChange(of: gaugeFieldFocused) { _, focused in
-            // Commit when focus LEAVES the field, so intermediate keystrokes are
-            // never clamped mid-typing.
-            if !focused { commitGaugeMaximum() }
-        }
     }
 
     // MARK: - Gauge maximum
 
-    /// A typed number rather than a preset picker, bounded 50–300 km/h. The old
-    /// picker offered five fixed presets; a rider whose ceiling is 140 had no way to
-    /// say so.
+    /// A menu of allowed ceilings, not a typed number.
+    ///
+    /// It WAS a text field, replacing an older five-preset picker, on the reasoning that a
+    /// rider whose ceiling is 140 had no way to say so. That reasoning was wrong in a way
+    /// only visible on the meter: the live scale divides its range into
+    /// `MeterScale.divisions` (6) so the speed axis matches the 0-90 deg angle axis beside
+    /// it, and an arbitrary ceiling makes those six steps fractional — 140 gives 23.33, and
+    /// an axis labelled 0/23/47/70/93/117/140. So the ceiling is not actually a free
+    /// parameter; it has to be a multiple of 30. A menu states that constraint instead of
+    /// letting the rider type a value the app then silently moves.
     private var gaugeMaximumField: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            HStack {
-                Text("Gauge Maximum")
-                Spacer()
-                TextField("100", text: $gaugeMaximumDraft)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.trailing)
-                    .focused($gaugeFieldFocused)
-                    .frame(width: 70)
-                    .onSubmit { commitGaugeMaximum() }
-                Text("km/h")
-                    .foregroundStyle(AppColors.textSecondary)
-            }
-
-            Text("\(Int(gaugeBounds.lowerBound))–\(Int(gaugeBounds.upperBound)) km/h")
-                .font(.caption)
-                .foregroundStyle(AppColors.textSecondary)
-
-            if let pending = Double(gaugeMaximumDraft), !gaugeBounds.contains(pending) {
-                // Say what will happen before it happens, rather than silently
-                // rewriting the number the moment the field loses focus.
-                Text("Will be adjusted to \(Int(RiderPreferences.clampGaugeMaximum(pending)))")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.danger)
+        Picker("Gauge Maximum", selection: $preferences.speedGaugeMaximum) {
+            ForEach(RiderPreferences.gaugeMaximumOptions, id: \.self) { option in
+                Text("\(Int(option)) km/h").tag(option)
             }
         }
-    }
-
-    /// Commit the draft, or restore the live value if the draft is not a number.
-    /// `RiderPreferences` clamps on write, so this cannot store an out-of-range
-    /// ceiling even if the field is bypassed.
-    private func commitGaugeMaximum() {
-        guard let typed = Double(gaugeMaximumDraft) else {
-            gaugeMaximumDraft = String(Int(preferences.speedGaugeMaximum))
-            return
-        }
-        preferences.speedGaugeMaximum = typed
-        gaugeMaximumDraft = String(Int(preferences.speedGaugeMaximum))
     }
 
     // MARK: - Hidden: audio cue controls

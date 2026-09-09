@@ -478,11 +478,28 @@ struct VerticalTelemetryMeter: View {
         }
     }
 
-    /// Value step between MAJOR spokes — deliberately the same step
-    /// `makeScaleSteps()` draws numbers at, so every number lands on a major spoke
-    /// instead of floating between two minors.
+    /// How many equal intervals the scale is divided into, and therefore
+    /// `scaleDivisions + 1` labelled major spokes. Six, because that is what puts the
+    /// angle axis on 15 deg steps across 0-90 — and speed now uses the SAME number so the
+    /// two meters standing side by side read as one instrument at any ceiling.
+    ///
+    /// Read from `MeterScale` rather than declared here, because
+    /// `RiderPreferences.gaugeMaximumOptions` derives the selectable ceilings from the same
+    /// constant: every one is a multiple of `divisions * 5`, so dividing by 6 always lands
+    /// on whole multiples of 5. Two independent literals would let that agreement rot.
+    private var scaleDivisions: Int { MeterScale.divisions }
+
+    /// Value step between MAJOR spokes — the span divided into `scaleDivisions`, and the
+    /// same step `makeScaleSteps()` prints numbers at, so every number lands on a major
+    /// spoke instead of floating between two minors.
+    ///
+    /// One formula for both meters now. It was `15` for angle and `span / 4` for speed, so
+    /// the two axes side by side had different numbers of divisions — six against four —
+    /// and at a 90 km/h ceiling the speed axis read 0/22.5/45/67.5/90 next to the angle's
+    /// 0/15/30/45/60/75/90. Deriving both from the span makes them identical at every
+    /// ceiling, and on the 0-90 angle axis it still evaluates to exactly 15.
     private var majorTickStep: Double {
-        label == "ANGLE" ? 15.0 : (range.upperBound - range.lowerBound) / 4.0
+        (range.upperBound - range.lowerBound) / Double(scaleDivisions)
     }
 
     /// Five minor spokes between each pair of majors, hence six steps per major.
@@ -571,15 +588,17 @@ struct VerticalTelemetryMeter: View {
         .frame(width: totalWidth, height: height)
     }
 
+    /// The labelled values: one per major spoke, from the lower bound to the ceiling
+    /// inclusive.
+    ///
+    /// Was two hardcoded branches — a 15 deg stride for angle, quarter steps for speed —
+    /// which is what made the two axes disagree. Deriving them from `majorTickStep` means
+    /// the numbers cannot drift from the spokes they sit on, and both meters get the same
+    /// count by construction rather than by two literals happening to agree.
     private func makeScaleSteps() -> [Double] {
-        if label == "ANGLE" {
-            return stride(from: 0.0, through: 90.0, by: 15.0).map { $0 }
-        } else {
-            // Quarter steps including the maximum. With the MAX chip removed
-            // (M-UI3) the top label is how the rider sees the gauge ceiling.
-            let ub = range.upperBound
-            return [0.0, 0.25, 0.50, 0.75, 1.0].map { $0 * ub }
-        }
+        let step = majorTickStep
+        guard step > 0 else { return [range.lowerBound] }
+        return (0...scaleDivisions).map { range.lowerBound + Double($0) * step }
     }
 
     // MARK: - Value Readout

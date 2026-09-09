@@ -16,12 +16,26 @@ enum SpeedUnit: String, Codable, Sendable, Equatable {
 final class RiderPreferences {
     private static let storageKey = "RiderPreferences"
 
-    /// Inclusive bounds for `speedGaugeMaximum`, km/h. The Settings field is a free
-    /// text entry rather than a preset picker, so these are enforced here as well —
-    /// a stored value from an older build, or a typo that got past the field, must
-    /// not be able to produce a gauge with a zero or absurd span. 0 would make
-    /// `fillFraction` divide by zero.
-    static let gaugeMaximumRange: ClosedRange<Double> = 50...300
+    /// The gauge ceilings a rider may choose, km/h.
+    ///
+    /// Derived from `MeterScale`, not hardcoded, and that derivation is load-bearing. The
+    /// live meter divides its scale into `MeterScale.divisions` (6) equal intervals so the
+    /// speed axis reads exactly like the 0-90 deg angle axis beside it. For those six steps
+    /// to land on whole multiples of 5, the ceiling must be a multiple of
+    /// `divisions * 5` — 90 gives 15s, 120 gives 20s, 300 gives 50s. A ceiling of 100,
+    /// which is what this used to default to, gives 16.6667 and an axis labelled
+    /// 0/17/33/50/67/83/100.
+    ///
+    /// Uniformly spaced, so the picker is an even ladder: 30, 60, ... 300.
+    static let gaugeMaximumOptions: [Double] =
+        Array(stride(from: MeterScale.ceilingStep, through: 300.0, by: MeterScale.ceilingStep))
+
+    /// Inclusive bounds for `speedGaugeMaximum`, km/h — the ends of
+    /// `gaugeMaximumOptions`. A stored value from an older build must not be able to
+    /// produce a gauge with a zero or absurd span; 0 would make `fillFraction` divide by
+    /// zero.
+    static let gaugeMaximumRange: ClosedRange<Double> =
+        (gaugeMaximumOptions.first ?? 30)...(gaugeMaximumOptions.last ?? 300)
 
     var angleTarget: MetricRange {
         didSet { save() }
@@ -84,17 +98,31 @@ final class RiderPreferences {
         } else {
             self.angleTarget = MetricRange(lower: 35, upper: 45)
             self.speedTarget = MetricRange(lower: 35, upper: 50)
-            self.speedGaugeMaximum = 100
+            self.speedGaugeMaximum = Self.defaultGaugeMaximum
             self.speedEnabled = true
             self.speedUnit = .kph
         }
     }
 
+    /// Snaps a ceiling onto the nearest allowed option, rather than merely clamping it
+    /// into range.
+    ///
+    /// Snapping and not clamping, because an off-ladder value is not a cosmetic problem:
+    /// the meter divides the range into six and a ceiling that is not a multiple of 30
+    /// yields fractional axis labels. Existing installs default to 100, which lands on 90
+    /// here — a visible change to their gauge, and the only alternative was to keep
+    /// rendering an axis labelled 0/17/33/50/67/83/100.
     static func clampGaugeMaximum(_ value: Double) -> Double {
-        guard value.isFinite else { return 100 }
-        return min(max(value.rounded(), gaugeMaximumRange.lowerBound),
-                   gaugeMaximumRange.upperBound)
+        let fallback = gaugeMaximumOptions.first ?? 30
+        guard value.isFinite else { return defaultGaugeMaximum }
+        return gaugeMaximumOptions.min(by: {
+            abs($0 - value) < abs($1 - value)
+        }) ?? fallback
     }
+
+    /// 120 km/h: on the ladder, and a plausible ceiling for a bike being ridden hard
+    /// enough to loft the front. The old default was 100, which is not on it.
+    static let defaultGaugeMaximum: Double = 120
 
     private func save() {
         let stored = StoredPreferences(
