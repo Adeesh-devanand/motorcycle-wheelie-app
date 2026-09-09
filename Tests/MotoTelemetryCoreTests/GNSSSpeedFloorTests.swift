@@ -71,6 +71,42 @@ final class GNSSSpeedFloorTests: XCTestCase {
 
     // MARK: - The pipeline honours it
 
+    /// A fix that reports NO speed solution must CLEAR the reading, not leave the last
+    /// one standing.
+    ///
+    /// From the 2026-09-09 log: one valid fix (`speed=2.5 speedAcc=0.99`) followed by a
+    /// run of `speed=-1.0` fixes. The pipeline only assigned on a non-nil, so 2.5 m/s —
+    /// 9 km/h — stayed in place for the rest of the session and `speed != nil` kept
+    /// reporting the value as available. The live meter sat "hard stuck on 8".
+    func testANoSolutionFixClearsTheHeldSpeedRatherThanHoldingIt() {
+        let zeroBias = BiasEstimate(bias: .zero,
+                                    sigma: Vector3(1e-4, 1e-4, 1e-4),
+                                    sampleCount: 200,
+                                    monotonicTime: 0,
+                                    bikeProfileID: bike)
+        var pipeline = Pipeline(config: Config(),
+                                alignment: .identity(bikeProfileID: bike),
+                                initialBias: zeroBias,
+                                gravityAnchor: Conventions.restSpecificForce)
+
+        func pitchTick(_ i: Int) -> PipelineOutput? {
+            let imu = IMUSample(time: Double(i) / 100,
+                                rotationRate: .zero,
+                                specificForce: Conventions.restSpecificForce)
+            return pipeline.process(Sample.imu(imu))
+        }
+
+        _ = pitchTick(1)
+        _ = pipeline.process(Sample.gnss(fix(speed: 2.5, accuracy: 0.99, at: 0.015)))
+        XCTAssertEqual(pitchTick(2)?.speed, 2.5, "a valid fix must be reported")
+
+        // The receiver loses its speed solution.
+        _ = pipeline.process(Sample.gnss(fix(speed: -1, accuracy: -1, at: 0.025)))
+        XCTAssertNil(pitchTick(3)?.speed,
+                     "a fix reporting no speed solution must clear the reading, "
+                     + "not leave 2.5 m/s standing and claim it is available")
+    }
+
     /// End to end, because the display and the recorded samples both read
     /// `PipelineOutput.speed` — fixing only `GNSSFix` would leave the bug live if the
     /// `.gnss` branch still went to `fix.speed`.

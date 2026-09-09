@@ -152,7 +152,16 @@ public struct Pipeline {
             // Speed only. Uncoupled from the IMU stream by design: at ~1 Hz it cannot
             // track a 1.2 s pitch ramp, and with no filter to correct there is
             // nothing to fuse it into.
-            if let speed = fix.resolvedSpeed { lastSpeed = speed }
+            //
+            // ASSIGNED, not conditionally assigned. This was
+            // `if let speed = fix.resolvedSpeed { lastSpeed = speed }`, which ignored a
+            // nil — so a fix that explicitly reports NO speed solution (CoreLocation
+            // sends speed = -1) left the previous reading in place permanently. One
+            // valid fix followed by a run of invalid ones held that number for the rest
+            // of the session and kept `speed != nil`, i.e. kept claiming the speed was
+            // available. A fix saying "I have no speed" is positive evidence, not an
+            // absence of evidence, so it clears the value.
+            lastSpeed = fix.resolvedSpeed
             return nil
         case .baro, .wheelSpeed:
             // Neither is consumed by this estimator, but both remain part of the LOG

@@ -221,6 +221,11 @@ struct LiveScreen: View {
         )
         meter.labelsOnLeading = false
         meter.targetDragStep = 2.5
+        // The one meter that can genuinely have nothing to report: GNSS may hold no speed
+        // solution. The view model HOLDS the last displayed speed in that case rather than
+        // smoothing toward a fabricated 0, so without this the meter renders that held
+        // number as if it were live — which is how it ended up stuck at 8 km/h.
+        meter.valueAvailable = viewModel.speedAvailable
         // The speed meter only appears alongside angle, so it always shares the width.
         meter.trackShiftTowardCenter = 16
         meter.onTargetChange = targetEditDisabled ? nil : { band in

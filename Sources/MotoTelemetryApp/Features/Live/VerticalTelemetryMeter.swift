@@ -77,6 +77,18 @@ struct VerticalTelemetryMeter: View {
     /// width.
     private let bandSpillOpenSide: CGFloat = 22
 
+    /// Whether `value` is a real measurement.
+    ///
+    /// False means the source has nothing to report — no GNSS speed solution — and the
+    /// meter shows a dash with no fill and no cursor rather than a number.
+    ///
+    /// This exists because the SPEED card below the meters already distinguished the two
+    /// cases and the meter did not: the view model deliberately HOLDS the last displayed
+    /// speed while no fix exists (smoothing toward 0 would invent a stationary bike), and
+    /// the meter rendered that held number as a live reading. A device log caught it stuck
+    /// at 8 km/h, indefinitely, with the card beside it correctly showing "—".
+    var valueAvailable: Bool = true
+
     /// How far each meter's whole track is nudged toward the centre of the screen.
     /// Set by the caller, and only when both meters are on screen: every outboard
     /// element sits on the meter's OUTER side, so moving the track inboard is what buys
@@ -249,9 +261,12 @@ struct VerticalTelemetryMeter: View {
             tickCanvas(height: height)
                 .frame(width: tickCanvasWidth, height: height)
 
-            // Cursor line + dot + glow
-            cursorOverlayView(cursorY: cursorY, height: height)
-                .frame(width: totalTrackWidth, height: height)
+            // Cursor line + dot + glow. Omitted with no reading: a cursor pinned at the
+            // bottom of the scale is a claim that the value is zero.
+            if valueAvailable {
+                cursorOverlayView(cursorY: cursorY, height: height)
+                    .frame(width: totalTrackWidth, height: height)
+            }
         }
         .frame(width: totalTrackWidth, height: height)
         // Widen the touch target without changing anything visible. The track is
@@ -571,7 +586,14 @@ struct VerticalTelemetryMeter: View {
 
     private var valueReadoutView: some View {
         VStack(spacing: 0) {
-            if label == "ANGLE" {
+            if !valueAvailable {
+                // A dash, not a zero. 0 km/h is a perfectly plausible reading for a bike
+                // waiting at a light, so showing it for "no GNSS speed solution" gives the
+                // rider no way to tell the two apart (R15.3).
+                Text("—")
+                    .font(.system(size: 34, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppColors.textSecondary)
+            } else if label == "ANGLE" {
                 Text("\(Int(value))°")
                     .font(.system(size: 34, weight: .bold, design: .monospaced))
                     .foregroundStyle(AppColors.accentBright)
@@ -625,6 +647,10 @@ struct VerticalTelemetryMeter: View {
     // MARK: - Computed
 
     private var fillFraction: Double {
+        // No reading means no bar. Not 0 because the bike is stopped — 0 because there is
+        // nothing to draw, which is also why the cursor and the numeric readout are
+        // suppressed rather than shown at the bottom of the scale.
+        guard valueAvailable else { return 0 }
         let span = range.upperBound - range.lowerBound
         guard span > 0 else { return 0 }
         let fraction = (value - range.lowerBound) / span
@@ -652,6 +678,12 @@ struct VerticalTelemetryMeter: View {
     }
 
     private var accessibilityValueText: String {
+        guard valueAvailable else {
+            if let band = targetBand {
+                return "no reading, target \(Int(band.lower)) to \(Int(band.upper))"
+            }
+            return "no reading"
+        }
         if let band = targetBand {
             return "\(Int(value)) \(unit), target \(Int(band.lower)) to \(Int(band.upper))"
         }
