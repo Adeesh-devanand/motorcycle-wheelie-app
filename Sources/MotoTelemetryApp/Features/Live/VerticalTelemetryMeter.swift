@@ -61,15 +61,22 @@ struct VerticalTelemetryMeter: View {
     private let cursorThickness: CGFloat = 2
     private let cursorDotSize: CGFloat = 10
 
-    /// How far the target band spills past the track on the side carrying the TARGET
-    /// label and its pointer — kept narrow, because that side also carries the scale
-    /// numbers (at `scaleInset`), the value readout and the label itself.
-    private let bandSpillArrowSide: CGFloat = 4
-    /// How far it spills on the opposite side, which holds nothing but tick marks and
-    /// is therefore where the band has room to be wide. The fill fades to nothing
-    /// across this part, so the band reads as light spilling out of the meter rather
-    /// than as a box drawn around it.
-    private let bandSpillOpenSide: CGFloat = 22
+    /// How far the target band's FILL spills past the track on each side. Symmetric:
+    /// the fill fades to nothing at both ends, so it can run under the scale numbers on
+    /// the label side without obscuring them (they are drawn above it, and the fill is
+    /// down to a few percent opacity by the time it reaches them).
+    private let bandSpill: CGFloat = 22
+    /// How far the DASHED OUTLINE sits from the track — much tighter than the fill. The
+    /// outline marks the target's actual bounds, so it brackets the meter rather than the
+    /// glow around it, and it keeps the pointer clear of the scale numbers at
+    /// `scaleInset`.
+    private let bandBracketSpill: CGFloat = 4
+
+    /// How far each meter's whole track is nudged toward the centre of the screen.
+    /// Set by the caller, and only when both meters are on screen: every outboard
+    /// element sits on the meter's OUTER side, so moving the track inboard is what buys
+    /// the TARGET label room before it reaches the screen edge.
+    var trackShiftTowardCenter: CGFloat = 0
 
     /// Gap between the end of a major tick and the scale label text.
     private let scaleLabelGap: CGFloat = 4
@@ -154,6 +161,16 @@ struct VerticalTelemetryMeter: View {
             }
         }
         .frame(width: totalWidth, height: height)
+        // Nudge the whole meter — track, scale, readout and TARGET label together —
+        // toward the centre of the screen. Every outboard element is offset from the
+        // track centre on the meter's OUTER side, and the label column reaches
+        // `scaleInset + targetLabelWidth` (90 pt) from that centre against a half-width
+        // of roughly 97, so it was running out of room at the screen edge. Moving the
+        // track inboard buys that clearance without shrinking anything.
+        //
+        // Applied to the whole layout rather than the track alone, so the pointer, the
+        // band and the label keep their relationship to each other.
+        .offset(x: (labelsOnLeading ? 1 : -1) * trackShiftTowardCenter)
     }
 
     // MARK: - Meter Track
@@ -281,69 +298,98 @@ struct VerticalTelemetryMeter: View {
         let bandHeight = max((upperFrac - lowerFrac) * height, 4)
         let bottomOffset = lowerFrac * height
 
-        // Asymmetric on purpose. Every outboard element — scale numbers, value readout,
-        // TARGET label — sits on ONE side of the track, so that side has no room to
-        // spare; the other side carries only tick marks. Spilling 22 pt into the empty
-        // side and 4 pt into the crowded one makes the band visibly wider without
-        // pushing the fill under the scale numbers, and leaves the pointer exactly where
-        // it was (track half-width + 4 = the old symmetric edge).
-        let bandWidth = trackWidth + bandSpillArrowSide + bandSpillOpenSide
-        let openSideSign: CGFloat = labelsOnLeading ? 1 : -1
-        let xShift = openSideSign * (bandSpillOpenSide - bandSpillArrowSide) / 2
-        // Where the track's far edge lands in the band's own width. The fill holds full
-        // strength from the pointer edge all the way across the meter and fades ONLY in
-        // the part that spills past it — no gradient starts at the centre.
-        let holdUntil = (bandSpillArrowSide + trackWidth) / bandWidth
+        // Two layers at two different widths, which is what lets the band be wide AND
+        // keep a meaningful outline:
+        //
+        //   - the FILL is wide (track + 22 each side) and fades to nothing at all four
+        //     edges, so it reads as light spilling out of the meter;
+        //   - the DASHED OUTLINE is tight (track + 4 each side) and crisp, because it is
+        //     the only part carrying information — the target's lower and upper bound.
+        //
+        // Keeping them separate also keeps the pointer where it belongs: attached to the
+        // outline at ~19 pt from centre, clear of the scale numbers at `scaleInset` (28),
+        // rather than out at the fill's faded edge.
+        let fillWidth = trackWidth + bandSpill * 2
+        let bracketWidth = trackWidth + bandBracketSpill * 2
+        // Hold full strength right across the track, fade only over the spill past it.
+        let holdFrom = bandSpill / fillWidth
+        let holdTo = (bandSpill + trackWidth) / fillWidth
 
-        return Rectangle()
-            .fill(bandFillGradient(holdUntil: holdUntil))
-            // Three sides, not four: top and bottom are the target's actual bounds and
-            // stay crisp, the pointer side is closed because the arrow hangs off it, and
-            // the open side has no dashed edge at all — the fill simply runs out.
-            .overlay(
-                BandBracket(closedEdgeLeading: labelsOnLeading)
-                    .stroke(
-                        AppColors.targetBandStroke,
-                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                    )
-            )
-            // The pointer, sitting ON the band's closed edge and aimed OUTWARD, at the
-            // TARGET label.
-            //
-            // It used to be the last item in the label's own VStack — a triangle under
-            // the text, pointing back at the band from a distance, with nothing joining
-            // the two. Anchoring it to the band's edge instead means the band is the
-            // thing doing the pointing: the mark starts on the dashed line and leads the
-            // eye out to the text that describes it. It takes the band's stroke colour
-            // for the same reason — it is part of that line, not part of the label.
-            .overlay(alignment: labelsOnLeading ? .leading : .trailing) {
-                Image(systemName: labelsOnLeading
-                      ? "arrowtriangle.left.fill"
-                      : "arrowtriangle.right.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(AppColors.targetBandStroke)
-                    // Clear of the dashed edge it is attached to, and deliberately
-                    // outside the band's own frame — nothing in this ZStack clips, and
-                    // the label it points at is further out still.
-                    .offset(x: labelsOnLeading ? -7 : 7)
-            }
-            .frame(width: bandWidth, height: bandHeight)
-            .offset(x: xShift, y: -bottomOffset)
+        return ZStack {
+            Rectangle()
+                .fill(AppColors.targetBandFill)
+                // Two chained masks, so alpha multiplies and the fill falls off toward
+                // every edge while keeping a solid core. One gradient cannot do both
+                // axes, and a single radial one would fade the corners unevenly on a
+                // band this wide and short.
+                .mask(horizontalFadeMask(holdFrom: holdFrom, holdTo: holdTo))
+                .mask(verticalFadeMask(bandHeight: bandHeight))
+                .frame(width: fillWidth, height: bandHeight)
+
+            // Three sides, not four: top and bottom are the target's actual bounds, the
+            // pointer side is closed because the arrow hangs off it, and the side away
+            // from the label has no dashed edge at all.
+            BandBracket(closedEdgeLeading: labelsOnLeading)
+                .stroke(
+                    AppColors.targetBandStroke,
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                )
+                // The pointer, sitting ON the band's closed edge and aimed OUTWARD, at
+                // the TARGET label.
+                //
+                // It used to be the last item in the label's own VStack — a triangle
+                // under the text, pointing back at the band from a distance, with nothing
+                // joining the two. Anchoring it to the outline instead means the band is
+                // the thing doing the pointing: the mark starts on the dashed line and
+                // leads the eye out to the text that describes it. It takes the band's
+                // stroke colour for the same reason — it is part of that line, not part
+                // of the label.
+                .overlay(alignment: labelsOnLeading ? .leading : .trailing) {
+                    Image(systemName: labelsOnLeading
+                          ? "arrowtriangle.left.fill"
+                          : "arrowtriangle.right.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AppColors.targetBandStroke)
+                        .offset(x: labelsOnLeading ? -7 : 7)
+                }
+                .frame(width: bracketWidth, height: bandHeight)
+        }
+        .frame(width: fillWidth, height: bandHeight)
+        .offset(y: -bottomOffset)
     }
 
-    /// Full strength across the meter, then a fade to nothing over the spill on the open
-    /// side. The gradient always runs from the CLOSED (pointer) edge toward the open one,
-    /// which is why its start/end flip with `labelsOnLeading`.
-    private func bandFillGradient(holdUntil: CGFloat) -> LinearGradient {
-        let solid = AppColors.targetBandFill
+    /// Fades the fill toward the leading and trailing edges, at full strength across the
+    /// whole track in between — so nothing begins fading anywhere near the centre.
+    private func horizontalFadeMask(holdFrom: CGFloat, holdTo: CGFloat) -> LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .white, location: holdFrom),
+                .init(color: .white, location: holdTo),
+                .init(color: .clear, location: 1)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+
+    /// Fades the fill toward the top and bottom edges.
+    ///
+    /// The fade length is a FIXED 6 pt converted to a fraction, not a fraction of the
+    /// band: a narrow target can be only a few points tall, and a proportional fade
+    /// would erase it. Capped at a third of the band from each side so a solid core
+    /// always survives.
+    private func verticalFadeMask(bandHeight: CGFloat) -> LinearGradient {
+        let fade = min(6 / max(bandHeight, 1), 0.33)
         return LinearGradient(
             stops: [
-                .init(color: solid, location: 0),
-                .init(color: solid, location: holdUntil),
-                .init(color: solid.opacity(0), location: 1)
+                .init(color: .clear, location: 0),
+                .init(color: .white, location: fade),
+                .init(color: .white, location: 1 - fade),
+                .init(color: .clear, location: 1)
             ],
-            startPoint: labelsOnLeading ? .leading : .trailing,
-            endPoint: labelsOnLeading ? .trailing : .leading
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 

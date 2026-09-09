@@ -197,6 +197,9 @@ struct LiveScreen: View {
         )
         meter.labelsOnLeading = true
         meter.targetDragStep = 2.5
+        // Only when the two meters share the width. On its own the angle meter has the
+        // whole screen and shifting it would just look off-centre.
+        meter.trackShiftTowardCenter = viewModel.preferences.speedEnabled ? 16 : 0
         meter.onTargetChange = targetEditDisabled ? nil : { band in
             viewModel.preferences.angleTarget = clamped(band, to: 0...90)
         }
@@ -218,6 +221,8 @@ struct LiveScreen: View {
         )
         meter.labelsOnLeading = false
         meter.targetDragStep = 2.5
+        // The speed meter only appears alongside angle, so it always shares the width.
+        meter.trackShiftTowardCenter = 16
         meter.onTargetChange = targetEditDisabled ? nil : { band in
             viewModel.preferences.speedTarget = clamped(band, to: 0...ceiling)
         }
