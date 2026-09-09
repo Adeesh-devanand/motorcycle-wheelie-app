@@ -1,6 +1,12 @@
-# moto-telemetry
+# Loftmeter
 
 Measures motorcycle pitch (wheelie angle), speed, and lean from an iPhone.
+
+> **Naming:** *Loftmeter* is the product / App Store name (the home-screen label,
+> set via `CFBundleDisplayName`). The Swift package and its core module remain
+> `MotoTelemetryCore`, the Xcode target `MotoTelemetryApp`, and the bundle id
+> `com.adeesh.MotoTelemetryApp` — these are internal identifiers and are left
+> unchanged on purpose (renaming them is invasive and user-invisible).
 
 ## The one architectural rule
 
