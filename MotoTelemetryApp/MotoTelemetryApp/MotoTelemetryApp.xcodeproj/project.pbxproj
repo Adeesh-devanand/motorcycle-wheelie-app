@@ -597,6 +597,7 @@
 				INFOPLIST_FILE = MotoTelemetryApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loftmeter;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Records your speed and distance from GPS while a run is active, including when the app is in the background during a ride.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speed from GPS for distance and GNSS aiding";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Measures motorcycle pitch angle during wheelies";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -632,6 +633,7 @@
 				INFOPLIST_FILE = MotoTelemetryApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loftmeter;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Records your speed and distance from GPS while a run is active, including when the app is in the background during a ride.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speed from GPS for distance and GNSS aiding";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Measures motorcycle pitch angle during wheelies";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
