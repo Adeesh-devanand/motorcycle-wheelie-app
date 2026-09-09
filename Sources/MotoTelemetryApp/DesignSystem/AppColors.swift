@@ -12,6 +12,17 @@ extension Color {
             opacity: opacity
         )
     }
+
+    /// An opaque, darker shade of this colour for use as an unfilled bar track —
+    /// the same hue as the fill, scaled toward black so it reads as "the rest of
+    /// the bar" rather than a blank grey. Uses UIColor to read the resolved sRGB
+    /// components so it works for dynamically-built metric colours too.
+    var darkenedTrack: Color {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        let factor: CGFloat = 0.32
+        return Color(.sRGB, red: Double(r * factor), green: Double(g * factor), blue: Double(b * factor), opacity: 1.0)
+    }
 }
 
 // MARK: - App Colors (Dark Theme)

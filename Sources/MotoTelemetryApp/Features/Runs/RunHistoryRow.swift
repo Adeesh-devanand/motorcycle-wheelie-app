@@ -22,7 +22,8 @@ struct RunHistoryRow: View {
                     format: "%.1f",
                     unit: "s",
                     normalised: normalise(value: run.duration, min: fieldAnchors.durationMin, max: fieldAnchors.durationMax),
-                    color: durationColor
+                    color: durationColor,
+                    trackColor: durationColor.darkenedTrack
                 )
                 .frame(maxWidth: .infinity)
 
@@ -31,7 +32,8 @@ struct RunHistoryRow: View {
                     format: "%.0f",
                     unit: "°",
                     normalised: normalise(value: run.maxAngle, min: fieldAnchors.angleMin, max: fieldAnchors.angleMax),
-                    color: angleColor
+                    color: angleColor,
+                    trackColor: angleColor.darkenedTrack
                 )
                 .frame(maxWidth: .infinity)
 
@@ -40,7 +42,8 @@ struct RunHistoryRow: View {
                     format: "%.0f",
                     unit: "km/h",
                     normalised: normalise(value: run.maxSpeed, min: fieldAnchors.speedMin, max: fieldAnchors.speedMax),
-                    color: speedColor
+                    color: speedColor,
+                    trackColor: speedColor.darkenedTrack
                 )
                 .frame(maxWidth: .infinity)
             }
@@ -109,7 +112,7 @@ struct RunHistoryRow: View {
 
     // MARK: - Metric Column
 
-    private func metricColumn(value: Double, format: String, unit: String, normalised: Double, color: Color) -> some View {
+    private func metricColumn(value: Double, format: String, unit: String, normalised: Double, color: Color, trackColor: Color) -> some View {
         VStack(spacing: AppSpacing.xs) {
             // Value + unit
             HStack(alignment: .firstTextBaseline, spacing: 1) {
@@ -125,12 +128,13 @@ struct RunHistoryRow: View {
                     .foregroundStyle(color.opacity(0.7))
             }
 
-            // Mini bar
+            // Mini bar — inset within its column so adjacent bars never touch,
+            // with the unfilled track drawn as a dark shade of the fill colour.
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    // Track
+                    // Track — a darkened shade of the fill colour, not a blank grey.
                     Capsule()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(trackColor)
                         .frame(height: 4)
 
                     // Fill
@@ -140,6 +144,7 @@ struct RunHistoryRow: View {
                 }
             }
             .frame(height: 4)
+            .padding(.horizontal, AppSpacing.xs)
         }
     }
 
