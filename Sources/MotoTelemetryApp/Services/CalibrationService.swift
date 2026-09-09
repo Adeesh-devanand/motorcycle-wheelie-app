@@ -49,6 +49,16 @@ final class CalibrationService: @unchecked Sendable {
     /// resets — "too much vibration", "still moving" — rather than a generic wait.
     private(set) var blockingReason: String?
 
+    /// How long a rider-facing reason stays on screen before a different one may replace
+    /// it. Long enough to read a short sentence; short enough that the text still tracks
+    /// what the bike is doing. See `publishReason`.
+    private static let reasonMinimumDisplay: TimeInterval = 1.5
+
+    /// When the currently displayed reason was published. Main actor, like the mirror it
+    /// describes.
+    @MainActor private var reasonShownAt: Date = .distantPast
+    @MainActor private var reasonRepublishScheduled = false
+
     // MARK: - Authoritative state
     //
     // The three properties ABOVE are `@Observable` MIRRORS, written only on the main
@@ -180,8 +190,75 @@ final class CalibrationService: @unchecked Sendable {
         // Guarded so an unchanged value does not invalidate a SwiftUI view — the
         // `.collecting` path re-publishes the same phase on most samples.
         if phase != newPhase { phase = newPhase }
-        if blockingReason != newReason { blockingReason = newReason }
         if hasSeenSample != newSeen { hasSeenSample = newSeen }
+        publishReason(newReason)
+    }
+
+    /// Move `blockingReason` toward `newReason`, but never faster than a rider can read.
+    ///
+    /// The authoritative reason is per-sample, and on an unsteady phone the gate rejects
+    /// for a DIFFERENT cause from one sample to the next — rotating, then out of band,
+    /// then dwell-not-met, with `.collecting` (nil) interleaved. Published raw at sensor
+    /// rate that is several changes a second, and the rider reported the result exactly:
+    /// the yellow text cycles too fast to read anything until the bike is already still,
+    /// by which point the message is gone. The view's 0.25 s crossfade made it worse,
+    /// restarting mid-fade so the text never resolved.
+    ///
+    /// So a displayed reason is LATCHED for `reasonMinimumDisplay`. Deliberately here in
+    /// the publish path rather than in the view: the mirrors are what every consumer reads,
+    /// and the authoritative `internalBlockingReason` stays instantaneous, so diagnostics
+    /// and the log are unaffected.
+    ///
+    /// Note it also latches a change to nil. A momentary pass mid-wobble would otherwise
+    /// blank the warning for a few frames and bring it straight back, which is the same
+    /// flicker seen from the other side.
+    @MainActor
+    private func publishReason(_ newReason: String?) {
+        guard blockingReason != newReason else { return }
+
+        // Nothing on screen yet: show it at once. The FIRST warning must never be
+        // delayed — it is the one that tells the rider why the countdown just reset.
+        guard blockingReason != nil else {
+            blockingReason = newReason
+            reasonShownAt = Date.now
+            return
+        }
+
+        let shownFor = Date.now.timeIntervalSince(reasonShownAt)
+        guard shownFor >= Self.reasonMinimumDisplay else {
+            // Too soon. Keep the current text and come back when its time is up, at which
+            // point whatever is true THEN gets published — not this now-stale value.
+            scheduleReasonRepublish(after: Self.reasonMinimumDisplay - shownFor)
+            return
+        }
+
+        blockingReason = newReason
+        reasonShownAt = Date.now
+    }
+
+    /// One pending re-publish at a time; a burst of rejections all coalesce onto it.
+    @MainActor
+    private func scheduleReasonRepublish(after delay: TimeInterval) {
+        guard !reasonRepublishScheduled else { return }
+        reasonRepublishScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(delay, 0) * 1_000_000_000))
+            self?.republishCurrentReason()
+        }
+    }
+
+    /// Deliberately a SYNCHRONOUS method rather than the body of the `Task` above.
+    /// `NSLock.lock()` is `noasync` — taking it directly inside an async context is a
+    /// warning today and an error under Swift 6 — so the lock is taken from here, which is
+    /// an ordinary main-actor call the task makes after its sleep. Same shape as
+    /// `publish()`, which is why that one is clean too.
+    @MainActor
+    private func republishCurrentReason() {
+        reasonRepublishScheduled = false
+        lock.lock()
+        let current = internalBlockingReason
+        lock.unlock()
+        publishReason(current)
     }
 
     /// Rider tapped "recalibrate", or the swipe screen sent them back. Discards the
@@ -202,7 +279,13 @@ final class CalibrationService: @unchecked Sendable {
         lock.unlock()
 
         phase = newPhase
+        // Straight to the mirror, bypassing `publishReason`'s dwell. An explicit rider
+        // action must not inherit the previous attempt's warning: the latch exists to stop
+        // the text CYCLING, not to hold a message across a restart the rider asked for.
+        // Resetting `reasonShownAt` also means the new attempt's first warning appears at
+        // once rather than waiting out a dwell it never started.
         blockingReason = newReason
+        reasonShownAt = .distantPast
     }
 
     private func restartLocked() {
