@@ -44,13 +44,25 @@ struct SwipeAlignmentScreen: View {
                     .padding(.top, AppSpacing.xxl)
 
                 ZStack {
+                    // The guide box is now VISUAL ONLY, inset inside the drawing surface
+                    // rather than being its edge. The padding used to sit on the outer
+                    // chain, below the gesture — so the surface that both received the
+                    // drag and drew the line was exactly the box, and a line could not be
+                    // finished outside it. Every decorative child is
+                    // `allowsHitTesting(false)` for the same reason `scaleView` is on the
+                    // meters: the bike glyph is `.position`-ed, which expands its
+                    // container to fill the whole area, and it would then hit-test before
+                    // the drag on the parent.
                     RoundedRectangle(cornerRadius: 24)
                         .stroke(AppColors.accent.opacity(0.3), lineWidth: 1)
+                        .padding(AppSpacing.xl)
+                        .allowsHitTesting(false)
 
                     // The drawn line.
                     if let s = startPoint, let e = endPoint {
                         Path { p in p.move(to: s); p.addLine(to: e) }
                             .stroke(AppColors.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .allowsHitTesting(false)
                         // Bike glyph oriented ALONG the drawn line, pointing at the
                         // end (the front the rider indicated). This is the visible
                         // check: wrong orientation -> re-swipe.
@@ -59,14 +71,21 @@ struct SwipeAlignmentScreen: View {
                             .foregroundStyle(AppColors.accentBright)
                             .rotationEffect(.radians(atan2(e.y - s.y, e.x - s.x)))
                             .position(x: (s.x + e.x) / 2, y: (s.y + e.y) / 2)
+                            .allowsHitTesting(false)
                     } else {
                         Text("Swipe here")
                             .font(AppTypography.cardSubtitle)
                             .foregroundStyle(AppColors.textSecondary)
+                            .allowsHitTesting(false)
                     }
                 }
                 .contentShape(Rectangle())
-                .gesture(
+                // `highPriorityGesture`, not `gesture`: this screen sits inside the app's
+                // `TabView`, whose paging swipe claims a drag as soon as it has any
+                // horizontal component — and a line drawn along a bike is almost entirely
+                // horizontal, so the paging gesture is competing for exactly the stroke
+                // the rider is trying to make. Same reason the meter tracks use it.
+                .highPriorityGesture(
                     DragGesture(minimumDistance: 8)
                         .onChanged { value in
                             // `startLocation` is constant for the life of one drag, so
@@ -96,7 +115,9 @@ struct SwipeAlignmentScreen: View {
                         }
                 )
                 .frame(maxHeight: .infinity)
-                .padding(AppSpacing.screenPadding)
+                // No padding here any more — it moved onto the guide outline above. The
+                // surface is full-bleed so the stroke can run past the box (and to the
+                // screen edges) and still be delivered and drawn.
 
                 // Constant-height slot, NOT `if let errorText`. The drawing area above
                 // is `maxHeight: .infinity`, so it absorbs whatever this row gives up:
