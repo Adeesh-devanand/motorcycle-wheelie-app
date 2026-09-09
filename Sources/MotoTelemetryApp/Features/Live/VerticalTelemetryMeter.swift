@@ -61,20 +61,16 @@ struct VerticalTelemetryMeter: View {
     private let cursorThickness: CGFloat = 2
     private let cursorDotSize: CGFloat = 10
 
-    /// How far the target band's FILL spills past the track on each side. Symmetric:
-    /// the fill fades to nothing at both ends, so it can run under the scale numbers on
-    /// the label side without obscuring them (they are drawn above it, and the fill is
-    /// down to a few percent opacity by the time it reaches them).
-    private let bandSpill: CGFloat = 22
-    /// How far the fill spills ABOVE the upper bound and BELOW the lower bound, fading
-    /// out across it — the vertical counterpart of `bandSpill`.
-    ///
-    /// The fill must spill OUTWARD rather than fade inward from the bounds. A fade that
-    /// starts at the bounds makes the fill weakest exactly where the target is defined,
-    /// and the crisp dashed line sitting on that edge re-establishes a hard boundary and
-    /// cancels the fade visually — which is why the first attempt at a vertical fade was
-    /// invisible.
-    private let bandSpillVertical: CGFloat = 12
+    /// How far the band spills past the track on the TARGET-label side. Deliberately
+    /// tighter than the open side: the dashed top and bottom lines run the band's full
+    /// width, and this is the side carrying the y-axis numbers, so a wide box here draws
+    /// its lines straight through them. 12 pt puts the edge at 27 pt from centre against
+    /// `scaleInset` at 34, leaving the numbers clear.
+    private let bandSpillLabelSide: CGFloat = 12
+    /// How far it spills on the opposite side, which holds nothing but tick marks. This
+    /// is the only edge that fades, so it is also the fade's runway — hence the extra
+    /// width.
+    private let bandSpillOpenSide: CGFloat = 22
 
     /// How far each meter's whole track is nudged toward the centre of the screen.
     /// Set by the caller, and only when both meters are on screen: every outboard
@@ -83,7 +79,12 @@ struct VerticalTelemetryMeter: View {
     var trackShiftTowardCenter: CGFloat = 0
 
     /// Gap between the end of a major tick and the scale label text.
-    private let scaleLabelGap: CGFloat = 4
+    ///
+    /// Widened from 4 to 10 to move the y-axis numbers clear of the band's dashed
+    /// outline, which got wider. Half of the "move the axis out, bring the box in" pair —
+    /// doing it entirely from either side would have meant either numbers colliding with
+    /// the TARGET label or losing the extra box width.
+    private let scaleLabelGap: CGFloat = 10
     /// Column widths for the outboard content.
     private let readoutWidth: CGFloat = 56
     private let targetLabelWidth: CGFloat = 62
@@ -95,12 +96,15 @@ struct VerticalTelemetryMeter: View {
 
     /// Horizontal distance from the track centre to the inner edge of the TARGET label.
     ///
-    /// Further out than `scaleInset`, because the band's fill and dashed outline now
-    /// reach `trackWidth / 2 + bandSpill`. Sitting at the scale inset put the label
-    /// underneath the band it describes; this places it just clear of where the fade
-    /// ends, so the pointer has something to point AT.
+    /// Measured from `scaleInset` rather than from the band, because the y-axis numbers
+    /// are what it has to get past — the band's own edge (27 pt) is already inside them.
+    /// It cannot clear them completely: the numbers run to roughly `scaleInset + 24` and
+    /// the label's own frame is 62 pt wide, which together would push its outer edge past
+    /// the half-screen this meter gets. So it sits just past their start and relies on the
+    /// two rarely sharing a height — the label tracks the band's centre, the numbers sit
+    /// at fixed 15 deg steps.
     private var targetLabelInset: CGFloat {
-        trackWidth / 2 + bandSpill + 8
+        scaleInset + 12
     }
 
     var body: some View {
@@ -312,35 +316,27 @@ struct VerticalTelemetryMeter: View {
         let bandHeight = max((upperFrac - lowerFrac) * height, 4)
         let bottomOffset = lowerFrac * height
 
-        // The fill spills past the band on ALL FOUR sides and fades out across each
-        // spill; the dashed outline sits at the fill's full width but at the band's TRUE
-        // height, so the bounds stay exactly where the numbers say they are while the
-        // glow extends beyond them.
+        // The fill sits exactly INSIDE the dashed outline — same width, same height — and
+        // fades out on one edge only: the side away from the TARGET label, which is also
+        // the only side with no dashed line to contradict the fade.
         //
-        // Spilling outward is the point. Fading INWARD from the bounds makes the fill
-        // weakest precisely where the target is defined, and the crisp dashed line on
-        // that same edge reinstates a hard boundary — which is why the first vertical
-        // fade could not be seen at all.
-        let fillWidth = trackWidth + bandSpill * 2
-        let fillHeight = bandHeight + bandSpillVertical * 2
-        // Hold full strength right across the band, fade only over the spill past it.
-        let hHoldFrom = bandSpill / fillWidth
-        let hHoldTo = (bandSpill + trackWidth) / fillWidth
-        let vHoldFrom = bandSpillVertical / fillHeight
-        let vHoldTo = (bandSpillVertical + bandHeight) / fillHeight
+        // The vertical spill is gone. Extending the fill above the upper bound and below
+        // the lower bound made the glow overrun its own box, and the band should not read
+        // as taller than the target it represents. Nothing fades on the label side either,
+        // because that edge is a defined boundary: it has the dashed line and the pointer
+        // hanging off it.
+        let bandWidth = trackWidth + bandSpillLabelSide + bandSpillOpenSide
+        // The band is wider on the open side, so its centre is off the track's centre by
+        // half that difference.
+        let openSideSign: CGFloat = labelsOnLeading ? 1 : -1
+        let xShift = openSideSign * (bandSpillOpenSide - bandSpillLabelSide) / 2
+        // Full strength from the label edge right across the track, fading only over the
+        // spill beyond it — so nothing starts fading near the centre.
+        let holdUntil = (bandSpillLabelSide + trackWidth) / bandWidth
 
         return ZStack {
             Rectangle()
-                .fill(AppColors.targetBandFill)
-                // Two chained masks, so alpha multiplies and the fill falls off toward
-                // every edge while keeping a solid core. One gradient cannot do both
-                // axes, and a single radial one would fade the corners unevenly on a
-                // band this wide and short.
-                .mask(fadeMask(holdFrom: hHoldFrom, holdTo: hHoldTo,
-                               from: .leading, to: .trailing))
-                .mask(fadeMask(holdFrom: vHoldFrom, holdTo: vHoldTo,
-                               from: .top, to: .bottom))
-                .frame(width: fillWidth, height: fillHeight)
+                .fill(openEdgeFadeFill(holdUntil: holdUntil))
 
             // Three sides, not four: top and bottom are the target's actual bounds, the
             // pointer side is closed because the arrow hangs off it, and the side away
@@ -368,31 +364,24 @@ struct VerticalTelemetryMeter: View {
                         .foregroundStyle(AppColors.targetBandStroke)
                         .offset(x: labelsOnLeading ? -7 : 7)
                 }
-                .frame(width: fillWidth, height: bandHeight)
         }
-        .frame(width: fillWidth, height: fillHeight)
-        // This ZStack is `bandSpillVertical` taller than the band at BOTH ends, and the
-        // enclosing stack is bottom-aligned, so its bottom edge has to sit that much
-        // BELOW the lower bound for the band itself to land on it.
-        .offset(y: -(bottomOffset - bandSpillVertical))
+        .frame(width: bandWidth, height: bandHeight)
+        .offset(x: xShift, y: -bottomOffset)
     }
 
-    /// A mask gradient that is fully opaque between `holdFrom` and `holdTo` and fades to
-    /// nothing at both ends. Used once per axis; chaining two of them multiplies the
-    /// alphas, which is what produces a fade toward all four edges with a solid core.
-    private func fadeMask(holdFrom: CGFloat,
-                          holdTo: CGFloat,
-                          from: UnitPoint,
-                          to: UnitPoint) -> LinearGradient {
-        LinearGradient(
+    /// Solid from the TARGET-label edge across the track, then a fade to nothing over the
+    /// spill on the open side. The gradient runs label-side to open-side, which is why its
+    /// start and end flip with `labelsOnLeading`.
+    private func openEdgeFadeFill(holdUntil: CGFloat) -> LinearGradient {
+        let solid = AppColors.targetBandFill
+        return LinearGradient(
             stops: [
-                .init(color: .clear, location: 0),
-                .init(color: .white, location: holdFrom),
-                .init(color: .white, location: holdTo),
-                .init(color: .clear, location: 1)
+                .init(color: solid, location: 0),
+                .init(color: solid, location: holdUntil),
+                .init(color: solid.opacity(0), location: 1)
             ],
-            startPoint: from,
-            endPoint: to
+            startPoint: labelsOnLeading ? .leading : .trailing,
+            endPoint: labelsOnLeading ? .trailing : .leading
         )
     }
 
