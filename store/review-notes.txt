@@ -1,0 +1,45 @@
+APP REVIEW NOTES — paste into App Store Connect "Notes" at submission
+=====================================================================
+
+WHAT THE APP IS
+Loftmeter is an attitude-telemetry instrument for motorcycles. It uses the
+iPhone's motion sensors to measure pitch angle and GPS for speed/distance, and
+saves a reviewable record of each run on the device.
+
+HOW TO TEST WITHOUT A MOTORCYCLE
+The app works from any motion. To exercise it on a desk:
+1. Launch the app; on first launch accept the safety disclaimer.
+2. Hold the phone still to complete calibration, then swipe to align.
+3. Tilt the phone up/down to see the live pitch angle move on the meter.
+4. Stop the run; open Past Runs to see the saved run and its trace.
+Grant Motion and Location permissions when prompted.
+
+PERMISSIONS
+- Location (When In Use / background while a run is active): computes speed and
+  distance during a ride. Declared with NSLocationWhenInUseUsageDescription and
+  NSLocationAlwaysAndWhenInUseUsageDescription; background mode "location" is
+  used only while a run is recording.
+- Motion: measures pitch angle. NSMotionUsageDescription.
+- Audio background mode: keeps the optional in-run audio cue alive when the
+  screen locks during a ride.
+
+PRIVACY
+No accounts, no servers, no analytics, no ads, no tracking. All ride data is
+stored on-device and user-deletable.
+
+SAFETY POSITION (re: guidelines 1.1.6 / 1.4.1)
+Loftmeter is a safety and measurement instrument, not a stunt-encouragement
+app. Specifically:
+- There is NO leaderboard, NO ranking against other users, and NO gamified
+  incentive to "go bigger." The app does not reward larger or riskier wheelies.
+- The audio cue is a WARNING: it alerts the rider when their pitch angle gets
+  too high, so they can back off before losing control. Its purpose is to
+  PREVENT the rider from going past a safe angle, not to push them further.
+- The app measures and records attitude for a rider's own review; it does not
+  instruct, coach, or reward illegal riding.
+A first-launch disclaimer requires the user to acknowledge riding only where
+legal and safe (closed course / private property), wearing gear, and obeying
+local law, and that they assume all risk.
+
+CONTACT
+[YOUR SUPPORT EMAIL]
