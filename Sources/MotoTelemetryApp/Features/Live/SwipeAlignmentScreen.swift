@@ -186,7 +186,12 @@ struct SwipeAlignmentScreen: View {
     // MARK: - Line and glyph
 
     /// Length of the bike glyph ALONG the drawn line.
-    private let bikeGlyphLength: CGFloat = 96
+    ///
+    /// The gap in the line is derived from this, so the two scale together — but note the
+    /// side effect: `bikeGlyphGap * 2` is the shortest line that gets any stroke drawn at
+    /// all, so a bigger bike means a longer minimum line. At 144 that threshold is 160 pt,
+    /// which a line drawn along a bike comfortably clears on any phone.
+    private let bikeGlyphLength: CGFloat = 144
 
     /// How far short of the midpoint each half of the line stops. Half the glyph plus a
     /// little air, so the stroke meets the bike's nose and tail without touching them.
