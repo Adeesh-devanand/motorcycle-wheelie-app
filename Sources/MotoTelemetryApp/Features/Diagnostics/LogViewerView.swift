@@ -130,7 +130,7 @@ struct LogViewerView: View {
                 levelMenu
                 categoryMenu
                 Spacer()
-                Text("\(model.visibleLines.count) shown")
+                Text(String(format: String(localized: "%lld shown", comment: "Count of currently visible log lines"), model.visibleLines.count))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(AppColors.textTertiary)
             }
@@ -149,7 +149,7 @@ struct LogViewerView: View {
                 }
             }
         } label: {
-            chipLabel("≥ \(model.minLevel.rawValue.uppercased())", active: model.minLevel != .trace)
+            chipLabel(String(format: String(localized: "≥ %@", comment: "Minimum log level filter; %@ is the level code"), model.minLevel.rawValue.uppercased()), active: model.minLevel != .trace)
         }
     }
 
@@ -170,7 +170,7 @@ struct LogViewerView: View {
                 }
             }
         } label: {
-            chipLabel(model.categoryFilter ?? "ALL CATS", active: model.categoryFilter != nil)
+            chipLabel(model.categoryFilter ?? String(localized: "ALL CATS", comment: "Category filter chip: no category filter active"), active: model.categoryFilter != nil)
         }
     }
 
@@ -202,7 +202,7 @@ struct LogViewerView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if model.truncated {
-                        Text("Showing the last \(model.lines.count) lines")
+                        Text(String(format: String(localized: "Showing the last %lld lines", comment: "Notice that only the tail of the file is shown"), model.lines.count))
                             .font(.system(size: 11))
                             .foregroundStyle(AppColors.textTertiary)
                             .padding(.vertical, AppSpacing.sm)
@@ -213,7 +213,10 @@ struct LogViewerView: View {
                         Divider().overlay(AppColors.cardBorder.opacity(0.5))
                     }
                     if model.skippedCount > 0 {
-                        Text("\(model.skippedCount) unparseable line\(model.skippedCount == 1 ? "" : "s") skipped")
+                        Text(String(format: String(localized: model.skippedCount == 1
+                            ? "%lld unparseable line skipped"
+                            : "%lld unparseable lines skipped",
+                            comment: "Count of lines that could not be parsed"), model.skippedCount))
                             .font(.system(size: 11))
                             .foregroundStyle(AppColors.textTertiary)
                             .padding(.vertical, AppSpacing.sm)

@@ -252,7 +252,7 @@ private struct LogFileRow: View {
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                 HStack(spacing: AppSpacing.sm) {
-                    Text(entry.kind.displayName)
+                    Text(LocalizedStringKey(entry.kind.displayName))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppColors.textPrimary)
                     if entry.kind == .session {

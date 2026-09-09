@@ -193,7 +193,7 @@ struct SessionSummaryCard: View {
     let summary: SessionSummary
 
     var body: some View {
-        TelemetryCard(title: "Latest Session") {
+        TelemetryCard(title: String(localized: "Latest Session", comment: "Session summary card title")) {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
                 levelRow
                 Divider().overlay(AppColors.cardBorder)
@@ -207,7 +207,10 @@ struct SessionSummaryCard: View {
                     topMessagesSection
                 }
                 if summary.skippedLines > 0 {
-                    Text("\(summary.skippedLines) unparseable line\(summary.skippedLines == 1 ? "" : "s") skipped")
+                    Text(String(format: String(localized: summary.skippedLines == 1
+                        ? "%lld unparseable line skipped"
+                        : "%lld unparseable lines skipped",
+                        comment: "Count of lines that could not be parsed"), summary.skippedLines))
                         .font(.system(size: 11))
                         .foregroundStyle(AppColors.textTertiary)
                 }
@@ -224,7 +227,7 @@ struct SessionSummaryCard: View {
             levelChip(.info, AppColors.textSecondary)
             levelChip(.debug, AppColors.textTertiary)
             Spacer()
-            Text("\(summary.totalEvents) events")
+            Text(String(format: String(localized: "%lld events", comment: "Session summary total event count"), summary.totalEvents))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(AppColors.textSecondary)
         }
@@ -268,10 +271,21 @@ struct SessionSummaryCard: View {
         ))
         if let outcome = summary.calibrationOutcome {
             let ok = outcome.lowercased().contains("calibrat")
-            let attempts = summary.calibrationAttempts > 0 ? " · \(summary.calibrationAttempts) attempt\(summary.calibrationAttempts == 1 ? "" : "s")" : ""
-            rows.append(("Calibration", outcome + attempts, ok ? AppColors.success : AppColors.warning))
+            // Localize only the stable "Calibrated" success token; a failure outcome
+            // is raw log prose (line.message) and stays untranslated.
+            let outcomeText = ok ? String(localized: "Calibrated", comment: "Calibration outcome: succeeded") : outcome
+            let attempts = summary.calibrationAttempts > 0
+                ? " · " + String(format: String(localized: summary.calibrationAttempts == 1
+                    ? "%lld attempt"
+                    : "%lld attempts",
+                    comment: "Calibration attempt count suffix"), summary.calibrationAttempts)
+                : ""
+            rows.append(("Calibration", outcomeText + attempts, ok ? AppColors.success : AppColors.warning))
         } else if summary.calibrationAttempts > 0 {
-            rows.append(("Calibration", "\(summary.calibrationAttempts) attempt\(summary.calibrationAttempts == 1 ? "" : "s"), no outcome", AppColors.warning))
+            rows.append(("Calibration", String(format: String(localized: summary.calibrationAttempts == 1
+                ? "%lld attempt, no outcome"
+                : "%lld attempts, no outcome",
+                comment: "Calibration attempts recorded but no result"), summary.calibrationAttempts), AppColors.warning))
         }
         if let sigma = summary.worstGyroSigma {
             let limitText = summary.gyroSigmaLimit.map { " / \(LogLine.trim($0))" } ?? ""
@@ -285,7 +299,7 @@ struct SessionSummaryCard: View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
             ForEach(derived, id: \.0) { row in
                 HStack {
-                    Text(row.0)
+                    Text(LocalizedStringKey(row.0))
                         .font(.system(size: 12))
                         .foregroundStyle(AppColors.textSecondary)
                     Spacer()
@@ -305,7 +319,7 @@ struct SessionSummaryCard: View {
                 .sectionHeaderStyle()
             ForEach(summary.topMessages) { m in
                 HStack(alignment: .top, spacing: AppSpacing.sm) {
-                    Text("\(m.count)×")
+                    Text(String(format: String(localized: "%lld×", comment: "Occurrence count for a warning/error message"), m.count))
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(m.level == .error ? AppColors.danger : AppColors.warning)
                         .frame(minWidth: 34, alignment: .trailing)
@@ -323,7 +337,7 @@ struct SessionSummaryCard: View {
     @ViewBuilder
     private func kv(_ key: String, _ value: String?) -> some View {
         HStack {
-            Text(key)
+            Text(LocalizedStringKey(key))
                 .font(.system(size: 12))
                 .foregroundStyle(AppColors.textSecondary)
             Spacer()

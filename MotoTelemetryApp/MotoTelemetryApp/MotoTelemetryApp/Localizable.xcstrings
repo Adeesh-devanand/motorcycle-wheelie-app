@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%lld attempt": {
+      "extractionState": "manual",
+      "comment": "Calibration attempt count suffix, singular",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentative"
+          }
+        }
+      }
+    },
     "%lld attempt (filtered)": {
       "extractionState": "manual",
       "comment": "Runs subtitle, filtered singular",
@@ -21,6 +33,30 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld tentative aujourd'hui"
+          }
+        }
+      }
+    },
+    "%lld attempt, no outcome": {
+      "extractionState": "manual",
+      "comment": "Calibration attempts recorded but no result, singular",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentative, aucun résultat"
+          }
+        }
+      }
+    },
+    "%lld attempts": {
+      "extractionState": "manual",
+      "comment": "Calibration attempt count suffix, plural",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentatives"
           }
         }
       }
@@ -49,6 +85,18 @@
         }
       }
     },
+    "%lld attempts, no outcome": {
+      "extractionState": "manual",
+      "comment": "Calibration attempts recorded but no result, plural",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentatives, aucun résultat"
+          }
+        }
+      }
+    },
     "%lld d ago": {
       "extractionState": "manual",
       "comment": "Relative time, days",
@@ -57,6 +105,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "il y a %lld j"
+          }
+        }
+      }
+    },
+    "%lld events": {
+      "extractionState": "manual",
+      "comment": "Session summary total event count",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld évènements"
           }
         }
       }
@@ -81,6 +141,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "il y a %lld min"
+          }
+        }
+      }
+    },
+    "%lld shown": {
+      "extractionState": "manual",
+      "comment": "Count of currently visible log lines",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld affichées"
+          }
+        }
+      }
+    },
+    "%lld unparseable line skipped": {
+      "extractionState": "manual",
+      "comment": "Count of lines that could not be parsed, singular",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ligne illisible ignorée"
+          }
+        }
+      }
+    },
+    "%lld unparseable lines skipped": {
+      "extractionState": "manual",
+      "comment": "Count of lines that could not be parsed, plural",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld lignes illisibles ignorées"
+          }
+        }
+      }
+    },
+    "%lld×": {
+      "extractionState": "manual",
+      "comment": "Occurrence count for a warning/error message",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld×"
+          }
+        }
+      }
+    },
+    "ALL CATS": {
+      "extractionState": "manual",
+      "comment": "Category filter chip: no category filter active",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TOUTES CAT."
           }
         }
       }
@@ -193,6 +313,18 @@
         }
       }
     },
+    "Build": {
+      "extractionState": "manual",
+      "comment": "Session summary header key: app build",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version (build)"
+          }
+        }
+      }
+    },
     "CALIBRATING": {
       "extractionState": "manual",
       "comment": "Calibration status pill",
@@ -277,6 +409,18 @@
         }
       }
     },
+    "Config": {
+      "extractionState": "manual",
+      "comment": "Session summary header key: config version",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration"
+          }
+        }
+      }
+    },
     "Confirm alignment": {
       "extractionState": "manual",
       "comment": "Swipe screen button",
@@ -285,6 +429,30 @@
           "stringUnit": {
             "state": "translated",
             "value": "Confirmer l'alignement"
+          }
+        }
+      }
+    },
+    "Copied": {
+      "extractionState": "manual",
+      "comment": "Copy button confirmation",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copié"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "extractionState": "manual",
+      "comment": "Copy visible log lines button",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier"
           }
         }
       }
@@ -349,6 +517,18 @@
         }
       }
     },
+    "Delete %@": {
+      "extractionState": "manual",
+      "comment": "Delete a single log file; %@ is the file name",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer %@"
+          }
+        }
+      }
+    },
     "Delete All Runs": {
       "extractionState": "manual",
       "comment": "Destructive button",
@@ -373,6 +553,18 @@
         }
       }
     },
+    "Delete all %lld log files?": {
+      "extractionState": "manual",
+      "comment": "Confirm deleting all log files; %lld is the count",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer les %lld fichiers journaux?"
+          }
+        }
+      }
+    },
     "Delete all logs": {
       "extractionState": "manual",
       "comment": "Destructive button",
@@ -381,6 +573,30 @@
           "stringUnit": {
             "state": "translated",
             "value": "Supprimer tous les journaux"
+          }
+        }
+      }
+    },
+    "Delete all logs (%@)": {
+      "extractionState": "manual",
+      "comment": "Confirm deleting all logs; %@ is the total size",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer tous les journaux (%@)"
+          }
+        }
+      }
+    },
+    "Delete this log file?": {
+      "extractionState": "manual",
+      "comment": "Confirm deleting one log file",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer ce fichier journal?"
           }
         }
       }
@@ -405,6 +621,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Supprime toutes les sessions enregistrées, y compris celles masquées par les filtres ci-dessus. Cette action est irréversible."
+          }
+        }
+      }
+    },
+    "Device": {
+      "extractionState": "manual",
+      "comment": "Session summary header key: device model",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appareil"
           }
         }
       }
@@ -525,6 +753,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "PLUS RAPIDE"
+          }
+        }
+      }
+    },
+    "File": {
+      "extractionState": "manual",
+      "comment": "Log file kind: other/unknown file",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichier"
           }
         }
       }
@@ -681,6 +921,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "PLUS LONG"
+          }
+        }
+      }
+    },
+    "Latest Session": {
+      "extractionState": "manual",
+      "comment": "Session summary card title",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dernière session"
           }
         }
       }
@@ -985,6 +1237,18 @@
         }
       }
     },
+    "Raw sensor": {
+      "extractionState": "manual",
+      "comment": "Log file kind: raw sensor trace",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capteur brut"
+          }
+        }
+      }
+    },
     "Recalibrate": {
       "extractionState": "manual",
       "comment": "Button / pill",
@@ -1093,6 +1357,42 @@
         }
       }
     },
+    "Search message": {
+      "extractionState": "manual",
+      "comment": "Log viewer search field placeholder",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher un message"
+          }
+        }
+      }
+    },
+    "Sensor rate": {
+      "extractionState": "manual",
+      "comment": "Session summary derived label: sensor sampling rate",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fréquence du capteur"
+          }
+        }
+      }
+    },
+    "Session": {
+      "extractionState": "manual",
+      "comment": "Log file kind: structured session log",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session"
+          }
+        }
+      }
+    },
     "Settings": {
       "extractionState": "manual",
       "comment": "Screen title",
@@ -1113,6 +1413,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Partager la session la plus récente + brut"
+          }
+        }
+      }
+    },
+    "Showing the last %lld lines": {
+      "extractionState": "manual",
+      "comment": "Notice that only the tail of the file is shown",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affichage des %lld dernières lignes"
           }
         }
       }
@@ -1165,6 +1477,18 @@
         }
       }
     },
+    "Stream deaths": {
+      "extractionState": "manual",
+      "comment": "Session summary derived label: stream interruption count",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interruptions du flux"
+          }
+        }
+      }
+    },
     "Swipe here": {
       "extractionState": "manual",
       "comment": "Swipe screen prompt",
@@ -1209,6 +1533,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Touchez un segment pour les détails"
+          }
+        }
+      }
+    },
+    "Thermal": {
+      "extractionState": "manual",
+      "comment": "Session summary header key: thermal state",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thermique"
           }
         }
       }
@@ -1345,6 +1681,18 @@
         }
       }
     },
+    "Worst gyro σ": {
+      "extractionState": "manual",
+      "comment": "Session summary derived label: worst gyro sigma",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pire σ gyroscope"
+          }
+        }
+      }
+    },
     "km/h": {
       "extractionState": "manual",
       "comment": "Unit (unchanged)",
@@ -1365,6 +1713,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "· %@s dans la cible"
+          }
+        }
+      }
+    },
+    "≥ %@": {
+      "extractionState": "manual",
+      "comment": "Minimum log level filter chip; %@ is the level code",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "≥ %@"
           }
         }
       }
