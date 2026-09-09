@@ -81,8 +81,12 @@ final class RiderPreferences {
             self.angleTarget = stored.angleTarget
             self.speedTarget = stored.speedTarget
             self.speedGaugeMaximum = Self.clampGaugeMaximum(stored.speedGaugeMaximum)
-            // Absent from preferences written before the toggle existed. Default on,
-            // so an existing rider's app behaves exactly as it did before.
+            // Absent from preferences written before the toggle existed. Defaults ON, and
+            // it deliberately does NOT match the fresh-install default below, which is now
+            // off. The two answer different questions: this one is "what did this rider
+            // already have?", and before the toggle shipped every rider had a speedometer.
+            // Migrating them to off would switch off a readout they have been using,
+            // silently, on the strength of a preference key they never saw.
             self.speedEnabled = stored.speedEnabled ?? true
             self.speedUnit = stored.speedUnit
             // Property observers do not fire during init, so the band/ceiling
@@ -99,7 +103,20 @@ final class RiderPreferences {
             self.angleTarget = MetricRange(lower: 35, upper: 45)
             self.speedTarget = MetricRange(lower: 35, upper: 50)
             self.speedGaugeMaximum = Self.defaultGaugeMaximum
-            self.speedEnabled = true
+            // FRESH INSTALL default: speedometer OFF.
+            //
+            // The instrument this app is actually for is the angle — that comes from the
+            // gyro and owes nothing to GNSS. Speed is a secondary readout that costs a
+            // ~1 Hz location fix, and CoreLocation's own accuracy at low speed is poor
+            // enough that its early readings have twice been mistaken for bugs. Starting
+            // off means a new rider sees the meter that works before the one that needs
+            // a sky view.
+            //
+            // This does NOT affect an existing install: the stored branch above reads
+            // whatever the rider last set, so flipping this only changes first launch (or
+            // first launch after deleting the app). `speedTarget` and `speedGaugeMaximum`
+            // are still seeded so the meter has sane values the moment it is switched on.
+            self.speedEnabled = false
             self.speedUnit = .kph
         }
     }
