@@ -187,7 +187,7 @@ struct PastRunsView: View {
             }
         } label: {
             HStack(spacing: AppSpacing.xs) {
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(.system(size: 15, weight: .medium))
                 // The arrow shows the ACTIVE direction, and only on the selected
                 // chip: a static up/down glyph on three inactive chips says

@@ -126,11 +126,11 @@ struct RangeIntervalTimeline: View {
             // has no scroll view, so a second line here is a second line taken off the
             // charts.
             HStack {
-                Text("LIFT 0.0s")
+                Text(String(localized: "LIFT \(String(format: "%.1f", 0.0))s"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppColors.textTertiary)
                 Spacer()
-                Text(String(format: "DOWN %.1fs", duration))
+                Text(String(localized: "DOWN \(String(format: "%.1f", duration))s"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppColors.textTertiary)
             }

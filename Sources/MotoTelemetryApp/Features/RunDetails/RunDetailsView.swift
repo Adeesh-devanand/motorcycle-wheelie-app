@@ -209,7 +209,7 @@ struct RunDetailsView: View {
                               color: Color,
                               labelColor: Color = AppColors.textSecondary) -> some View {
         VStack(spacing: 1) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.system(size: 10, weight: .medium))
                 .tracking(0.4)
                 .foregroundStyle(labelColor)

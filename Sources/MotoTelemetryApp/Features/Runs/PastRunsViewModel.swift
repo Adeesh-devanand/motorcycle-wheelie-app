@@ -69,15 +69,17 @@ final class PastRunsViewModel {
     var subtitleText: String {
         if hasActiveFilters {
             let count = filteredRuns.count
-            let noun = count == 1 ? "attempt" : "attempts"
-            return "\(count) \(noun) (filtered)"
+            return count == 1
+                ? String(localized: "\(count) attempt (filtered)")
+                : String(localized: "\(count) attempts (filtered)")
         }
         // Default scope: count only runs started today (rider's local day).
         let todayCount = repository.allRuns.filter {
             Calendar.current.isDateInToday($0.startedAt)
         }.count
-        let noun = todayCount == 1 ? "attempt" : "attempts"
-        return "\(todayCount) \(noun) today"
+        return todayCount == 1
+            ? String(localized: "\(todayCount) attempt today")
+            : String(localized: "\(todayCount) attempts today")
     }
 
     // MARK: - Init

@@ -12,7 +12,7 @@ struct StatusPill: View {
         Button(action: { onTapRecalibrate() }) {
             HStack(spacing: AppSpacing.sm) {
                 statusIndicator
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(.system(size: 15, weight: .semibold))
                     .tracking(1)
                     .foregroundStyle(labelColor)

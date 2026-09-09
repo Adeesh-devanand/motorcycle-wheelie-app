@@ -231,13 +231,13 @@ struct RunHistoryRow: View {
     /// short date for older runs. Explicit `ago` suffix + `Just now` floor (M-UI6).
     static func relativeTimeText(from date: Date, now: Date = Date()) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
-        if seconds < 60 { return "Just now" }
+        if seconds < 60 { return String(localized: "Just now") }
         let minutes = Int(seconds / 60)
-        if minutes < 60 { return "\(minutes) min ago" }
+        if minutes < 60 { return String(localized: "\(minutes) min ago") }
         let hours = minutes / 60
-        if hours < 24 { return "\(hours) hr ago" }
+        if hours < 24 { return String(localized: "\(hours) hr ago") }
         let days = hours / 24
-        if days < 7 { return "\(days) d ago" }
+        if days < 7 { return String(localized: "\(days) d ago") }
         return date.formatted(.dateTime.month().day())
     }
 

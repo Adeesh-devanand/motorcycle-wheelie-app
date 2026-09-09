@@ -1,6 +1,90 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%lld attempt (filtered)": {
+      "extractionState": "manual",
+      "comment": "Runs subtitle, filtered singular",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentative (filtrées)"
+          }
+        }
+      }
+    },
+    "%lld attempt today": {
+      "extractionState": "manual",
+      "comment": "Runs subtitle, today singular",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentative aujourd'hui"
+          }
+        }
+      }
+    },
+    "%lld attempts (filtered)": {
+      "extractionState": "manual",
+      "comment": "Runs subtitle, filtered plural",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentatives (filtrées)"
+          }
+        }
+      }
+    },
+    "%lld attempts today": {
+      "extractionState": "manual",
+      "comment": "Runs subtitle, today plural",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tentatives aujourd'hui"
+          }
+        }
+      }
+    },
+    "%lld d ago": {
+      "extractionState": "manual",
+      "comment": "Relative time, days",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a %lld j"
+          }
+        }
+      }
+    },
+    "%lld hr ago": {
+      "extractionState": "manual",
+      "comment": "Relative time, hours",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a %lld h"
+          }
+        }
+      }
+    },
+    "%lld min ago": {
+      "extractionState": "manual",
+      "comment": "Relative time, minutes",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il y a %lld min"
+          }
+        }
+      }
+    },
     "ANGLE": {
       "extractionState": "manual",
       "comment": "Angle meter label",
@@ -109,6 +193,18 @@
         }
       }
     },
+    "CALIBRATING": {
+      "extractionState": "manual",
+      "comment": "Calibration status pill",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CALIBRATION…"
+          }
+        }
+      }
+    },
     "Calibrated": {
       "extractionState": "manual",
       "comment": "Calibration screen title when done",
@@ -201,6 +297,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Échec de la calibration :\n%@"
+          }
+        }
+      }
+    },
+    "DOWN %@s": {
+      "extractionState": "manual",
+      "comment": "Timeline down label",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DESCENTE %@s"
           }
         }
       }
@@ -373,6 +481,18 @@
         }
       }
     },
+    "FAILED": {
+      "extractionState": "manual",
+      "comment": "Calibration status pill",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ÉCHEC"
+          }
+        }
+      }
+    },
     "FASTEST": {
       "extractionState": "manual",
       "comment": "Run badge",
@@ -493,6 +613,18 @@
         }
       }
     },
+    "Just now": {
+      "extractionState": "manual",
+      "comment": "Relative time floor",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À l'instant"
+          }
+        }
+      }
+    },
     "LATEST": {
       "extractionState": "manual",
       "comment": "Run badge",
@@ -501,6 +633,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "RÉCENT"
+          }
+        }
+      }
+    },
+    "LIFT %@s": {
+      "extractionState": "manual",
+      "comment": "Timeline lift label",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MONTÉE %@s"
           }
         }
       }
@@ -585,6 +729,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "Confiance faible"
+          }
+        }
+      }
+    },
+    "MAX %lld": {
+      "extractionState": "manual",
+      "comment": "Live meter sublabel, speed",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MAX %lld"
+          }
+        }
+      }
+    },
+    "MAX %lld°": {
+      "extractionState": "manual",
+      "comment": "Live meter sublabel, angle (° unchanged)",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MAX %lld°"
+          }
+        }
+      }
+    },
+    "MAX ANGLE": {
+      "extractionState": "manual",
+      "comment": "Run details stat label",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ANGLE MAX"
+          }
+        }
+      }
+    },
+    "MAX SPEED": {
+      "extractionState": "manual",
+      "comment": "Run details stat label",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VITESSE MAX"
           }
         }
       }
@@ -733,6 +925,30 @@
         }
       }
     },
+    "RECALIBRATE": {
+      "extractionState": "manual",
+      "comment": "Recalibrate pill",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RECALIBRER"
+          }
+        }
+      }
+    },
+    "RECENT": {
+      "extractionState": "manual",
+      "comment": "Sort chip",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RÉCENT"
+          }
+        }
+      }
+    },
     "RUN DETAILS": {
       "extractionState": "manual",
       "comment": "Screen title",
@@ -825,6 +1041,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "VITESSE"
+          }
+        }
+      }
+    },
+    "STALE": {
+      "extractionState": "manual",
+      "comment": "Calibration status pill",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PÉRIMÉ"
           }
         }
       }
@@ -1057,6 +1285,18 @@
         }
       }
     },
+    "UNAVAILABLE": {
+      "extractionState": "manual",
+      "comment": "Calibration status pill",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "INDISPONIBLE"
+          }
+        }
+      }
+    },
     "Vibration is off the scale — improve the mount": {
       "extractionState": "manual",
       "comment": "Calibration blocking reason: sensor saturated",
@@ -1065,6 +1305,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vibrations hors échelle — améliorez le support"
+          }
+        }
+      }
+    },
+    "WHEELIE TIME": {
+      "extractionState": "manual",
+      "comment": "Meter / stats label",
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TEMPS DE WHEELIE"
           }
         }
       }
