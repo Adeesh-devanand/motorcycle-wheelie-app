@@ -149,33 +149,42 @@ struct RunHistoryRow: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                Text(unit)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(color.opacity(0.7))
-            }
-
-            // Mini bar — inset within its column so adjacent bars never touch,
-            // with the unfilled track drawn as a dark shade of the fill colour.
-            // The whole bar (track + fill) spans ~3/4 of the column, leading-aligned,
-            // so it reads shorter without changing where empty/filled meet.
-            GeometryReader { geo in
-                let barWidth = geo.size.width * 0.75
-                ZStack(alignment: .leading) {
-                    // Track — a darkened shade of the fill colour, not a blank grey.
-                    Capsule()
-                        .fill(trackColor)
-                        .frame(width: barWidth, height: 4)
-
-                    // Fill
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(barWidth * normalised, 4), height: 4)
+                if unit == "°" {
+                    // Degree sign rides on TOP of the number as a superscript (44°),
+                    // hugging the last digit rather than sitting beside it like "s".
+                    Text(unit)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(color.opacity(0.7))
+                        .baselineOffset(10)
+                } else {
+                    Text(unit)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(color.opacity(0.7))
                 }
             }
-            .frame(height: 4)
-            .padding(.horizontal, AppSpacing.xs)
+
+            // Mini bar — a FIXED-width track (same size for TIME/ANGLE/SPEED),
+            // centred under the value. The fill within it still shows the ranked
+            // proportion, anchored to the track's leading edge.
+            ZStack(alignment: .leading) {
+                // Track — a darkened shade of the fill colour, not a blank grey.
+                Capsule()
+                    .fill(trackColor)
+                    .frame(width: Self.barWidth, height: 4)
+
+                // Fill
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(Self.barWidth * normalised, 4), height: 4)
+            }
+            .frame(width: Self.barWidth)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
+
+    /// Fixed bar width shared by all three metric columns, so the bars read as
+    /// one consistent size rather than scaling with each column's width.
+    private static let barWidth: CGFloat = 72
 
     // MARK: - Normalisation
 
