@@ -103,9 +103,9 @@ struct PastRunsView: View {
                     showingSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 20))
                         .foregroundStyle(AppColors.textSecondary)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 48, height: 48)
                         .background(AppColors.surfaceButton, in: Circle())
                 }
                 .accessibilityLabel("Run settings")
