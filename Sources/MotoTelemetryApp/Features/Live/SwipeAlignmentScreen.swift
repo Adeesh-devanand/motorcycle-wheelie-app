@@ -14,6 +14,17 @@ import MotoTelemetryCore
 /// The `|p|` classification is invisible to the rider and needs no UI: a swipe along
 /// gravity (vertical mount) routes to the screen-normal branch inside the solver,
 /// and only a zero-length tap is rejected.
+///
+/// ## The stroke stays inside the guide box
+///
+/// Both ends of the line are confined to the box, but by two different mechanisms,
+/// because the framework only gives one of them for free:
+///
+/// - The START is bounded by hit-testing. A drag can only begin on a view that
+///   hit-tests, and the drawing surface IS the box, so there is nowhere else to begin.
+/// - The END has to be clamped explicitly. Once a drag begins, UIKit keeps delivering
+///   it to the owning view wherever the finger goes — including far outside it — so
+///   without `clampedIntoBox` the line finished wherever the finger stopped.
 struct SwipeAlignmentScreen: View {
     /// Gravity anchor (device-frame specific force) from the completed calibration.
     let gravityAnchor: Vector3
@@ -53,71 +64,42 @@ struct SwipeAlignmentScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, AppSpacing.xxl)
 
-                ZStack {
-                    // The guide box is now VISUAL ONLY, inset inside the drawing surface
-                    // rather than being its edge. The padding used to sit on the outer
-                    // chain, below the gesture — so the surface that both received the
-                    // drag and drew the line was exactly the box, and a line could not be
-                    // finished outside it. Every decorative child is
-                    // `allowsHitTesting(false)` for the same reason `scaleView` is on the
-                    // meters: the bike glyph is `.position`-ed, which expands its
-                    // container to fill the whole area, and it would then hit-test before
-                    // the drag on the parent.
-                    RoundedRectangle(cornerRadius: 24)
-                        .stroke(AppColors.accent.opacity(0.3), lineWidth: 1)
-                        .padding(AppSpacing.xl)
-                        .allowsHitTesting(false)
-
-                    // The drawn line, in two segments with a gap for the bike.
-                    if let s = startPoint, let e = endPoint {
-                        lineWithGapForGlyph(from: s, to: e)
-                        bikeGlyph(from: s, to: e)
-                    } else {
-                        Text("Swipe here")
-                            .font(AppTypography.cardSubtitle)
-                            .foregroundStyle(AppColors.textSecondary)
+                // The drawing surface IS the guide box: the outline is this view's own
+                // border, so what the rider sees is exactly where they may draw. A
+                // `GeometryReader` because the end-clamp needs the box's size, and the
+                // only honest source for it is the box itself.
+                GeometryReader { geo in
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(AppColors.accent.opacity(0.3), lineWidth: 1)
                             .allowsHitTesting(false)
+
+                        // The drawn line, in two segments with a gap for the bike.
+                        if let s = startPoint, let e = endPoint {
+                            lineWithGapForGlyph(from: s, to: e)
+                            bikeGlyph(from: s, to: e)
+                        } else {
+                            Text("Swipe here")
+                                .font(AppTypography.cardSubtitle)
+                                .foregroundStyle(AppColors.textSecondary)
+                                .allowsHitTesting(false)
+                        }
                     }
+                    // A GeometryReader lays its content out top-leading, so the ZStack has
+                    // to be told to fill — otherwise the surface, the outline and the
+                    // gesture would all be the size of the largest child instead of the box.
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    // `highPriorityGesture`, not `gesture`: this screen sits inside the
+                    // app's `TabView`, whose paging swipe claims a drag as soon as it has
+                    // any horizontal component — and a line drawn along a bike is almost
+                    // entirely horizontal, so the paging gesture is competing for exactly
+                    // the stroke the rider is trying to make. Same reason the meter tracks
+                    // use it.
+                    .highPriorityGesture(drawGesture(in: geo.size))
                 }
-                .contentShape(Rectangle())
-                // `highPriorityGesture`, not `gesture`: this screen sits inside the app's
-                // `TabView`, whose paging swipe claims a drag as soon as it has any
-                // horizontal component — and a line drawn along a bike is almost entirely
-                // horizontal, so the paging gesture is competing for exactly the stroke
-                // the rider is trying to make. Same reason the meter tracks use it.
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { value in
-                            // `startLocation` is constant for the life of one drag, so
-                            // assigning it unconditionally both anchors the first frame
-                            // and RE-anchors on a second attempt.
-                            //
-                            // The `startPoint == nil` guard this replaces only ever fired
-                            // once, on the very first swipe. On a re-draw it left the
-                            // PREVIOUS attempt's start in place while `endPoint` followed
-                            // the new finger, so the rider saw a line hinged on the old
-                            // start point sweeping to the new one, snapping into place
-                            // only on lift-off when `onEnded` finally reassigned it.
-                            if startPoint != value.startLocation {
-                                startPoint = value.startLocation
-                                // The previous solution describes a line no longer on
-                                // screen. Drop it so "Looks right" cannot confirm an
-                                // alignment the rider has stopped looking at.
-                                resolved = nil
-                                errorText = nil
-                            }
-                            endPoint = value.location
-                        }
-                        .onEnded { value in
-                            startPoint = value.startLocation
-                            endPoint = value.location
-                            resolve(from: value.startLocation, to: value.location)
-                        }
-                )
                 .frame(maxHeight: .infinity)
-                // No padding here any more — it moved onto the guide outline above. The
-                // surface is full-bleed so the stroke can run past the box (and to the
-                // screen edges) and still be delivered and drawn.
+                .padding(.horizontal, AppSpacing.screenPadding)
 
                 // Constant-height slot, NOT `if let errorText`. The drawing area above
                 // is `maxHeight: .infinity`, so it absorbs whatever this row gives up:
@@ -181,6 +163,81 @@ struct SwipeAlignmentScreen: View {
                 .padding(.bottom, AppSpacing.xl)
             }
         }
+    }
+
+    // MARK: - Gesture
+
+    private func drawGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                // `startLocation` is constant for the life of one drag, so
+                // assigning it unconditionally both anchors the first frame
+                // and RE-anchors on a second attempt.
+                //
+                // The `startPoint == nil` guard this replaces only ever fired
+                // once, on the very first swipe. On a re-draw it left the
+                // PREVIOUS attempt's start in place while `endPoint` followed
+                // the new finger, so the rider saw a line hinged on the old
+                // start point sweeping to the new one, snapping into place
+                // only on lift-off when `onEnded` finally reassigned it.
+                if startPoint != value.startLocation {
+                    startPoint = value.startLocation
+                    // The previous solution describes a line no longer on
+                    // screen. Drop it so "Confirm alignment" cannot confirm an
+                    // alignment the rider has stopped looking at.
+                    resolved = nil
+                    errorText = nil
+                }
+                endPoint = clampedIntoBox(value.location,
+                                          from: value.startLocation, in: size)
+            }
+            .onEnded { value in
+                // Clamped here too, and the SAME clamped point is what gets resolved —
+                // the rider must never be shown one line and have a different one solved.
+                let end = clampedIntoBox(value.location,
+                                         from: value.startLocation, in: size)
+                startPoint = value.startLocation
+                endPoint = end
+                resolve(from: value.startLocation, to: end)
+            }
+    }
+
+    /// Pulls a drag point back inside the guide box, ALONG THE RAY from where the stroke
+    /// began.
+    ///
+    /// Clamping x and y independently would be one line shorter and quietly wrong: it
+    /// bends the line, and the line's ANGLE is the entire measurement — `fromSwipe` reads
+    /// nothing else out of it. Dragging past a corner would rotate the stroke and hand the
+    /// solver a mount alignment the rider never drew.
+    ///
+    /// Shortening along the ray instead leaves the angle bit-identical to the one the
+    /// finger described, so confining the stroke costs no accuracy whatsoever: the solved
+    /// alignment is the same whether the rider stopped neatly at the edge or dragged half
+    /// a screen past it.
+    private func clampedIntoBox(_ p: CGPoint, from s: CGPoint, in size: CGSize) -> CGPoint {
+        // Half the 4 pt stroke, so a line ending on the boundary sits inside the outline
+        // rather than straddling it.
+        let inset: CGFloat = 2
+        let minX = inset
+        let maxX = max(inset, size.width - inset)
+        let minY = inset
+        let maxY = max(inset, size.height - inset)
+
+        if p.x >= minX, p.x <= maxX, p.y >= minY, p.y <= maxY { return p }
+
+        let dx = p.x - s.x
+        let dy = p.y - s.y
+        // The stroke can only BEGIN inside the box — a drag starts only on a view that
+        // hit-tests — so `s` is in bounds and the ray leaves through exactly one edge.
+        // `t` is the fraction of the way to the finger at which that happens.
+        var t: CGFloat = 1
+        if dx > 0 { t = min(t, (maxX - s.x) / dx) }
+        if dx < 0 { t = min(t, (minX - s.x) / dx) }
+        if dy > 0 { t = min(t, (maxY - s.y) / dy) }
+        if dy < 0 { t = min(t, (minY - s.y) / dy) }
+        t = min(max(t, 0), 1)
+
+        return CGPoint(x: s.x + dx * t, y: s.y + dy * t)
     }
 
     // MARK: - Line and glyph
