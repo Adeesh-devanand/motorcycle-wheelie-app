@@ -1,0 +1,234 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  BETA-ONLY anonymous diagnostic-log upload backend for the motorcycle-wheelie
+  (LoftMeter) iOS app. API Gateway HTTP API -> Lambda (presign) -> private S3
+  bucket. The Lambda returns a presigned S3 PUT URL; the app uploads the NDJSON
+  log body directly to S3. No user auth; a shared static X-Beta-Key header is a
+  simple abuse gate. Assumes deployment in us-east-1.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the private diagnostics bucket. Leave blank to derive a unique
+      name from the stack name and account id.
+  BetaUploadToken:
+    Type: String
+    NoEcho: true
+    Description: >
+      Shared static token the client must send as the X-Beta-Key header on
+      GET /presign. Simple abuse gate, not real auth.
+  RetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 3650
+    Description: Days after which uploaded diagnostic objects expire (lifecycle rule).
+
+Conditions:
+  DeriveBucketName: !Equals [!Ref BucketName, ""]
+
+Resources:
+
+  DiagnosticsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If
+        - DeriveBucketName
+        - !Sub "${AWS::StackName}-${AWS::AccountId}-diag"
+        - !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireDiagnostics
+            Status: Enabled
+            Prefix: beta/
+            ExpirationInDays: !Ref RetentionDays
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - PUT
+            AllowedOrigins:
+              - "*"
+            AllowedHeaders:
+              - "*"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3000
+
+  PresignLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: PresignPutOnlyBetaPrefix
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Least privilege: presigning a put_object requires the role to
+              # actually hold s3:PutObject, scoped to beta/* in THIS bucket only.
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${DiagnosticsBucket}/beta/*"
+
+  PresignFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-presign"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 10
+      MemorySize: 128
+      Role: !GetAtt PresignLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref DiagnosticsBucket
+          BETA_UPLOAD_TOKEN: !Ref BetaUploadToken
+          EXPIRES_IN: "900"
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import re
+          import boto3
+          from botocore.config import Config
+
+          BUCKET = os.environ["BUCKET_NAME"]
+          TOKEN = os.environ["BETA_UPLOAD_TOKEN"]
+          EXPIRES_IN = int(os.environ.get("EXPIRES_IN", "900"))
+          CONTENT_TYPE = "application/x-ndjson"
+
+          # SigV4 presigned URLs must be region-explicit for us-east-1 correctness.
+          _s3 = boto3.client(
+              "s3",
+              config=Config(signature_version="s3v4", region_name=os.environ.get("AWS_REGION", "us-east-1")),
+          )
+
+          # installID: uuid-ish (hex + hyphens). session: alphanumeric + - and _.
+          # ts: unix millis, digits only. All reject path traversal by construction.
+          _RE_INSTALL = re.compile(r"^[A-Za-z0-9\-]{8,64}$")
+          _RE_SESSION = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+          _RE_TS = re.compile(r"^[0-9]{10,16}$")
+
+
+          def _resp(status, body):
+              return {
+                  "statusCode": status,
+                  "headers": {"Content-Type": "application/json"},
+                  "body": json.dumps(body),
+              }
+
+
+          def _get_header(headers, name):
+              if not headers:
+                  return None
+              lname = name.lower()
+              for k, v in headers.items():
+                  if k.lower() == lname:
+                      return v
+              return None
+
+
+          def handler(event, context):
+              headers = event.get("headers") or {}
+              supplied = _get_header(headers, "X-Beta-Key")
+              if not supplied or supplied != TOKEN:
+                  return _resp(403, {"error": "forbidden"})
+
+              qs = event.get("queryStringParameters") or {}
+              install_id = (qs.get("installID") or "").strip()
+              session = (qs.get("session") or "").strip()
+              ts = (qs.get("ts") or "").strip()
+
+              if not (_RE_INSTALL.match(install_id) and _RE_SESSION.match(session) and _RE_TS.match(ts)):
+                  return _resp(400, {"error": "invalid parameters"})
+
+              key = "beta/{}/{}-{}.ndjson".format(install_id, session, ts)
+
+              try:
+                  url = _s3.generate_presigned_url(
+                      "put_object",
+                      Params={
+                          "Bucket": BUCKET,
+                          "Key": key,
+                          "ContentType": CONTENT_TYPE,
+                      },
+                      ExpiresIn=EXPIRES_IN,
+                  )
+              except Exception:
+                  return _resp(500, {"error": "presign failed"})
+
+              return _resp(200, {"uploadURL": url, "key": key, "expiresIn": EXPIRES_IN})
+
+  PresignLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-presign"
+      RetentionInDays: 14
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-diag-api"
+      ProtocolType: HTTP
+
+  PresignIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PresignFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  PresignRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /presign"
+      Target: !Sub "integrations/${PresignIntegration}"
+
+  DefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: "$default"
+      AutoDeploy: true
+      DefaultRouteSettings:
+        # Throttle so a runaway client cannot rack up cost.
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PresignFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/presign"
+
+Outputs:
+  ApiEndpoint:
+    Description: Invoke URL base for the HTTP API ($default stage). Append /presign.
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  BucketName:
+    Description: Name of the private diagnostics bucket.
+    Value: !Ref DiagnosticsBucket

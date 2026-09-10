@@ -13,6 +13,20 @@ struct WheelieTrackerApp: App {
     /// was actually driving — a silent split-brain on top of the duplicate-graph bug.
     @State private var services = ServiceGraph()
 
+    /// Scene phase drives the BETA diagnostic-log upload trigger below. Reading it
+    /// unconditionally (not under `#if BETA`) is harmless — it is a standard
+    /// SwiftUI environment value — and keeps the `body` structure identical between
+    /// the beta and production builds.
+    @Environment(\.scenePhase) private var scenePhase
+
+    #if BETA
+    /// The anonymous diagnostic-log uploader. `nil` unless the beta Info.plist keys
+    /// (`BetaUploadAPIBase` / `BetaUploadToken`) are populated, which they are only
+    /// in a beta build — so this is a clean no-op even if BETA is compiled without
+    /// the settings. Entire property is absent from a production build.
+    @State private var betaUploader: BetaDiagnosticUploader? = BetaDiagnosticUploader.makeUploader()
+    #endif
+
     init() {
         configureAudioSession()
     }
@@ -23,6 +37,17 @@ struct WheelieTrackerApp: App {
                 .environment(services.calibration)
                 .environment(services.repository)
                 .environment(services.preferences)
+                #if BETA
+                // BETA ONLY: on app background, upload not-yet-sent NDJSON diagnostic
+                // logs. Never fires mid-ride (only on the background transition) and
+                // uses a URLSession background config so the upload survives suspension.
+                // Absent entirely from a production (non-BETA) build.
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .background {
+                        betaUploader?.start()
+                    }
+                }
+                #endif
         }
     }
 

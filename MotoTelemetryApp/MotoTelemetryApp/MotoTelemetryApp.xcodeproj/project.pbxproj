@@ -25,6 +25,7 @@
 		DA6C1057100000000000005B /* SessionSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000005A /* SessionSummaryCard.swift */; };
 		DA6C1057100000000000006B /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000006A /* LogViewerView.swift */; };
 		DA6C1057100000000000007B /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000007A /* DiagnosticsView.swift */; };
+		DA6C1057100000000000008B /* BetaDiagnosticUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6C1057100000000000008A /* BetaDiagnosticUploader.swift */; };
 		5533FCC9E912C0276401749A /* RunSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */; };
 		584BA9209CE4274BD5D7A77E /* RunDetailsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F01A8933247C8727399794 /* RunDetailsViewModel.swift */; };
 		62E9E071FB66022474F1A321 /* RunHistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */; };
@@ -86,6 +87,7 @@
 		DA6C1057100000000000005A /* SessionSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SessionSummaryCard.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/SessionSummaryCard.swift"; sourceTree = SOURCE_ROOT; };
 		DA6C1057100000000000006A /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LogViewerView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/LogViewerView.swift"; sourceTree = SOURCE_ROOT; };
 		DA6C1057100000000000007A /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/DiagnosticsView.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000008A /* BetaDiagnosticUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaDiagnosticUploader.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/Diagnostics/BetaDiagnosticUploader.swift"; sourceTree = SOURCE_ROOT; };
 		0AD62C6C8782A12897D1A787 /* CalibrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationState.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/CalibrationState.swift"; sourceTree = SOURCE_ROOT; };
 		0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunHistoryRow.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunHistoryRow.swift"; sourceTree = SOURCE_ROOT; };
 		178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RiderPreferences.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/RiderPreferences.swift"; sourceTree = SOURCE_ROOT; };
@@ -222,6 +224,7 @@
 				DA6C1057100000000000005A /* SessionSummaryCard.swift */,
 				DA6C1057100000000000006A /* LogViewerView.swift */,
 				DA6C1057100000000000007A /* DiagnosticsView.swift */,
+				DA6C1057100000000000008A /* BetaDiagnosticUploader.swift */,
 				6C1074D78E8227A2DB2F2310 /* MotionService.swift */,
 				3B64E2E8F632A902E50942C1 /* RunRecorder.swift */,
 				1F1E188D491D14F126393B41 /* RunRepository.swift */,
@@ -433,6 +436,7 @@
 				DA6C1057100000000000005B /* SessionSummaryCard.swift in Sources */,
 				DA6C1057100000000000006B /* LogViewerView.swift in Sources */,
 				DA6C1057100000000000007B /* DiagnosticsView.swift in Sources */,
+				DA6C1057100000000000008B /* BetaDiagnosticUploader.swift in Sources */,
 				6A85CD5B581EEF89C22CA672 /* MotionService.swift in Sources */,
 				0BFA6BF15391863F43BADE6C /* RunRecorder.swift in Sources */,
 				0A26AA8354F61D31677FDF24 /* RunRepository.swift in Sources */,
@@ -622,6 +626,11 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "BETA $(inherited)";
+				INFOPLIST_KEY_BetaUploadAPIBase = "$(BetaUploadAPIBase)";
+				INFOPLIST_KEY_BetaUploadToken = "$(BetaUploadToken)";
+				BetaUploadAPIBase = "https://beta-api.example.com";
+				BetaUploadToken = "REPLACE_WITH_BETA_TOKEN";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -658,6 +667,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adeesh.MotoTelemetryApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				INFOPLIST_KEY_BetaUploadAPIBase = "";
+				INFOPLIST_KEY_BetaUploadToken = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
