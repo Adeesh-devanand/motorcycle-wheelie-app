@@ -49,6 +49,13 @@ final class LiveWheelieViewModel {
     /// Live duration of the attempt in progress, seconds. Reads `0.0` when idle.
     private(set) var wheelieTime: TimeInterval = 0
 
+    var acquisitionStatus: String {
+        if !recorder.unsavedRuns.isEmpty { return "Attempt not saved — retry above" }
+        if !recorder.sensorHealthy { return "Waiting for fresh motion data" }
+        if recorder.eventActive { return "Recording attempt" }
+        return "Ready — attempts save automatically"
+    }
+
     // MARK: - Range Status
 
     var angleInRange: RangeStatus {

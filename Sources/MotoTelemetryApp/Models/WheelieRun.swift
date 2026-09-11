@@ -11,6 +11,35 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
     /// could not run, so a raw-only run is never shown as if it were cleaned.
     var qualityFlags: QualityFlags = []
 
+    private struct Statistics: Sendable, Equatable {
+        var angle: Double = 0
+        var rawAngle: Double = 0
+        var speed: Double = 0
+        var averageSpeed: Double = 0
+    }
+    private var statistics = Statistics()
+
+    private static func summarize(_ samples: [TelemetrySample]) -> Statistics {
+        var result = Statistics()
+        var total: Double = 0
+        var validCount = 0
+        if let first = samples.first {
+            result.angle = first.blurredAngleDegrees ?? first.angleDegrees
+            result.rawAngle = first.angleDegrees
+        }
+        for sample in samples {
+            result.angle = max(result.angle, sample.blurredAngleDegrees ?? sample.angleDegrees)
+            result.rawAngle = max(result.rawAngle, sample.angleDegrees)
+            if sample.speedValid == true {
+                result.speed = max(result.speed, sample.speedKPH)
+                total += sample.speedKPH
+                validCount += 1
+            }
+        }
+        result.averageSpeed = validCount == 0 ? 0 : total / Double(validCount)
+        return result
+    }
+
     // MARK: - Decoding older files
     //
     // 27 runs on the device were being dropped every launch as "corrupt run file".
@@ -46,6 +75,7 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.samples = samples
+        self.statistics = Self.summarize(samples)
         self.configuration = configuration
         self.qualityFlags = qualityFlags
     }
@@ -56,6 +86,7 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         startedAt = try container.decode(Date.self, forKey: .startedAt)
         endedAt = try container.decode(Date.self, forKey: .endedAt)
         samples = try container.decode([TelemetrySample].self, forKey: .samples)
+        statistics = Self.summarize(samples)
         configuration = try container.decode(RunConfigurationSnapshot.self,
                                              forKey: .configuration)
 
@@ -83,25 +114,10 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
     /// back toward its neighbours, so this is a less inflated peak than raw max — it
     /// does not fix the ratchet asymmetry (that is the parked percentile upgrade),
     /// only the worst of the spike inflation.
-    var maxAngle: Double {
-        samples.map { $0.blurredAngleDegrees ?? $0.angleDegrees }.max() ?? 0
-    }
-
-    /// The raw max, kept beside `maxAngle` so the blur's effect is visible rather
-    /// than hidden — the same honesty rule as storing both series.
-    var rawMaxAngle: Double {
-        samples.map(\.angleDegrees).max() ?? 0
-    }
-
-    var maxSpeed: Double {
-        samples.filter { $0.speedValid == true }.map(\.speedKPH).max() ?? 0
-    }
-
-    var averageSpeed: Double {
-        let valid = samples.filter { $0.speedValid == true }
-        guard !valid.isEmpty else { return 0 }
-        return valid.map(\.speedKPH).reduce(0, +) / Double(valid.count)
-    }
+    var maxAngle: Double { statistics.angle }
+    var rawMaxAngle: Double { statistics.rawAngle }
+    var maxSpeed: Double { statistics.speed }
+    var averageSpeed: Double { statistics.averageSpeed }
 
     // MARK: - In-range intervals (IntervalDetector bridge)
     //
@@ -124,9 +140,11 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         // call. Supply all four; `metric: .angle` is load-bearing —
         // `RangeIntervalTimeline` colours the angle vs speed channel off it, so
         // a wrong metric would mis-colour the timeline.
-        return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10)
+        return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10, maximumInterpolationGap: 0.25)
             .intervals(over: series)
-            .map { RangeInterval(id: UUID(), metric: .angle, start: $0.start, end: $0.end) }
+            .enumerated().map { index, interval in
+                RangeInterval(id: intervalID(index: index, speed: false), metric: .angle, start: interval.start, end: interval.end)
+            }
     }
 
     var speedIntervals: [RangeInterval] {
@@ -137,8 +155,14 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         // Same nonexistent `RangeInterval(start:end:)` build break as above;
         // here `metric: .speed` distinguishes this from the angle channel so
         // `RangeIntervalTimeline` colours it correctly.
-        return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10)
+        return IntervalDetector(range: lo...hi, minDuration: 0.15, mergeGap: 0.10, maximumInterpolationGap: 0.25)
             .intervals(over: series)
-            .map { RangeInterval(id: UUID(), metric: .speed, start: $0.start, end: $0.end) }
+            .enumerated().map { index, interval in
+                RangeInterval(id: intervalID(index: index, speed: true), metric: .speed, start: interval.start, end: interval.end)
+            }
+    }
+    private func intervalID(index: Int, speed: Bool) -> UUID {
+        let suffix = UInt32(truncatingIfNeeded: index) | (speed ? 0x80000000 : 0)
+        return UUID(uuidString: String(id.uuidString.prefix(28)) + String(format: "%08X", suffix))!
     }
 }

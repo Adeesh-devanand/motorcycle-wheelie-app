@@ -139,6 +139,10 @@ struct LiveScreen: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.lg) {
+                Text(viewModel.acquisitionStatus)
+                    .font(.caption)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .accessibilityAddTraits(.updatesFrequently)
                 headerBar
                 metersSection
                     .frame(maxHeight: .infinity)

@@ -1,56 +1,5 @@
-//
-//  BetaDiagnosticUploader.swift
-//
-//  ANONYMOUS BETA DIAGNOSTIC-LOG UPLOAD — BETA BUILDS ONLY.
-//
-//  ============================================================================
-//  #if BETA GATING (read this first)
-//  ============================================================================
-//  EVERY line of this file is wrapped in `#if BETA ... #endif`. The `BETA`
-//  compilation condition is set ONLY in a beta-capable build configuration
-//  (currently the app target's Debug config → Debug / TestFlight builds). In a
-//  Release / App Store build `BETA` is NOT defined, so this entire file compiles
-//  to nothing: no uploader type exists, no network code is linked, and no call
-//  site referencing it compiles either (the trigger in the app scene is itself
-//  under `#if BETA`). Nothing here ships to production.
-//
-//  As a second, independent safety net, the API base URL and auth token are read
-//  at runtime from `Bundle.main.infoDictionary` (Info.plist keys `BetaUploadAPIBase`
-//  and `BetaUploadToken`, populated from build settings). Those settings are set
-//  ONLY in the beta config and left EMPTY in Release, so even if this code were
-//  ever compiled into a non-beta build, `makeUploader()` returns nil and the
-//  uploader no-ops — it cannot make a network call without a configured base URL.
-//
-//  ============================================================================
-//  SHARED CONTRACT (the AWS backend is built in parallel to THIS exact contract)
-//  ============================================================================
-//  1. Presign:
-//       GET {API_BASE}/presign?installID=<uuid>&session=<sessionID>&ts=<unixMillis>
-//       Header:  X-Beta-Key: <token>
-//     Response JSON:
-//       { "uploadURL": "<presigned PUT url>", "key": "...", "expiresIn": 900 }
-//
-//  2. Upload:
-//       HTTP PUT the RAW file bytes to uploadURL
-//       Header:  Content-Type: application/x-ndjson
-//
-//  ============================================================================
-//  BEHAVIOUR
-//  ============================================================================
-//  • Source files: the app's existing NDJSON logs in `DiagnosticLog.shared.logDirectory`
-//    (`<Documents>/logs/`) — both `session-*.ndjson` and `raw-*.ndjson`. We do NOT
-//    invent a new log store; we upload the files the app already writes.
-//  • Triggered on app background only (never mid-ride) — see the scene hook in
-//    `WheelieTrackerApp` / `RootTabView`, also under `#if BETA`.
-//  • Uploads run on a URLSession *background* configuration so they survive app
-//    suspension.
-//  • Already-uploaded file names are recorded in UserDefaults so a file is never
-//    re-sent. The file currently being written (DiagnosticLog's `currentFileURL`)
-//    is skipped so we never upload a live, still-growing file.
-//  • All failures are swallowed quietly and simply retried on the next background
-//    cycle — a beta telemetry upload must never disrupt the app.
-//
-
+// Optional beta diagnostic uploads. Consent gates every scheduling boundary.
+// Upload copies omit coordinate fields; originals remain subject to local cleanup.
 #if BETA
 import Foundation
 import UIKit
@@ -58,13 +7,7 @@ import os
 
 // MARK: - Anonymous per-install ID
 
-/// Anonymous, per-install identifier for beta diagnostic-log upload.
-///
-/// A single random `UUID` generated ONCE on first access and persisted in
-/// `UserDefaults` under `beta.installID`. No account, no login, no PII: a fresh
-/// v4 UUID with no derivation from device or user, so it cannot be correlated to
-/// a person — it exists only so the backend can group uploads from the same
-/// install. Compiled only under `BETA`, so production never generates or stores it.
+/// Persistent installation identifier. Pseudonymous, not anonymous.
 enum BetaInstallID {
 
     /// UserDefaults key holding the persisted install UUID string.
@@ -97,6 +40,8 @@ final class BetaDiagnosticUploader: NSObject {
 
     private let apiBase: URL
     private let token: String
+    private let defaults: UserDefaults
+    var scheduleForTesting: ((URL) -> Void)?
 
     /// The directory whose `.ndjson` files are candidates for upload.
     private let logDirectory: URL
@@ -139,7 +84,7 @@ final class BetaDiagnosticUploader: NSObject {
             withIdentifier: "com.mototelemetry.beta.diagupload")
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
-        config.allowsCellularAccess = true
+        config.allowsCellularAccess = false
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
@@ -156,7 +101,7 @@ final class BetaDiagnosticUploader: NSObject {
     /// only part that needs to survive suspension.
     private lazy var presignSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
-        config.allowsCellularAccess = true
+        config.allowsCellularAccess = false
         config.timeoutIntervalForRequest = 30
         return URLSession(configuration: config)
     }()
@@ -222,7 +167,8 @@ final class BetaDiagnosticUploader: NSObject {
 
     /// `nonisolated` for the same reason as `makeUploader` — it only assigns
     /// immutable stored properties, so it needs no main-actor hop.
-    nonisolated private init(apiBase: URL, token: String, logDirectory: URL) {
+    nonisolated init(apiBase: URL, token: String, logDirectory: URL, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.apiBase = apiBase
         self.token = token
         self.logDirectory = logDirectory
@@ -242,6 +188,7 @@ final class BetaDiagnosticUploader: NSObject {
     /// been uploaded and is not the currently-open log file. Fire-and-forget:
     /// per-file failures are logged and left for the next cycle.
     func start() {
+        guard Self.consentDate(defaults: defaults) != nil else { return }
         let installID = BetaInstallID.current
 
         // Unconditional entry line. Without it, "the scene-phase trigger never fired"
@@ -252,14 +199,15 @@ final class BetaDiagnosticUploader: NSObject {
         let candidates = pendingFiles()
         guard !candidates.isEmpty else { return }
 
-        beginBackgroundAssertion()
+        if scheduleForTesting == nil { beginBackgroundAssertion() }
 
         for fileURL in candidates {
             // Claim the file BEFORE any async work so a second `start()` in the same
             // backgrounding cannot pick it up again (see `inFlight`).
             inFlight.insert(fileURL.lastPathComponent)
 
-            presignThenUpload(fileURL: fileURL, installID: installID)
+            if let scheduleForTesting { scheduleForTesting(fileURL) }
+            else { presignThenUpload(fileURL: fileURL, installID: installID) }
         }
     }
 
@@ -323,7 +271,9 @@ final class BetaDiagnosticUploader: NSObject {
         var skippedLive = 0, skippedUploaded = 0, skippedInFlight = 0, skippedRecent = 0
 
         let result = urls.filter { url in
-            guard url.pathExtension == "ndjson" else { return false }
+            guard url.pathExtension == "ndjson", let consent = Self.consentDate(defaults: defaults),
+                  let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
+                  created >= consent else { return false }
             if url.lastPathComponent == liveFileName { skippedLive += 1; return false }
             if uploaded.contains(url.lastPathComponent) { skippedUploaded += 1; return false }
             if inFlight.contains(url.lastPathComponent) { skippedInFlight += 1; return false }
@@ -352,6 +302,7 @@ final class BetaDiagnosticUploader: NSObject {
     // MARK: Presign + PUT
 
     private func presignThenUpload(fileURL: URL, installID: String) {
+        guard let consent = Self.consentDate(defaults: defaults) else { releaseClaim(fileURL.lastPathComponent); return }
         let sessionID = Self.sessionIdentifier(for: fileURL)
         let ts = Self.timestampMillis(for: fileURL)   // unix millis, from the file
 
@@ -393,7 +344,7 @@ final class BetaDiagnosticUploader: NSObject {
             }
             // Hop back to the main actor to touch the actor-isolated session/state.
             Task { @MainActor in
-                self.putFile(fileURL: fileURL, to: uploadURL)
+                self.putFile(fileURL: fileURL, to: uploadURL, consent: consent)
             }
         }
         task.resume()
@@ -403,15 +354,64 @@ final class BetaDiagnosticUploader: NSObject {
     /// is what survives suspension — the upload continues (and can relaunch the app)
     /// after the user leaves. Completion is handled in the delegate, which marks the
     /// file uploaded only on a 2xx.
-    private func putFile(fileURL: URL, to uploadURL: URL) {
+    private func putFile(fileURL: URL, to uploadURL: URL, consent: Date) {
+        guard Self.consentDate(defaults: defaults) == consent, uploadURL.scheme == "https" else {
+            releaseClaim(fileURL.lastPathComponent); return
+        }
+        let copy: URL
+        do { copy = try Self.redactedCopy(of: fileURL) }
+        catch { releaseClaim(fileURL.lastPathComponent); return }
         var request = URLRequest(url: uploadURL)
         request.httpMethod = "PUT"
         request.setValue("application/x-ndjson", forHTTPHeaderField: "Content-Type")
 
-        let task = session.uploadTask(with: request, fromFile: fileURL)
+        let task = session.uploadTask(with: request, fromFile: copy)
         // Stash the source file name so the delegate can mark it uploaded on success.
         task.taskDescription = fileURL.lastPathComponent
         task.resume()
+    }
+
+    nonisolated static func consentDate(defaults: UserDefaults = .standard) -> Date? {
+        guard defaults.bool(forKey: "beta.uploadConsent"),
+              defaults.double(forKey: "beta.uploadConsentSince") > 0 else { return nil }
+        return Date(timeIntervalSince1970: defaults.double(forKey: "beta.uploadConsentSince"))
+    }
+
+    func privacyDidChange() {
+        guard Self.consentDate(defaults: defaults) == nil else { return }
+        presignSession.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+        session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+        inFlight.removeAll()
+        endBackgroundAssertion()
+    }
+
+    /// Fail closed on malformed NDJSON; never fall back to uploading raw bytes.
+    nonisolated static func redactedData(_ data: Data) throws -> Data {
+        func scrub(_ value: Any) -> Any {
+            if let object = value as? [String: Any] {
+                let blocked: Set<String> = ["latitude", "longitude", "lat", "lon", "lng", "altitude", "coordinate", "coordinates"]
+                return object.reduce(into: [String: Any]()) { result, pair in
+                    if !blocked.contains(pair.key.lowercased()) { result[pair.key] = scrub(pair.value) }
+                }
+            }
+            if let array = value as? [Any] { return array.map(scrub) }
+            return value
+        }
+        var result = Data()
+        for line in data.split(separator: 10) where !line.isEmpty {
+            let object = try JSONSerialization.jsonObject(with: Data(line))
+            result.append(try JSONSerialization.data(withJSONObject: scrub(object), options: [.sortedKeys]))
+            result.append(10)
+        }
+        return result
+    }
+
+    nonisolated private static func redactedCopy(of source: URL) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("beta-redacted", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let copy = directory.appendingPathComponent(source.lastPathComponent)
+        try redactedData(Data(contentsOf: source)).write(to: copy, options: .atomic)
+        return copy
     }
 
     // MARK: Uploaded-set persistence
@@ -432,6 +432,9 @@ final class BetaDiagnosticUploader: NSObject {
     /// again on the next background cycle rather than being stuck forever.
     fileprivate func releaseClaim(_ fileName: String) {
         inFlight.remove(fileName)
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("beta-redacted")
+            .appendingPathComponent(fileName)
+        try? FileManager.default.removeItem(at: copy)
         // Cycle drained — stop asking iOS to keep us awake.
         if inFlight.isEmpty { endBackgroundAssertion() }
     }
@@ -510,7 +513,7 @@ extension BetaDiagnosticUploader: URLSessionTaskDelegate {
             }
             if succeeded, let fileName, !fileName.isEmpty {
                 self.markUploaded(fileName)
-                self.deleteUploadedFile(named: fileName)
+                // Keep the local raw original; normal storage-budget cleanup owns it.
                 self.log.info("uploaded \(fileName, privacy: .public)")
             } else {
                 self.log.error("""

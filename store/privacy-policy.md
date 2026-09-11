@@ -4,8 +4,8 @@ _Last updated: 2026-09-11_
 
 **Publication status:** this is a draft describing the implementation reviewed on
 2026-09-11. The maintainer must supply a verified privacy contact before publishing
-it. Beta upload controls described as absent below have not been implemented by
-this documentation change.
+it. The controls below describe the current remediation candidate; verify the
+distributed archive before publication.
 
 Loftmeter is a motorcycle attitude-telemetry app. Its normal Release build stores
 telemetry on your device. **Configured beta builds can automatically upload
@@ -37,19 +37,22 @@ the app are governed by the services you use.
 
 ## Configured beta builds
 
-The reviewed Debug and Beta configurations include the beta uploader. A clean
-checkout leaves its endpoint and token empty, disabling uploading. When valid
-upload configuration is supplied, the app attempts uploads at launch and when it
-moves to the background. **There is currently no in-app upload consent screen,
-upload opt-out, Wi-Fi-only control, or coordinate-redaction mode.** Uploads can use
-cellular data.
+Debug and Beta configurations can include the uploader. A clean checkout leaves
+its endpoint and token empty, disabling it. When configured, **sharing is off by
+default**. The Settings switch explains the included diagnostic data and the
+persistent installation identifier. Sharing permits Wi-Fi uploads only.
 
-Eligible diagnostic files include raw sensor traces. Uploaded information can
-therefore include precise location and motion readings as well as diagnostic
-metadata. A randomly generated installation identifier persists in app settings
-and groups uploads from that installation. Session identifiers and file timestamps
-also accompany requests. These uploads are not anonymous merely because no name
-or account is requested.
+Only eligible logs created after the latest opt-in are selected. Coordinate keys
+(including latitude, longitude and altitude) are removed recursively from a
+separate export copy; local originals remain under the existing storage-budget
+cleanup. Malformed logs are skipped, never uploaded raw as a fallback. Motion,
+speed, timestamps, session/device metadata and an installation identifier can
+still be shared. They are pseudonymous, not anonymous.
+
+Turning sharing off cancels pending network tasks and prevents new upload
+scheduling. Cancellation cannot recall bytes already transmitted. Re-enabling
+starts a new eligibility cutoff; it does not release the older backlog. Launch
+and background transitions may schedule eligible uploads while consent is on.
 
 The developer can access uploaded logs for investigating sensor behaviour and app
 reliability. The upload service uses Amazon Web Services. The deployment inspected
@@ -66,8 +69,7 @@ installation identifier is used for diagnostics, not an advertising identifier.
 Completed runs stay in local storage until removed. The app provides individual
 run deletion and a Delete All runs action. **These actions do not delete raw
 diagnostic logs or previously uploaded server copies.** Local diagnostic files
-are subject to a storage-budget cleanup, and successfully uploaded files may be
-removed locally. This is not a fixed retention period for every local file.
+are subject to a storage-budget cleanup, and uploaded export copies are removed after completion. This is not a fixed retention period for every local file.
 
 The AWS inspection on 2026-09-11 found a 90-day lifecycle expiration rule for beta
 diagnostic objects and 14-day retention for the Lambda log group. Lifecycle
@@ -78,11 +80,11 @@ uploads or copies retained in device backups.
 
 ## Controls available today
 
-You can manage sensor permissions in iOS Settings and use the app's run-deletion
-actions. Revoking location permission does not erase location already captured in
-pending logs, and does not prevent other diagnostic uploads. Turning off speed
-measurement is not an upload opt-out. To avoid this beta upload path, use a build
-with uploading disabled; the distributor must identify which build you received.
+You can manage sensor permissions in iOS Settings, turn diagnostic sharing off
+in the app, and delete completed runs. Revoking location permission does not erase
+local raw logs or old cloud uploads. The sharing switch governs future uploads;
+it is not a server deletion request. The distributor must identify whether your
+build contains configured beta services.
 
 ## Changes and contact
 

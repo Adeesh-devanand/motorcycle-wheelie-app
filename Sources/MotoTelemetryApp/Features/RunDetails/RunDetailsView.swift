@@ -31,9 +31,12 @@ struct RunDetailsView: View {
     /// on every run is a false claim, and this project's whole premise is that
     /// every number it shows is one it can defend.
     private let isLongestRun: Bool
+    private let exportURL: URL?
 
     init(runID: UUID, repository: RunRepository) {
+        self.exportURL = repository.exportURL(for: runID)
         let allRuns = repository.allRuns
+        let verifiedRuns = allRuns.filter { $0.qualityFlags.isTrustworthy }
         let run = allRuns.first { $0.id == runID }
             ?? WheelieRun(id: runID, startedAt: .now, endedAt: .now, samples: [],
                           configuration: RunConfigurationSnapshot(
@@ -44,7 +47,7 @@ struct RunDetailsView: View {
 
         // A single run is not a record holder — with nothing to compare against
         // "LONGEST" would be vacuous rather than earned.
-        if allRuns.count > 1, let longest = allRuns.max(by: { $0.duration < $1.duration }) {
+        if verifiedRuns.count > 1, let longest = verifiedRuns.max(by: { $0.duration < $1.duration }) {
             self.isLongestRun = longest.id == run.id
         } else {
             self.isLongestRun = false
@@ -57,6 +60,10 @@ struct RunDetailsView: View {
         VStack(spacing: AppSpacing.sm) {
             headerRow
             statsCard
+            if !viewModel.run.qualityFlags.isTrustworthy {
+                Text("Measurement quality is reduced or unverified. Excluded from verified bests.")
+                    .font(.caption).foregroundStyle(AppColors.warning)
+            }
             chartsGroup
             intervalTimeline
         }
@@ -96,6 +103,10 @@ struct RunDetailsView: View {
 
             Spacer(minLength: AppSpacing.xs)
 
+            if let exportURL {
+                ShareLink(item: exportURL) { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel("Export this attempt as JSON")
+            }
             badgePill
         }
         // The row is exactly the back button's 44 pt hit target — the smallest this
@@ -358,11 +369,11 @@ struct RunDetailsView: View {
     private var angleChart: some View {
         TelemetryCard {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                chartTitle("ANGLE", color: AppColors.angleMetric)
+                chartTitle("ANGLE · SMOOTHED WHEN AVAILABLE", color: AppColors.angleMetric)
 
                 TelemetryChart(
                     points: viewModel.anglePoints,
-                    rawSamples: viewModel.run.samples,
+                    rawSamples: viewModel.displaySamples,
                     targetBand: viewModel.angleTarget,
                     metric: .angle,
                     yDomain: viewModel.angleDomain,
@@ -382,7 +393,8 @@ struct RunDetailsView: View {
 
                 TelemetryChart(
                     points: viewModel.speedPoints,
-                    rawSamples: viewModel.run.samples,
+                    segments: viewModel.speedSegments,
+                    rawSamples: viewModel.displaySamples,
                     targetBand: viewModel.speedTarget,
                     metric: .speed,
                     yDomain: viewModel.speedDomain,
@@ -410,8 +422,8 @@ struct RunDetailsView: View {
 
     private var intervalTimeline: some View {
         RangeIntervalTimeline(
-            angleIntervals: viewModel.run.angleIntervals,
-            speedIntervals: viewModel.run.speedIntervals,
+            angleIntervals: viewModel.angleIntervals,
+            speedIntervals: viewModel.speedIntervals,
             duration: viewModel.duration,
             selectedTime: $viewModel.selectedTime,
             totalAngleInRange: viewModel.totalAngleInRange,

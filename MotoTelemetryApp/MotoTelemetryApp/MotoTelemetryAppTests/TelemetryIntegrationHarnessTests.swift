@@ -208,3 +208,124 @@ extension TelemetryIntegrationHarnessTests {
         XCTAssertNil(decoded.speedValid)
     }
 }
+
+
+extension TelemetryIntegrationHarnessTests {
+    @MainActor
+    func testIdleRetentionPlateausWithFullRateInput() async {
+        let store = TemporaryRunStore()
+        defer { store.cleanup() }
+        let motion = ScriptedMotionSource(), speed = ScriptedSpeedSource()
+        let clock = ManualClock()
+        let recorder = await calibratedRecorder(store: store, motion: motion, speed: speed, clock: clock)
+        defer { recorder.stopSession() }
+        var plateaus: [Int] = []
+        for batch in 1...3 {
+            for _ in 0..<10000 { motion.yieldIMU(time: clock.advance(by: 0.01)) }
+            await consumed(batch * 10000, by: recorder)
+            plateaus.append(recorder.retainedSampleCount)
+        }
+        motion.finish(); speed.finish()
+        await recorder.awaitSensorCompletion()
+        XCTAssertTrue(plateaus.allSatisfy { $0 <= 102 }, "100/200/300-second idle retention: \(plateaus)")
+        XCTAssertGreaterThanOrEqual(recorder.sampleCount, 30000)
+        XCTAssertTrue(store.repository.allRuns.isEmpty)
+    }
+}
+
+extension TelemetryIntegrationHarnessTests {
+    @MainActor
+    func testBetaConsentAndRecursiveCoordinateRedaction() throws {
+        let suite = "privacy-test-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("synthetic.ndjson")
+        let original = Data("{\"gnss\":{\"latitude\":49,\"longitude\":-123,\"speed\":10},\"nested\":[{\"lat\":1,\"value\":2}]}\n".utf8)
+        try original.write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: file.path)
+        let uploader = BetaDiagnosticUploader(apiBase: URL(string: "https://example.invalid")!,
+            token: "synthetic", logDirectory: directory, defaults: defaults)
+        var scheduled = 0
+        uploader.scheduleForTesting = { _ in scheduled += 1 }
+        uploader.start()
+        XCTAssertEqual(scheduled, 0)
+        defaults.set(true, forKey: "beta.uploadConsent")
+        defaults.set(Date().addingTimeInterval(-120).timeIntervalSince1970, forKey: "beta.uploadConsentSince")
+        uploader.start()
+        XCTAssertEqual(scheduled, 1)
+        defaults.set(false, forKey: "beta.uploadConsent")
+        uploader.start()
+        XCTAssertEqual(scheduled, 1)
+        let redacted = try BetaDiagnosticUploader.redactedData(original)
+        let text = String(decoding: redacted, as: UTF8.self)
+        XCTAssertFalse(text.contains("latitude"))
+        XCTAssertFalse(text.contains("longitude"))
+        XCTAssertFalse(text.contains("\"lat\""))
+        XCTAssertTrue(text.contains("\"speed\":10"))
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        XCTAssertThrowsError(try BetaDiagnosticUploader.redactedData(Data("invalid JSON".utf8)))
+    }
+
+    func testAnalysisSignalAndStableIntervalsAgree() {
+        let samples = (0..<31).map { index in
+            TelemetrySample(id: UUID(), elapsed: Double(index) * 0.1,
+                angleDegrees: index == 10 ? 80 : 40, blurredAngleDegrees: 40,
+                speedKPH: 42, speedValid: index < 10 || index > 20)
+        }
+        let run = WheelieRun(id: UUID(), startedAt: Date(timeIntervalSince1970: 0),
+            endedAt: Date(timeIntervalSince1970: 3), samples: samples,
+            configuration: RunConfigurationSnapshot(angleTarget: MetricRange(lower: 35, upper: 45),
+                speedTarget: MetricRange(lower: 35, upper: 50), speedGaugeMaximum: 100, calibrationID: UUID()))
+        let vm = RunDetailsViewModel(run: run)
+        XCTAssertEqual(run.maxAngle, 40)
+        XCTAssertEqual(vm.anglePoints.map(\.y).max(), 40)
+        XCTAssertEqual(vm.valuesAtTime(1).angle, 40)
+        XCTAssertTrue(vm.valuesAtTime(1.5).speed.isNaN)
+        XCTAssertEqual(vm.speedSegments.count, 2)
+        XCTAssertEqual(run.angleIntervals.map(\.id), run.angleIntervals.map(\.id))
+        XCTAssertEqual(vm.totalSpeedInRange, 1.8, accuracy: 1e-8)
+    }
+}
+
+extension TelemetryIntegrationHarnessTests {
+    func testCachedHistoryStatisticsMatchRawReferenceAndClearNoiseBand() throws {
+        let samples = (0..<200).map { i in
+            TelemetrySample(id: UUID(), elapsed: Double(i) / 100,
+                angleDegrees: Double(i % 75), blurredAngleDegrees: Double(i % 60),
+                speedKPH: Double(i % 50), speedValid: i % 3 != 0)
+        }
+        let config = K02Fixture.run().configuration
+        for count in [100, 1000, 10000] {
+            let runs = (0..<count).map { _ in
+                WheelieRun(id: UUID(), startedAt: .distantPast, endedAt: .distantPast,
+                    samples: samples, configuration: config)
+            }
+            var baseline: [Double] = [], candidate: [Double] = []
+            for iteration in 0..<5 {
+                func time(_ cached: Bool) -> Double {
+                    let start = ProcessInfo.processInfo.systemUptime
+                    var sum = 0.0
+                    for run in runs {
+                        sum += cached ? run.maxAngle : (run.samples.map { $0.blurredAngleDegrees ?? $0.angleDegrees }.max() ?? 0)
+                    }
+                    XCTAssertEqual(sum, Double(count) * 59)
+                    return ProcessInfo.processInfo.systemUptime - start
+                }
+                if iteration.isMultiple(of: 2) { baseline.append(time(false)); candidate.append(time(true)) }
+                else { candidate.append(time(true)); baseline.append(time(false)) }
+            }
+            let base = baseline.sorted()[2], kept = candidate.sorted()[2]
+            let noise = max(base * 0.10, baseline.max()! - baseline.min()!)
+            print("HISTORY_RULER count=\(count) baseline=\(baseline) cached=\(candidate) noise=\(noise) stride=\(MemoryLayout<WheelieRun>.stride)")
+            if count == 10000 { XCTAssertGreaterThan(base - kept, noise) }
+            let data = try JSONEncoder().encode(runs[0])
+            let restored = try JSONDecoder().decode(WheelieRun.self, from: data)
+            XCTAssertEqual(restored.samples, samples)
+            XCTAssertEqual(restored.maxAngle, 59)
+            XCTAssertEqual(restored.rawMaxAngle, 74)
+        }
+    }
+}

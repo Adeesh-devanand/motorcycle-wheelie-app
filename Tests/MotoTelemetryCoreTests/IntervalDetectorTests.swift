@@ -294,4 +294,17 @@ final class IntervalDetectorTests: XCTestCase {
             return (time: t, value: inRange ? 20.0 : 5.0)
         }
     }
+
+    func testBothOutsideCrossingAndMissingDataBarrier() {
+        let detector = IntervalDetector(range: 35...45, minDuration: 0,
+            mergeGap: 10, maximumInterpolationGap: 1)
+        XCTAssertEqual(detector.intervals(over: [(0, 30), (1, 50)]),
+                       [.init(start: 0.25, end: 0.75)])
+        XCTAssertEqual(detector.intervals(over: [(0, 50), (1, 30)]),
+                       [.init(start: 0.25, end: 0.75)])
+        XCTAssertEqual(detector.intervals(over: [(0, 40), (0.5, 40), (1, .nan),
+                                                (2, 40), (2.5, 40)]),
+                       [.init(start: 0, end: 0.5), .init(start: 2, end: 2.5)])
+        XCTAssertTrue(detector.intervals(over: [(0, 40), (2, 40)]).isEmpty)
+    }
 }

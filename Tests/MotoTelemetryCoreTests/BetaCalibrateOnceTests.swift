@@ -652,4 +652,17 @@ final class BetaCalibrateOnceTests: XCTestCase {
         XCTAssertNil(legacy.measuredGravity,
                      "an estimate with no gravity must say so rather than defaulting")
     }
+
+    func testAnalyticalPitchUncertaintyComponentsAndInvalidInputs() throws {
+        let v = try XCTUnwrap(PitchUncertaintyModel.variance(initialVariance: 0.01,
+            biasSigma: 0.02, rateNoisePSD: 0.0004, biasWalkPSD: 0.000003,
+            calibrationAgeAtAnchor: 20, elapsed: 10))
+        XCTAssertEqual(v, 0.061, accuracy: 1e-12)
+        XCTAssertEqual(PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: 0.02,
+            rateNoisePSD: 0, biasWalkPSD: 0, calibrationAgeAtAnchor: 0, elapsed: 10)!, 0.04, accuracy: 1e-12)
+        XCTAssertNil(PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: -1,
+            rateNoisePSD: 0, biasWalkPSD: 0, calibrationAgeAtAnchor: 0, elapsed: 1))
+        XCTAssertNil(PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: 1,
+            rateNoisePSD: 0, biasWalkPSD: 0, calibrationAgeAtAnchor: 0, elapsed: .infinity))
+    }
 }

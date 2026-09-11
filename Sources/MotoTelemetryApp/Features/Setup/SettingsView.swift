@@ -44,6 +44,16 @@ struct SettingsView: View {
                 }
             }
 
+            #if BETA
+            Section {
+                Toggle("Share diagnostics", isOn: $preferences.diagnosticUploadsEnabled)
+            } header: {
+                Text("Beta diagnostics")
+            } footer: {
+                Text("Optional uploads over Wi-Fi help diagnose app issues. Coordinates are removed from upload copies. Only logs created after you enable sharing are eligible. An installation identifier groups uploads. Turning this off cancels pending transfers; it cannot recall data already sent. Deleting runs does not delete cloud copies.")
+            }
+            #endif
+
             Section("About") {
                 LabeledContent("Version", value: appVersion)
                 LabeledContent("Build", value: buildNumber)

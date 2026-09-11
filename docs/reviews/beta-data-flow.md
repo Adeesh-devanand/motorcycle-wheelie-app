@@ -1,3 +1,17 @@
+# Current K13 implementation update
+
+The current candidate implements persistent off-by-default consent, Wi-Fi-only
+transfers, post-consent file creation cutoff, recursive coordinate-key redaction
+in export copies, fail-closed malformed-log handling, and revocation cancellation.
+Presign callbacks re-check the exact consent date before PUT; old consent epochs
+cannot release work after opt-out/re-opt-in. Local originals remain subject to
+storage budgets. Synthetic transport scheduling/redaction tests accompany this.
+
+No cloud deletion service or privacy contact is invented; publishing the policy
+still requires a real contact. No existing AWS objects were modified. The dated
+baseline audit below is retained as historical evidence and superseded for client
+behavior by this update.
+
 # K13 — beta data flow and publication decisions
 
 Documentation-only phase; reviewed source baseline

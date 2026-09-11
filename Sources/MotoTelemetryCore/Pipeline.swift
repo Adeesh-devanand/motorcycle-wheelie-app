@@ -18,6 +18,9 @@ public struct PipelineOutput: Codable, Sendable, Equatable {
     /// estimate — not a filter covariance, because there is no filter. See
     /// `CalibrateOnceEstimator.projectedPitchSigma`.
     public var pitchSigma: Double
+    /// Describes the included component. nil in legacy records means unknown.
+    public var pitchSigmaModel: String? = nil
+    public var pitchSigmaValid: Bool? = nil
     /// Most recent valid GNSS ground speed, m/s; nil before the first fix.
     public var speed: Double?
     /// Vibration indicator for the window in progress, m/s^2.
@@ -95,6 +98,10 @@ public struct Pipeline {
     /// Held to project the open-loop sigma, which needs the estimate's AGE.
     private let initialBias: BiasEstimate?
 
+    private var uncertaintyAnchorTime: TimeInterval?
+    private var uncertaintyInvalid = false
+    private var previousIntegrationTime: TimeInterval?
+
     private var lastSpeed: Double?
     private var lastSpeedTime: TimeInterval?
     public static let speedFreshnessLimit: TimeInterval = 2.5
@@ -138,12 +145,18 @@ public struct Pipeline {
     public mutating func requestReanchor() {
         guard lastSpecificForce.magnitude > 1e-6 else { return }
         estimator.anchor(with: lastSpecificForce)
+        uncertaintyAnchorTime = nil
+        previousIntegrationTime = nil
+        uncertaintyInvalid = false
     }
 
     /// Establishes the world frame from a calibration's measured gravity vector.
     public mutating func anchor(with specificForce: Vector3) {
         lastSpecificForce = specificForce
         estimator.anchor(with: specificForce)
+        uncertaintyAnchorTime = nil
+        previousIntegrationTime = nil
+        uncertaintyInvalid = false
     }
 
     /// Returns output on `.imu` samples — the 100 Hz spine. Other cases update
@@ -190,6 +203,11 @@ public struct Pipeline {
         }
         lastSpecificForce = imu.specificForce
 
+        if let previous = previousIntegrationTime,
+           imu.time <= previous || imu.time - previous >= config.maxIntegrationDt {
+            uncertaintyInvalid = true
+        }
+        previousIntegrationTime = imu.time
         estimator.integrate(imu)
 
         // Publish NOTHING until gravity has tied the world frame down. Before that,
@@ -205,22 +223,34 @@ public struct Pipeline {
         let pitch = estimator.pitch
         emitPipeDiagnostics(time: imu.time, pitch: pitch)
 
-        return PipelineOutput(time: imu.time,
+        if uncertaintyAnchorTime == nil { uncertaintyAnchorTime = imu.time }
+        let elapsed = max(0, imu.time - (uncertaintyAnchorTime ?? imu.time))
+        // Only the calibration mean's sampling uncertainty is evidenced by the
+        // existing data. Do not silently assign units to the legacy walk constant.
+        let variance = initialBias.flatMap {
+            PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: $0.worstSigma,
+                rateNoisePSD: 0, biasWalkPSD: 0, calibrationAgeAtAnchor: 0, elapsed: elapsed)
+        }
+        let sigma = variance?.squareRoot() ?? config.liveSigmaLimit
+        let valid = variance != nil && !uncertaintyInvalid
+        if !valid { flags.insert(.estimatorDegraded) }
+        if sigma >= config.liveSigmaLimit { flags.insert(.lowConfidence) }
+        var result = PipelineOutput(time: imu.time,
                               attitude: estimator.attitude,
                               pitch: pitch,
                               pitchRate: estimator.pitchRate,
                               roll: estimator.roll,
                               gyroBias: initialBias?.bias ?? .zero,
-                              pitchSigma: estimator.projectedPitchSigma(
-                                  estimate: initialBias,
-                                  now: imu.time,
-                                  holdDuration: 0),
+                              pitchSigma: sigma,
                               speed: lastSpeedTime.flatMap { time in
                                   let age = imu.time - time
                                   return age >= 0 && age <= Self.speedFreshnessLimit ? lastSpeed : nil
                               },
                               vibration: vibration.instantaneousRMS,
                               flags: flags)
+        result.pitchSigmaModel = "calibration-mean-only-v1; excludes anchor, mount, rate noise and thermal drift"
+        result.pitchSigmaValid = valid
+        return result
     }
 
     // MARK: - Diagnostics

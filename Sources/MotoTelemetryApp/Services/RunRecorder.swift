@@ -608,6 +608,12 @@ final class RunRecorder: @unchecked Sendable {
     @MainActor
     func retryUnsavedRuns() { saveFinished(unsavedRuns) }
 
+    @MainActor
+    var retainedSampleCount: Int {
+        processLock.lock(); defer { processLock.unlock() }
+        return collectedSamples.count
+    }
+
     /// Await finite provider streams in integration tests/replay. Providers must
     /// finish first. This observes consumer completion, not producer delivery.
     @MainActor
@@ -735,6 +741,13 @@ final class RunRecorder: @unchecked Sendable {
         // Bridge to TelemetrySample for UI
         let telemetrySample = bridgeToTelemetrySample(output)
         collectedSamples.append(telemetrySample)
+        if segmenter?.state == .idle {
+            let preRoll = max(1, config.eventEntryDwell + config.maxSampleGap)
+            let cutoff = telemetrySample.elapsed - preRoll
+            if let firstKept = collectedSamples.firstIndex(where: { $0.elapsed >= cutoff }), firstKept > 0 {
+                collectedSamples.removeFirst(firstKept)
+            }
+        }
 
         // Stage the latest display values (still under `processLock`, no `await`).
         // `flushDisplay()` copies these onto the observable properties on the main
