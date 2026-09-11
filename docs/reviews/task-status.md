@@ -82,3 +82,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K06 IN PROGRESS — Codex (sole agent)**: Startup/stall health and real acquisition retry. Allowlist: RunRecorder.swift, CalibrationScreen.swift, LiveWheelieView.swift, LiveWheelieViewModel.swift, CalibrationService.swift; shared integration tests. Clock-driven health evaluation callable without sleeps.
 
 **K07 IN PROGRESS — Codex (sole agent)**: Keep confirmed attempt active through disarming. Files RunRecorder.swift and shared lifecycle tests. Do not change segmenter thresholds.
+
+**K08 IN PROGRESS — Codex (sole agent)**: Per-attempt quality and verified rankings. Files Pipeline.swift, RunRecorder.swift, RunRepository.swift, PastRunsViewModel.swift; existing core/app test files.
