@@ -31,6 +31,15 @@ updating the client in lockstep.
   {"uploadURL":"<presigned PUT url>","key":"beta/<installID>/<session>-<ts>.ndjson","expiresIn":900}
   ```
 - **S3 key layout:** `beta/<installID>/<session>-<ts>.ndjson`
+
+  `session` is opaque to the backend (only constraint: `^[A-Za-z0-9_\-]{1,64}$`), and
+  the iOS client fills it with the **source log file's own name**, minus the
+  extension — `session-20260910-204842`, `raw-20260910-211100`. That makes each
+  object self-describing: you can tell a diagnostic log from a raw sample trace, and
+  which device session produced it, from the key alone. `ts` is the source file's
+  modification time, not upload time, so the key is deterministic per file and a
+  retry overwrites rather than creating a near-duplicate. Objects written before
+  2026-09-10 use a random UUID for `session` and carry no such information.
 - **Presigned PUT:** requires `Content-Type: application/x-ndjson`, expires in **900s**.
 
 The client must send the PUT with `Content-Type: application/x-ndjson` (it is

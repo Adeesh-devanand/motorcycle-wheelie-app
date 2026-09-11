@@ -259,19 +259,37 @@ final class BetaDiagnosticUploader: NSObject {
             // backgrounding cannot pick it up again (see `inFlight`).
             inFlight.insert(fileURL.lastPathComponent)
 
-            // One session id PER FILE, not per cycle. The S3 key is
-            // `beta/<installID>/<session>-<ts>.ndjson` and `ts` is only
-            // millisecond-resolution, so a cycle that shared one session id across
-            // files would mint an identical key for any two files whose presign
-            // requests were built in the same millisecond — and this loop builds them
-            // back to back, so that is likely rather than theoretical. One would then
-            // silently overwrite the other in S3. A per-file id keeps every key
-            // distinct while staying exactly within the agreed contract, since
-            // `session` is an opaque client-chosen string to the backend.
-            presignThenUpload(fileURL: fileURL,
-                              installID: installID,
-                              sessionID: UUID().uuidString)
+            presignThenUpload(fileURL: fileURL, installID: installID)
         }
+    }
+
+    /// The `session` component of the S3 key, derived from the SOURCE FILE NAME rather
+    /// than a random UUID.
+    ///
+    /// `session` is an opaque client-chosen string as far as the backend cares — its
+    /// only constraint is `^[A-Za-z0-9_\-]{1,64}$` — and the app's own file names
+    /// already encode both the kind and the time: `session-20260910-204842`,
+    /// `raw-20260910-211100`. Using them makes every object self-describing, so you can
+    /// tell a diagnostic log from a raw sample trace, and which device session produced
+    /// it, from the key alone. A UUID told you nothing without downloading the object.
+    nonisolated static func sessionIdentifier(for fileURL: URL) -> String {
+        let base = fileURL.deletingPathExtension().lastPathComponent
+        let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+        let cleaned = String(base.map { allowed.contains($0) ? $0 : "-" }).prefix(64)
+        return cleaned.isEmpty ? UUID().uuidString : String(cleaned)
+    }
+
+    /// The `ts` component, taken from the file's modification date rather than "now".
+    ///
+    /// Combined with a filename-derived `session` this makes the whole key
+    /// DETERMINISTIC for a given file, which makes re-uploading idempotent: a retry
+    /// after a failed cycle overwrites the same object instead of laying down a
+    /// near-duplicate under a fresh timestamp. Only a file still being appended to
+    /// could shift its own key, and those are excluded from candidates anyway.
+    nonisolated static func timestampMillis(for fileURL: URL) -> Int {
+        let modified = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate ?? Date()
+        return Int(modified.timeIntervalSince1970 * 1000)
     }
 
     // MARK: File discovery
@@ -333,8 +351,9 @@ final class BetaDiagnosticUploader: NSObject {
 
     // MARK: Presign + PUT
 
-    private func presignThenUpload(fileURL: URL, installID: String, sessionID: String) {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)   // unix millis
+    private func presignThenUpload(fileURL: URL, installID: String) {
+        let sessionID = Self.sessionIdentifier(for: fileURL)
+        let ts = Self.timestampMillis(for: fileURL)   // unix millis, from the file
 
         var components = URLComponents(url: apiBase.appendingPathComponent("presign"),
                                        resolvingAgainstBaseURL: false)
