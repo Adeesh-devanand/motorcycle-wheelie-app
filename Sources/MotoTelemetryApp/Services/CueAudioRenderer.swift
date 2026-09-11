@@ -79,6 +79,7 @@ final class CueAudioRenderer: @unchecked Sendable {
     /// The full set of synthesis targets, published to the render thread as one
     /// atomic snapshot so a frame can never mix old and new values.
     private struct CueParameters: Sendable {
+        var updatedAt: TimeInterval = 0
         var amplitude: Float = 0        // 0…maxAmplitude
         var frequency: Double = 1000    // Hz, carrier
         var pulseRate: Double = 2       // Hz, beeps per second
@@ -95,6 +96,13 @@ final class CueAudioRenderer: @unchecked Sendable {
     // MARK: - State
 
     private let engine = AVAudioEngine()
+    private let controlLock = NSRecursiveLock()
+    private var intendedRunning = false
+
+    var wantsToRun: Bool {
+        controlLock.lock(); defer { controlLock.unlock() }
+        return intendedRunning
+    }
     private var sourceNode: AVAudioSourceNode?
 
     /// Lock-free synthesis parameters shared with the render callback.
@@ -283,6 +291,8 @@ final class CueAudioRenderer: @unchecked Sendable {
     }
 
     func start() {
+        controlLock.lock(); defer { controlLock.unlock() }
+        intendedRunning = true
         guard !engine.isRunning else { return }
         do {
             try engine.start()
@@ -301,6 +311,13 @@ final class CueAudioRenderer: @unchecked Sendable {
     }
 
     func stop() {
+        controlLock.lock(); defer { controlLock.unlock() }
+        intendedRunning = false
+        wasRunningBeforeInterruption = false
+        isSounding = false
+        belowExitSince = nil
+        lastLatchAngle = 0
+        cueParameters.withLock { $0 = .silent }
         engine.stop()
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "audio engine stopped", values: [:])
@@ -318,6 +335,8 @@ final class CueAudioRenderer: @unchecked Sendable {
     ///
     /// Lock-free — safe to call from any thread.
     func update(pitchDegrees: Double) {
+        controlLock.lock(); defer { controlLock.unlock() }
+        guard intendedRunning, pitchDegrees.isFinite else { return }
         let clamped = max(0, min(pitchDegrees, pitchCapDegrees))
         let now = ProcessInfo.processInfo.systemUptime
 
@@ -377,7 +396,7 @@ final class CueAudioRenderer: @unchecked Sendable {
         let dutyCycle = minDutyCycle + (maxDutyCycle - minDutyCycle) * t
 
         cueParameters.withLock {
-            $0 = CueParameters(amplitude: continuous ? maxAmplitude : amplitude,
+            $0 = CueParameters(updatedAt: now, amplitude: continuous ? maxAmplitude : amplitude,
                                frequency: continuous ? peakFrequency : frequency,
                                pulseRate: pulseRate,
                                dutyCycle: dutyCycle,
@@ -444,7 +463,8 @@ final class CueAudioRenderer: @unchecked Sendable {
 
     private func renderCallback(frameCount: AVAudioFrameCount,
                                 bufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
-        let params = cueParameters.withLock { $0 }
+        var params = cueParameters.withLock { $0 }
+        if ProcessInfo.processInfo.systemUptime - params.updatedAt > 2.5 { params = .silent }
 
         // do NOT assume one mono Float buffer of
         // exactly `frameCount` samples. If the hardware format diverges after a route
@@ -521,6 +541,7 @@ final class CueAudioRenderer: @unchecked Sendable {
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
+        controlLock.lock(); defer { controlLock.unlock() }
         guard let info = notification.userInfo,
               let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else {
@@ -543,7 +564,7 @@ final class CueAudioRenderer: @unchecked Sendable {
             } else {
                 options = []
             }
-            guard options.contains(.shouldResume), wasRunningBeforeInterruption else {
+            guard intendedRunning, options.contains(.shouldResume), wasRunningBeforeInterruption else {
                 diag.always(time: now, level: .warn,
                             message: "audio interruption ended — not resuming",
                             values: ["shouldResume": options.contains(.shouldResume) ? 1 : 0,
@@ -588,6 +609,8 @@ final class CueAudioRenderer: @unchecked Sendable {
     }
 
     @objc private func handleConfigurationChange(_ notification: Notification) {
+        controlLock.lock(); defer { controlLock.unlock() }
+        guard intendedRunning else { return }
         let now = ProcessInfo.processInfo.systemUptime
         // Re-establish the source-node -> mixer connection at our fixed format.
         // sampleRate is a `let`, so the precomputed coefficients remain valid; the

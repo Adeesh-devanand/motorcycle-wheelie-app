@@ -571,3 +571,20 @@ public struct BiasEstimator: Stage {
     }
 }
 
+
+/// Scalar fixed-axis reference, with independent error components. This is a
+/// mathematical model, not a claim of validated phone accuracy or coverage.
+public enum PitchUncertaintyModel {
+    /// Inputs: rad², rad/s, rad²/s, rad²/s³, seconds, seconds.
+    public static func variance(initialVariance: Double, biasSigma: Double,
+                                rateNoisePSD: Double, biasWalkPSD: Double,
+                                calibrationAgeAtAnchor: Double, elapsed: Double) -> Double? {
+        let inputs = [initialVariance, biasSigma, rateNoisePSD, biasWalkPSD,
+                      calibrationAgeAtAnchor, elapsed]
+        guard inputs.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return nil }
+        let t2 = elapsed * elapsed
+        let v = initialVariance + biasSigma * biasSigma * t2 + rateNoisePSD * elapsed
+            + biasWalkPSD * (calibrationAgeAtAnchor * t2 + t2 * elapsed / 3)
+        return v.isFinite ? v : nil
+    }
+}

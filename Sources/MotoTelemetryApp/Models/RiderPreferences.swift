@@ -75,6 +75,15 @@ final class RiderPreferences {
         didSet { save() }
     }
 
+    var diagnosticUploadsEnabled: Bool = UserDefaults.standard.bool(forKey: "beta.uploadConsent") {
+        didSet {
+            UserDefaults.standard.set(diagnosticUploadsEnabled, forKey: "beta.uploadConsent")
+            if diagnosticUploadsEnabled && !oldValue {
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "beta.uploadConsentSince")
+            }
+        }
+    }
+
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let stored = try? JSONDecoder().decode(StoredPreferences.self, from: data) {

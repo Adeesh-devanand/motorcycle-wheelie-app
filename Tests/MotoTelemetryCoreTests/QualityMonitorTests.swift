@@ -164,7 +164,11 @@ final class QualityMonitorTests: XCTestCase {
         var source = SyntheticSource(scenario: scenario)
         let config = Config()
         let alignment = MountAlignment.identity()
-        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: nil,
+        // Isolate vibration disclosure from the newly explicit missing-calibration
+        // condition. Keep every original flag assertion unchanged.
+        let bias = BiasEstimate(bias: .zero, sigma: Vector3(1e-6, 1e-6, 1e-6),
+            sampleCount: 200, monotonicTime: 0, bikeProfileID: UUID())
+        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: bias,
                                 gravityAnchor: Conventions.restSpecificForce)
 
         let outputs = runPipeline(source: &source, pipeline: &pipeline)
@@ -203,7 +207,11 @@ final class QualityMonitorTests: XCTestCase {
         var source = SyntheticSource(scenario: scenario)
         let config = Config()
         let alignment = MountAlignment.identity()
-        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: nil,
+        // Isolate vibration disclosure from the newly explicit missing-calibration
+        // condition. Keep every original flag assertion unchanged.
+        let bias = BiasEstimate(bias: .zero, sigma: Vector3(1e-6, 1e-6, 1e-6),
+            sampleCount: 200, monotonicTime: 0, bikeProfileID: UUID())
+        var pipeline = Pipeline(config: config, alignment: alignment, initialBias: bias,
                                 gravityAnchor: Conventions.restSpecificForce)
 
         let outputs = runPipeline(source: &source, pipeline: &pipeline)

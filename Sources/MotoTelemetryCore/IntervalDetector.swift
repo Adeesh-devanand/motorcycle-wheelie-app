@@ -24,13 +24,16 @@ public struct IntervalDetector {
     public let range: ClosedRange<Double>
     public let minDuration: TimeInterval
     public let mergeGap: TimeInterval
+    public let maximumInterpolationGap: TimeInterval
 
     public init(range: ClosedRange<Double>,
                 minDuration: TimeInterval = 0.15,
-                mergeGap: TimeInterval = 0.10) {
+                mergeGap: TimeInterval = 0.10,
+                maximumInterpolationGap: TimeInterval = .infinity) {
         self.range = range
         self.minDuration = minDuration
         self.mergeGap = mergeGap
+        self.maximumInterpolationGap = maximumInterpolationGap
     }
 
     /// A detected interval in monotonic seconds.
@@ -59,16 +62,22 @@ public struct IntervalDetector {
             return []
         }
 
-        // Step 1: detect raw in-range spans with interpolated boundaries.
-        var raw = detectRaw(series)
-
-        // Step 2: merge gaps ≤ mergeGap. Must happen BEFORE filtering.
-        raw = merge(raw)
-
-        // Step 3: drop fragments shorter than minDuration.
-        raw = raw.filter { $0.duration >= minDuration }
-
-        return raw
+        // Process continuity islands independently: mergeGap must never bridge
+        // missing/invalid data, even when the caller requests a large merge gap.
+        var result: [Interval] = []
+        var chunk: [(time: TimeInterval, value: Double)] = []
+        func flush() {
+            result += merge(detectRaw(chunk)).filter { $0.duration >= minDuration }
+            chunk.removeAll(keepingCapacity: true)
+        }
+        for point in series {
+            guard point.time.isFinite, point.value.isFinite else { flush(); continue }
+            if let previous = chunk.last,
+               point.time <= previous.time || point.time - previous.time > maximumInterpolationGap { flush() }
+            chunk.append(point)
+        }
+        flush()
+        return result
     }
 
     /// Total time spent in range after cleanup.
@@ -91,49 +100,24 @@ public struct IntervalDetector {
     }
 
     private func detectRaw(_ series: [(time: TimeInterval, value: Double)]) -> [Interval] {
-        var intervals: [Interval] = []
-        var inRange = range.contains(series[0].value)
-        var spanStart: TimeInterval = inRange ? series[0].time : 0
-
+        guard series.count >= 2 else { return [] }
+        var result: [Interval] = []
         for i in 1..<series.count {
-            let prev = series[i - 1]
-            let curr = series[i]
-            let currInRange = range.contains(curr.value)
-
-            if !inRange && currInRange {
-                // Entered range — interpolate entry point.
-                if range.contains(prev.value) {
-                    // Edge case: prev was exactly on boundary but not flagged
-                    spanStart = prev.time
-                } else {
-                    // Crossed lower or upper from outside. Determine which boundary.
-                    let boundary = prev.value < range.lowerBound ? range.lowerBound : range.upperBound
-                    spanStart = interpolateCrossing(
-                        t0: prev.time, v0: prev.value,
-                        t1: curr.time, v1: curr.value,
-                        boundary: boundary
-                    )
-                }
-                inRange = true
-            } else if inRange && !currInRange {
-                // Exited range — interpolate exit point.
-                let boundary = curr.value < range.lowerBound ? range.lowerBound : range.upperBound
-                let exitTime = interpolateCrossing(
-                    t0: prev.time, v0: prev.value,
-                    t1: curr.time, v1: curr.value,
-                    boundary: boundary
-                )
-                intervals.append(Interval(start: spanStart, end: exitTime))
-                inRange = false
+            let a = series[i - 1], b = series[i]
+            let delta = b.value - a.value
+            if delta == 0 {
+                if range.contains(a.value) { result.append(Interval(start: a.time, end: b.time)) }
+                continue
+            }
+            let u0 = (range.lowerBound - a.value) / delta
+            let u1 = (range.upperBound - a.value) / delta
+            let enter = max(0, min(u0, u1)), exit = min(1, max(u0, u1))
+            if exit > enter {
+                result.append(Interval(start: a.time + enter * (b.time - a.time),
+                                       end: a.time + exit * (b.time - a.time)))
             }
         }
-
-        // Close any open span at the last sample.
-        if inRange {
-            intervals.append(Interval(start: spanStart, end: series.last!.time))
-        }
-
-        return intervals
+        return result
     }
 
     /// Merge intervals whose gap is ≤ mergeGap into a single interval.

@@ -170,7 +170,7 @@ public final class SpeedService: NSObject, CLLocationManagerDelegate,
         for location in locations {
             // Establish monotonic offset on first fix
             if monotonicOffset == nil {
-                monotonicOffset = arrivalTime - location.timestamp.timeIntervalSinceReferenceDate
+                monotonicOffset = arrivalTime - Date().timeIntervalSinceReferenceDate
             }
 
             let fixTime = location.timestamp.timeIntervalSinceReferenceDate

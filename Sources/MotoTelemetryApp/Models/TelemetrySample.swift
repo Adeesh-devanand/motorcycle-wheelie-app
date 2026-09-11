@@ -12,4 +12,6 @@ struct TelemetrySample: Identifiable, Codable, Sendable, Equatable {
     /// runs recorded before this field existed still decode.
     var blurredAngleDegrees: Double?
     let speedKPH: Double
+    /// nil identifies historical samples whose freshness was not recorded.
+    var speedValid: Bool? = nil
 }
