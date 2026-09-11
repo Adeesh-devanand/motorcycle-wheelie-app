@@ -114,3 +114,7 @@ PR #9 merged as `d53f6adf6abb025fa861a9db665ec869480fb1ce`, reviewed head `77da7
 K15 evidence: 30,000 synthetic full-rate samples passed the idle-retention plateau check. For 10,000 runs × 200 samples, five alternating query pairs measured median baseline 281.02 ms versus cached 1.714 ms; measured baseline variability band 36.92 ms. Samples and schema are retained. This is a query optimization, not an eager-loading/startup-memory claim.
 
 All selected production-code slices are integrated. Remaining boundaries are explicit: physical sensor-error coverage and audio-route checks need a device; privacy publication needs a verified publisher contact; K15b lazy history loading/startup memory remains a performance follow-up; optional authentication/protocol redesign and speculative new product features remain backlog. AWS monitoring is excluded by user direction, and no AWS deployment occurred. These are not claimed as completed by the code merge. Prior IN PROGRESS/handoff entries are historical and superseded by this section.
+
+## Meter gradient lightening — IN PROGRESS
+
+Codex, sole owner. User requests all meter-fill stops two shades lighter; interpret as +10 percentage points HSL lightness, preserving hue, saturation, stop positions and animation. Allowlist: Sources/MotoTelemetryApp/Features/Live/VerticalTelemetryMeter.swift (three colour constants only). User directs direct commit, no PR and no tests.
