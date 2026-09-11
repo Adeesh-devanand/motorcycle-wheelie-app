@@ -92,3 +92,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K11 IN PROGRESS — Codex (sole agent)**: Linear band crossing incl both endpoints outside, explicit gap barriers; consistent blurred default charts/scrubber and stable interval IDs with speed validity. Files IntervalDetector.swift/Tests, WheelieRun.swift, RunDetailsViewModel.swift, RunDetailsView.swift and existing app harness.
 
 **K11b allowlist expansion IN PROGRESS — Codex (sole agent)**: TelemetryChart.swift also required: this component computes its own peak/scrubber from rawSamples and connects all points. Add explicit segment grouping and consistent displayed samples; do not alter live meters.
+
+**K13 app controls IN PROGRESS — Codex (sole agent)**: Choose diagnostics OFF by default; always redact coordinates, Wi-Fi-only, files created after latest consent only. Revocation cancels queued transfers and blocks new PUTs; cannot recall bytes already sent. Allowlist uploader, RiderPreferences, SettingsView, WheelieTrackerApp, existing app tests and privacy documents.
