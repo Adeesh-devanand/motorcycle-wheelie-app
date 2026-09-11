@@ -76,3 +76,5 @@ Current concrete K02 allowlist: both TelemetryIntegration Swift test files, RunR
 K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native gate queued on PR #7 (`ab8edff`). **K03 IN PROGRESS — Codex**, same bounded RunRecorder allowlist plus existing harness lifecycle tests; preparing stacked local commits while native CI queues, no merge before applicable acceptance. Subsequent recorder tasks remain queued.
 
 **K04 IN PROGRESS — Codex (sole agent)**: Effective settings and immutable onset snapshots. Allowlist: RunRecorder.swift, LiveWheelieViewModel.swift, existing TelemetryIntegrationHarnessTests.swift (shared harness regression coverage). Preserve existing speed-zero convention.
+
+**K05 IN PROGRESS — Codex (sole agent)**: Freshness contract: GNSS fix age <=2.5s in monotonic time; future/stale/invalid unavailable, older fixes ignored; disabled speed retains numeric zero but not validity. Legacy absent validity remains unknown. Files: Pipeline.swift, SpeedService.swift, RunRecorder.swift, TelemetrySample.swift, WheelieRun.swift, GNSSSpeedFloorTests.swift.
