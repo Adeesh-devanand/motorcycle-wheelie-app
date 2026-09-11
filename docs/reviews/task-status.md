@@ -70,3 +70,7 @@ GitHub confirmed all three merges using expected-head checks. No required check 
 User has transferred all remaining tasks, fixes and merges to ChatGPT; prior peer handoffs are historical and no longer blockers. K02 starts from integration `d83fbca` plus EC2 `3f975e8` source changes. K03–K13 and K15–K16 remain queued for sequential implementation and acceptance. Product defaults may be resolved by Codex, preserving corrected meter art and measured behavior. K14 monitoring is DEFERRED BY USER: remove newly introduced alarm/access-log template resources; retain transport enforcement. No monitoring deployment is requested. Physical-device claims remain contingent on actual hardware evidence. Tasks will be marked IN PROGRESS before editing their implementation.
 
 Current concrete K02 allowlist: both TelemetryIntegration Swift test files, RunRecorder.swift, RunRepository.swift, project.pbxproj. CI modifications, if needed, are limited to native test execution and reproducible regression evidence. K14 scope correction allowlist: infra/diagnostic-upload.yaml, infra/README.md, infra/tests/test_template_controls.py.
+
+### Solo implementation progress
+
+K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native gate queued on PR #7 (`ab8edff`). **K03 IN PROGRESS — Codex**, same bounded RunRecorder allowlist plus existing harness lifecycle tests; preparing stacked local commits while native CI queues, no merge before applicable acceptance. Subsequent recorder tasks remain queued.
