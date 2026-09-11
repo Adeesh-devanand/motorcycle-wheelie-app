@@ -1,6 +1,15 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [codex/live-meter-reference-polish]
+    paths-ignore: ['docs/**', 'store/**', 'infra/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['docs/**', 'store/**', 'infra/**', '**/*.md']
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
