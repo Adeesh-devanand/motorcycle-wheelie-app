@@ -16,6 +16,13 @@
 	<string>$(BetaUploadAPIBase)</string>
 	<key>BetaUploadToken</key>
 	<string>$(BetaUploadToken)</string>
+	<!-- Export compliance: the app uses only standard/exempt encryption (HTTPS
+	     via URLSession for the beta diagnostic upload; no custom or proprietary
+	     crypto). Declaring NO here answers the export-compliance question
+	     automatically on every TestFlight and App Store upload instead of
+	     prompting each time. Revisit only if non-exempt encryption is ever added. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
