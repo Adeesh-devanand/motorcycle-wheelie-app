@@ -80,3 +80,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K05 IN PROGRESS — Codex (sole agent)**: Freshness contract: GNSS fix age <=2.5s in monotonic time; future/stale/invalid unavailable, older fixes ignored; disabled speed retains numeric zero but not validity. Legacy absent validity remains unknown. Files: Pipeline.swift, SpeedService.swift, RunRecorder.swift, TelemetrySample.swift, WheelieRun.swift, GNSSSpeedFloorTests.swift.
 
 **K06 IN PROGRESS — Codex (sole agent)**: Startup/stall health and real acquisition retry. Allowlist: RunRecorder.swift, CalibrationScreen.swift, LiveWheelieView.swift, LiveWheelieViewModel.swift, CalibrationService.swift; shared integration tests. Clock-driven health evaluation callable without sleeps.
+
+**K07 IN PROGRESS — Codex (sole agent)**: Keep confirmed attempt active through disarming. Files RunRecorder.swift and shared lifecycle tests. Do not change segmenter thresholds.
