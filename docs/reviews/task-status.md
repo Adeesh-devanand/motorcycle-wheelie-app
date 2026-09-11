@@ -115,6 +115,8 @@ K15 evidence: 30,000 synthetic full-rate samples passed the idle-retention plate
 
 All selected production-code slices are integrated. Remaining boundaries are explicit: physical sensor-error coverage and audio-route checks need a device; privacy publication needs a verified publisher contact; K15b lazy history loading/startup memory remains a performance follow-up; optional authentication/protocol redesign and speculative new product features remain backlog. AWS monitoring is excluded by user direction, and no AWS deployment occurred. These are not claimed as completed by the code merge. Prior IN PROGRESS/handoff entries are historical and superseded by this section.
 
-## Meter gradient lightening — IN PROGRESS
+## Meter gradient lightening — DONE
 
 Codex, sole owner. User requests all meter-fill stops two shades lighter; interpret as +10 percentage points HSL lightness, preserving hue, saturation, stop positions and animation. Allowlist: Sources/MotoTelemetryApp/Features/Live/VerticalTelemetryMeter.swift (three colour constants only). User directs direct commit, no PR and no tests.
+
+Committed directly as `270f866df3f881f0bb9874f9c9c1cd216b36487f`. Stops: #0C2036 → #153960; #123767 → #1A4E92; #1D59B2 → #266FDC. No tests run, CI skipped and no PR created, as requested.
