@@ -373,6 +373,7 @@ struct RunDetailsView: View {
 
                 TelemetryChart(
                     points: viewModel.anglePoints,
+                    segments: viewModel.angleSegments,
                     rawSamples: viewModel.displaySamples,
                     targetBand: viewModel.angleTarget,
                     metric: .angle,

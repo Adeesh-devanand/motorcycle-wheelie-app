@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 import MotoTelemetryCore
 @testable import MotoTelemetryApp
 
@@ -270,10 +272,14 @@ extension TelemetryIntegrationHarnessTests {
     }
 
     func testAnalysisSignalAndStableIntervalsAgree() {
-        let samples = (0..<31).map { index in
-            TelemetrySample(id: UUID(), elapsed: Double(index) * 0.1,
-                angleDegrees: index == 10 ? 80 : 40, blurredAngleDegrees: 40,
-                speedKPH: 42, speedValid: index < 10 || index > 20)
+        var samples: [TelemetrySample] = []
+        for index in 0..<31 {
+            let elapsed = Double(index) * 0.1
+            let rawAngle: Double = index == 10 ? 80 : 40
+            let valid = index < 10 || index > 20
+            samples.append(TelemetrySample(id: UUID(), elapsed: elapsed,
+                angleDegrees: rawAngle, blurredAngleDegrees: 40,
+                speedKPH: 42, speedValid: valid))
         }
         let run = WheelieRun(id: UUID(), startedAt: Date(timeIntervalSince1970: 0),
             endedAt: Date(timeIntervalSince1970: 3), samples: samples,
@@ -292,10 +298,14 @@ extension TelemetryIntegrationHarnessTests {
 
 extension TelemetryIntegrationHarnessTests {
     func testCachedHistoryStatisticsMatchRawReferenceAndClearNoiseBand() throws {
-        let samples = (0..<200).map { i in
-            TelemetrySample(id: UUID(), elapsed: Double(i) / 100,
-                angleDegrees: Double(i % 75), blurredAngleDegrees: Double(i % 60),
-                speedKPH: Double(i % 50), speedValid: i % 3 != 0)
+        var samples: [TelemetrySample] = []
+        for i in 0..<200 {
+            let elapsed = Double(i) / 100
+            let angle = Double(i % 75), blurred = Double(i % 60)
+            let speed = Double(i % 50), valid = i % 3 != 0
+            samples.append(TelemetrySample(id: UUID(), elapsed: elapsed,
+                angleDegrees: angle, blurredAngleDegrees: blurred,
+                speedKPH: speed, speedValid: valid))
         }
         let config = K02Fixture.run().configuration
         for count in [100, 1000, 10000] {
@@ -326,6 +336,39 @@ extension TelemetryIntegrationHarnessTests {
             XCTAssertEqual(restored.samples, samples)
             XCTAssertEqual(restored.maxAngle, 59)
             XCTAssertEqual(restored.rawMaxAngle, 74)
+        }
+    }
+}
+
+
+extension TelemetryIntegrationHarnessTests {
+    @MainActor
+    func testRunDetailsNativeRender() throws {
+        let store = TemporaryRunStore()
+        defer { store.cleanup() }
+        var samples: [TelemetrySample] = []
+        for i in 0...40 {
+            let t = Double(i) / 10
+            let angle = 40 * sin(t * .pi / 4)
+            samples.append(TelemetrySample(id: UUID(), elapsed: t,
+                angleDegrees: angle, blurredAngleDegrees: angle,
+                speedKPH: 42, speedValid: i < 15 || i > 25))
+        }
+        let run = WheelieRun(id: UUID(), startedAt: Date(timeIntervalSince1970: 1700000000),
+            endedAt: Date(timeIntervalSince1970: 1700000004), samples: samples,
+            configuration: K02Fixture.run().configuration, qualityFlags: .lowConfidence)
+        XCTAssertTrue(store.repository.save(run))
+        for width: CGFloat in [375, 430] {
+            let content = RunDetailsView(runID: run.id, repository: store.repository)
+                .frame(width: width, height: 844)
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "run-details-\(Int(width))"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertEqual(image.size.width, width)
         }
     }
 }

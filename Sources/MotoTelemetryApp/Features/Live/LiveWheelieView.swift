@@ -198,7 +198,7 @@ struct LiveScreen: View {
             angleMeter
                 .frame(maxWidth: .infinity)
 
-            if viewModel.preferences.speedEnabled {
+            if viewModel.speedometerEnabled {
                 // SPEED meter — centered in the right half of the screen
                 speedMeter
                     .frame(maxWidth: .infinity)
@@ -210,7 +210,7 @@ struct LiveScreen: View {
         var meter = VerticalTelemetryMeter(
             value: viewModel.currentAngle,
             range: 0...90,
-            targetBand: viewModel.preferences.angleTarget,
+            targetBand: viewModel.effectiveAngleTarget,
             unit: "°",
             label: "ANGLE",
             valueFont: AppTypography.meterValue,
@@ -220,7 +220,7 @@ struct LiveScreen: View {
         meter.targetDragStep = 2.5
         // Only when the two meters share the width. On its own the angle meter has the
         // whole screen and shifting it would just look off-centre.
-        meter.trackShiftTowardCenter = viewModel.preferences.speedEnabled ? 16 : 0
+        meter.trackShiftTowardCenter = viewModel.speedometerEnabled ? 16 : 0
         meter.onTargetChange = targetEditDisabled ? nil : { band in
             viewModel.preferences.angleTarget = clamped(band, to: 0...90)
         }
@@ -230,11 +230,11 @@ struct LiveScreen: View {
     /// Speed meter. The gauge maximum is a rider setting (50–300 km/h), so the
     /// scale's top label is how they see the ceiling they chose.
     private var speedMeter: some View {
-        let ceiling = viewModel.preferences.speedGaugeMaximum
+        let ceiling = viewModel.effectiveSpeedMaximum
         var meter = VerticalTelemetryMeter(
             value: viewModel.currentSpeed,
             range: 0...ceiling,
-            targetBand: viewModel.preferences.speedTarget,
+            targetBand: viewModel.effectiveSpeedTarget,
             unit: "km/h",
             label: "SPEED",
             valueFont: AppTypography.meterValue,
@@ -296,7 +296,7 @@ struct LiveScreen: View {
 
             // SPEED card — omitted entirely when speed is switched off, rather than
             // shown reading zero. A zero there is a claim about the bike.
-            if viewModel.preferences.speedEnabled {
+            if viewModel.speedometerEnabled {
                 metricCard(
                     label: "SPEED",
                     valueContent: AnyView(

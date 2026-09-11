@@ -275,9 +275,9 @@ struct PastRunsView: View {
                         colorScale: viewModel.colorScale,
                         fieldAnchors: viewModel.fieldAnchors,
                         isLatest: index == 0 && viewModel.sortKey == .recency && viewModel.sortDescending,
-                        isLongest: isSuperlative(run.duration, max: viewModel.fieldAnchors.durationMax),
-                        isFastest: isSuperlative(run.maxSpeed, max: viewModel.fieldAnchors.speedMax),
-                        isHighest: isSuperlative(run.maxAngle, max: viewModel.fieldAnchors.angleMax)
+                        isLongest: run.qualityFlags.isTrustworthy && isSuperlative(run.duration, max: viewModel.fieldAnchors.durationMax),
+                        isFastest: run.qualityFlags.isTrustworthy && isSuperlative(run.maxSpeed, max: viewModel.fieldAnchors.speedMax),
+                        isHighest: run.qualityFlags.isTrustworthy && isSuperlative(run.maxAngle, max: viewModel.fieldAnchors.angleMax)
                     )
                 }
                 .buttonStyle(.plain)

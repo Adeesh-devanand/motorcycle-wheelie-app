@@ -198,7 +198,7 @@ public struct Pipeline {
         if vibration.instantaneousRMS > config.highFreqRMSThreshold {
             flags.insert(.highVibration)
         }
-        if imu.saturated, eventActive {
+        if imu.saturated {
             flags.insert(.saturatedInEvent)
         }
         lastSpecificForce = imu.specificForce

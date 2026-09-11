@@ -283,10 +283,12 @@ struct TelemetryChart: View {
             // `proxy.position(forY:)` is relative to it, so one origin shift converts
             // both. Reported even when `scrubX` is nil is not useful, but harmless.
             let value = valueAt(time)
-            if let localY = proxy.position(forY: value) {
-                dotY = plot.minY + localY
+            if value.isFinite {
+                if let localY = proxy.position(forY: value) {
+                    dotY = plot.minY + localY
+                }
+                text = scrubberValueText(value)
             }
-            text = scrubberValueText(value)
         }
         return ScrubberFrame(metric: metric, plotRect: plot, scrubberX: scrubX,
                              dotY: dotY, valueText: text)

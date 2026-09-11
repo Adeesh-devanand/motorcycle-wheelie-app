@@ -107,6 +107,7 @@ final class RunRecorder: @unchecked Sendable {
     /// force `stopSession`/`onDisappear` to become async — see the note there), so
     /// this guard is what actually makes the stop safe.
     private var sessionEpoch: UInt64 = 0
+    private var speedEpoch: UInt64 = 0
 
     /// Interpolated onset time of the attempt in progress. The live timer is
     /// `output.time - eventOnsetTime`; using `sessionStartMonotonic` instead made
@@ -213,9 +214,6 @@ final class RunRecorder: @unchecked Sendable {
     /// symptom. The lock makes the read-modify-write atomic; the critical section is
     /// ~200 µs against a 10 ms sample budget.
     private func startSensorTasks() {
-        motionService.start()
-        speedService.start()
-
         // Bind each task to a fresh session id. `startSensorTasks` is the ONLY place
         // tasks are created, so bumping here (and again in `stopSession`) means the
         // epoch identifies THIS pair of tasks' lifetime. The sensing→recording
@@ -224,9 +222,16 @@ final class RunRecorder: @unchecked Sendable {
         // `processSample` compares against the live `sessionEpoch` and drops any
         // sample whose task outlived its session .
         processLock.lock()
+        acquisitionStartedAt = monotonicNow()
+        lastIMUArrival = nil
         sessionEpoch &+= 1
         let epoch = sessionEpoch
+        speedEpoch &+= 1
+        let speedGeneration = speedEpoch
         processLock.unlock()
+
+        motionService.start()
+        speedService.start()
 
         motionTask = Task { [weak self] in
             guard let self else { return }
@@ -238,39 +243,24 @@ final class RunRecorder: @unchecked Sendable {
         speedTask = Task { [weak self] in
             guard let self else { return }
             for await sample in self.speedService.fixes {
-                self.processLocked(sample, epoch: epoch)
+                self.processLocked(sample, epoch: epoch, speedGeneration: speedGeneration)
             }
         }
     }
 
-    /// Takes `processLock` around `processSample`. Deliberately **synchronous**:
-    /// `NSLock.lock()` is unavailable from an async context — the compiler cannot
-    /// prove no suspension happens between `lock` and `unlock` inside a `for await`
-    /// body, and in Swift 6 that is a hard error rather than a warning. Nothing on
-    /// this path awaits, so hoisting the critical section into a non-async function
-    /// states that fact in a form the checker accepts. `defer` also makes the unlock
-    /// survive an early return added later.
-    ///
-    /// Calibration is fed FIRST and OUTSIDE the lock. `CalibrationService` has a lock
-    /// of its own, so calling it from inside `processLock` nested two locks in one
-    /// order while the main thread took them in the reverse order — the re-calibrate
-    /// hang. Feeding it outside means this thread never holds two locks at once.
-    private func processLocked(_ sample: Sample, epoch: UInt64) {
-        // The same staleness check `processSample` makes, taken under the lock so the
-        // read is ordered against `stopSession`'s bump. Without it a cancelled task's
-        // in-flight sample could feed calibration for a session that has ended.
-        processLock.lock()
-        let isCurrent = epoch == sessionEpoch
-        processLock.unlock()
-        guard isCurrent else { return }
-
-        if case .imu(let imu) = sample {
-            calibrationService.feedIMU(imu)
-        }
-
+    /// One critical section covers generation validation, calibration delivery
+    /// and processing. Lock order is process -> calibration. Main-actor lifecycle
+    /// code snapshots calibration BEFORE taking processLock, never the reverse;
+    /// calibration publication releases its lock before observable updates.
+    private func processLocked(_ sample: Sample, epoch: UInt64, speedGeneration: UInt64? = nil) {
         processLock.lock()
         defer { processLock.unlock() }
-        if epoch == sessionEpoch, case .imu = sample { lastIMUArrival = monotonicNow() }
+        guard epoch == sessionEpoch else { return }
+        if let speedGeneration, speedGeneration != speedEpoch { return }
+        if case .imu(let imu) = sample {
+            calibrationService.feedIMU(imu)
+            lastIMUArrival = monotonicNow()
+        }
         processSample(sample, epoch: epoch)
     }
 
@@ -355,8 +345,7 @@ final class RunRecorder: @unchecked Sendable {
         // OS for, and holding it to feed a meter that is not on screen is the kind of
         // silent cost the rider cannot see. Suppression downstream (the pipeline read
         // and the telemetry bridge) is what guarantees 0 in the record; this is what
-        // stops paying for the fix. Re-enabling takes effect on the next session,
-        // which the re-calibrate path already restarts.
+        // stops paying for the fix. Idle settings updates can restart acquisition.
         if !speedEnabled {
             speedTask?.cancel()
             speedTask = nil
@@ -366,9 +355,9 @@ final class RunRecorder: @unchecked Sendable {
                         values: ["speedEnabled": 0])
         }
 
-        cueRenderer?.start()
-
         recordingState = .running
+        evaluateSensorHealth()
+        if sensorHealthy { cueRenderer?.start() }
         log.info("Recording session started for bike \(bikeProfileID)")
         diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
                     level: .info, message: "session started",
@@ -380,10 +369,6 @@ final class RunRecorder: @unchecked Sendable {
     @MainActor
     private func startHealthMonitoring() {
         healthTask?.cancel()
-        processLock.lock()
-        acquisitionStartedAt = monotonicNow()
-        lastIMUArrival = nil
-        processLock.unlock()
         sensorHealthy = false
         healthTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -414,6 +399,12 @@ final class RunRecorder: @unchecked Sendable {
         }
     }
 
+    @MainActor
+    var effectiveSettings: (angle: MetricRange?, speed: MetricRange, maximum: Double, enabled: Bool) {
+        processLock.lock(); defer { processLock.unlock() }
+        return (angleTarget, speedTarget, speedGaugeMaximum, speedEnabled)
+    }
+
     /// Idle edits apply atomically before the next onset. During arming/active/
     /// disarming the caller retries on its next display tick after the attempt.
     @MainActor
@@ -423,12 +414,13 @@ final class RunRecorder: @unchecked Sendable {
         processLock.lock()
         guard segmenter?.state == .idle else { processLock.unlock(); return }
         let changedSpeed = self.speedEnabled != speedEnabled
-        if changedSpeed { pipeline?.clearSpeed() }
+        if changedSpeed { pipeline?.clearSpeed(); speedEpoch &+= 1 }
         self.angleTarget = angleTarget
         self.speedTarget = speedEnabled ? speedTarget : MetricRange(lower: 0, upper: 0)
         self.speedGaugeMaximum = speedGaugeMaximum
         self.speedEnabled = speedEnabled
         let epoch = sessionEpoch
+        let speedGeneration = speedEpoch
         processLock.unlock()
         if changedSpeed {
             if speedEnabled {
@@ -436,7 +428,7 @@ final class RunRecorder: @unchecked Sendable {
                 speedTask = Task { [weak self] in
                     guard let self else { return }
                     for await sample in self.speedService.fixes {
-                        self.processLocked(sample, epoch: epoch)
+                        self.processLocked(sample, epoch: epoch, speedGeneration: speedGeneration)
                     }
                 }
             } else {
