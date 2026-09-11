@@ -232,17 +232,21 @@ final class RunRecorder: @unchecked Sendable {
 
         motionService.start()
         speedService.start()
+        // Capture this generation's streams synchronously. A delayed cancelled
+        // task must never attach to (and terminate) a newer session's stream.
+        let motionSamples = motionService.samples
+        let speedFixes = speedService.fixes
 
         motionTask = Task { [weak self] in
             guard let self else { return }
-            for await sample in self.motionService.samples {
+            for await sample in motionSamples {
                 self.processLocked(sample, epoch: epoch)
             }
         }
 
         speedTask = Task { [weak self] in
             guard let self else { return }
-            for await sample in self.speedService.fixes {
+            for await sample in speedFixes {
                 self.processLocked(sample, epoch: epoch, speedGeneration: speedGeneration)
             }
         }
@@ -425,9 +429,10 @@ final class RunRecorder: @unchecked Sendable {
         if changedSpeed {
             if speedEnabled {
                 speedService.start()
+                let fixes = speedService.fixes
                 speedTask = Task { [weak self] in
                     guard let self else { return }
-                    for await sample in self.speedService.fixes {
+                    for await sample in fixes {
                         self.processLocked(sample, epoch: epoch, speedGeneration: speedGeneration)
                     }
                 }

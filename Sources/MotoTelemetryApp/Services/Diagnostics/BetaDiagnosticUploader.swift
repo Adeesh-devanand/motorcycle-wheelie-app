@@ -350,7 +350,7 @@ final class BetaDiagnosticUploader: NSObject {
         task.resume()
     }
 
-    /// PUT the raw file bytes. On a background URLSession, `uploadTask(with:fromFile:)`
+    /// PUT a coordinate-redacted copy; the local source remains unchanged. On a background URLSession, `uploadTask(with:fromFile:)`
     /// is what survives suspension — the upload continues (and can relaunch the app)
     /// after the user leaves. Completion is handled in the delegate, which marks the
     /// file uploaded only on a 2xx.
