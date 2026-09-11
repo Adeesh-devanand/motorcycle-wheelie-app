@@ -23,6 +23,24 @@ extension Color {
         let factor: CGFloat = 0.32
         return Color(.sRGB, red: Double(r * factor), green: Double(g * factor), blue: Double(b * factor), opacity: 1.0)
     }
+
+    /// A darker shade of this colour, scaled toward black by `amount` (0 = unchanged,
+    /// 1 = black). Used to derive the mid stop of a meter fill gradient from its accent.
+    func darkened(_ amount: CGFloat) -> Color {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        let f = max(0, 1 - amount)
+        return Color(.sRGB, red: Double(r * f), green: Double(g * f), blue: Double(b * f), opacity: Double(a))
+    }
+
+    /// A lighter shade of this colour, blended toward white by `amount` (0 = unchanged,
+    /// 1 = white). Used for the bright value readout and cursor glow derived from the accent.
+    func lightened(_ amount: CGFloat) -> Color {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func mix(_ c: CGFloat) -> Double { Double(c + (1 - c) * amount) }
+        return Color(.sRGB, red: mix(r), green: mix(g), blue: mix(b), opacity: Double(a))
+    }
 }
 
 // MARK: - App Colors (Dark Theme)

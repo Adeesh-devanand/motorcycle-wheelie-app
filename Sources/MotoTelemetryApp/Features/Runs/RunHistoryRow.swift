@@ -104,14 +104,13 @@ struct RunHistoryRow: View {
         return badges
     }
 
-    /// A 2-wide wrapping grid, so up to four pills stack in two compact rows
-    /// inside the 96pt time column without pushing the card past its max height.
+    /// A single-column stack of pills, each sized to its own content, so "LONGEST"
+    /// always fits on one line. The old 2-wide `LazyVGrid` gave each pill only ~44 pt
+    /// (half the 96 pt time column), which truncated "LONGEST". Stacking keeps the
+    /// badges inside the time column — the time/angle/speed metric columns are a
+    /// separate HStack and are untouched.
     private var badgeCluster: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: AppSpacing.xxs, alignment: .leading),
-            GridItem(.flexible(), spacing: AppSpacing.xxs, alignment: .leading)
-        ]
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.xxs) {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
             ForEach(activeBadges, id: \.self) { badgePill(text: $0) }
         }
     }
@@ -128,6 +127,10 @@ struct RunHistoryRow: View {
         Text(text)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(AppColors.badgeText)
+            .lineLimit(1)
+            // Size the pill to its text so "LONGEST" never wraps or truncates; the
+            // pill then grows with its content plus the horizontal padding below.
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, AppSpacing.xs)
             .padding(.vertical, AppSpacing.xxs)
             .background(

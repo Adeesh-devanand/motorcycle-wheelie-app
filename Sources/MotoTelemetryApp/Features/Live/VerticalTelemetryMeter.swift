@@ -67,8 +67,19 @@ struct VerticalTelemetryMeter: View {
     private let cursorDotSize: CGFloat = 7
 
     // Meter-only colors: tuning these must not recolor cards, labels or run charts.
-    private let targetBlue = Color(hex: 0x159BFF)
-    private let cursorBlue = Color(hex: 0x348BFF)
+    // Meter accent — the rider-selected channel color (teal for ANGLE, blue for
+    // SPEED by default). Defaulted like `labelsOnLeading` so neither the init nor
+    // the two call sites need to change unless they set it. Everything the meter
+    // tints — the fill column, the cursor glow, the target band, the value readout —
+    // derives from THIS, so a single assignment recolors the whole channel while the
+    // gradient TREATMENT (dark base → bright top) is preserved.
+    var accentColor: Color = Color(hex: 0x3B82F6)
+
+    // Derived meter blues → now derived from `accentColor` so the band and cursor
+    // follow the channel. Kept as computed shades of the accent rather than fixed
+    // hex, so a teal angle channel gets a teal band and cursor.
+    private var targetTint: Color { accentColor }
+    private var cursorTint: Color { accentColor.lightened(0.15) }
 
     /// How far the band spills past the track on the TARGET-label side. Deliberately
     /// tighter than the open side: the dashed top and bottom lines run the band's full
@@ -306,7 +317,8 @@ struct VerticalTelemetryMeter: View {
                 trackWidth: trackWidth,
                 cursorThickness: cursorThickness,
                 cursorDotSize: cursorDotSize,
-                cursorBlue: cursorBlue,
+                accent: accentColor,
+                cursorGlow: cursorTint,
                 cursorColor: AppColors.cursor
             )
             .frame(width: totalTrackWidth, height: height)
@@ -414,14 +426,14 @@ struct VerticalTelemetryMeter: View {
 
         return ZStack {
             RoundedRectangle(cornerRadius: 2.5)
-                .fill(openEdgeFade(color: targetBlue.opacity(0.17), holdUntil: holdUntil))
+                .fill(openEdgeFade(color: targetTint.opacity(0.17), holdUntil: holdUntil))
 
             // Three sides, not four: top and bottom are the target's actual bounds, the
             // pointer side is closed because the arrow hangs off it, and the side away
             // from the label has no dashed edge at all.
             BandBracket(closedEdgeLeading: labelsOnLeading)
                 .stroke(
-                    targetBlue.opacity(0.75),
+                    targetTint.opacity(0.75),
                     style: StrokeStyle(lineWidth: 0.65, dash: [2.5, 2.5])
                 )
                 .mask(openEdgeFade(color: .white, holdUntil: holdUntil))
@@ -434,7 +446,7 @@ struct VerticalTelemetryMeter: View {
                 // saturated blue tip points toward the existing label.
                 .overlay(alignment: labelsOnLeading ? .leading : .trailing) {
                     BandPointer(pointsLeading: labelsOnLeading)
-                        .fill(targetBlue)
+                        .fill(targetTint)
                         .frame(width: 5, height: 8)
                         .offset(x: labelsOnLeading ? -5 : 5)
                 }
@@ -612,7 +624,7 @@ struct VerticalTelemetryMeter: View {
             if label == "ANGLE" {
                 Text("\(Int(displayedValue))°")
                     .font(.system(size: 34, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.accentBright)
+                    .foregroundStyle(accentColor.lightened(0.2))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             } else {
@@ -628,10 +640,10 @@ struct VerticalTelemetryMeter: View {
                 HStack(alignment: .lastTextBaseline, spacing: 2) {
                     Text("\(Int(displayedValue))")
                         .font(.system(size: 34, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AppColors.accentBright)
+                        .foregroundStyle(accentColor.lightened(0.2))
                     Text(unit)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AppColors.accentBright)
+                        .foregroundStyle(accentColor.lightened(0.2))
                 }
                 .lineLimit(1)
                 // The enclosing `.frame(width: readoutWidth)` is what this scales against.
@@ -764,7 +776,12 @@ private struct MeterFillCursorLayer: View, Animatable {
     let trackWidth: CGFloat
     let cursorThickness: CGFloat
     let cursorDotSize: CGFloat
-    let cursorBlue: Color
+    /// The channel accent — the fill column's gradient is derived from this so the
+    /// bar reads teal (angle) or blue (speed) while keeping the dark-base→bright-top
+    /// treatment.
+    let accent: Color
+    /// The diffuse glow under the cursor hairline, a lighter shade of the accent.
+    let cursorGlow: Color
     let cursorColor: Color
 
     /// The interpolated quantity. SwiftUI drives this between the old and new fraction
@@ -797,10 +814,14 @@ private struct MeterFillCursorLayer: View, Animatable {
                     fill.fill(
                         Path(fillRect),
                         with: .linearGradient(
+                            // Derived from the channel accent so the bar reads in the
+                            // rider's chosen colour, preserving the original dark-base →
+                            // bright-top treatment: a deep shade at the base, the accent
+                            // itself at the cursor.
                             Gradient(stops: [
-                                .init(color: Color(hex: 0x153960), location: 0),
-                                .init(color: Color(hex: 0x1A4E92), location: 0.55),
-                                .init(color: Color(hex: 0x266FDC), location: 1)
+                                .init(color: accent.darkenedTrack, location: 0),
+                                .init(color: accent.darkened(0.35), location: 0.55),
+                                .init(color: accent, location: 1)
                             ]),
                             startPoint: CGPoint(x: trackX, y: size.height),
                             endPoint: CGPoint(x: trackX, y: 0)
@@ -824,10 +845,10 @@ private struct MeterFillCursorLayer: View, Animatable {
             // Diffuse blue light under a crisp white hairline and marker.
             context.drawLayer { glow in
                 glow.addFilter(.blur(radius: 4))
-                glow.stroke(linePath, with: .color(cursorBlue.opacity(0.65)), lineWidth: 3)
+                glow.stroke(linePath, with: .color(cursorGlow.opacity(0.65)), lineWidth: 3)
                 glow.fill(
                     Circle().path(in: dotRect.insetBy(dx: -3, dy: -3)),
-                    with: .color(cursorBlue.opacity(0.55))
+                    with: .color(cursorGlow.opacity(0.55))
                 )
             }
             context.stroke(linePath, with: .color(cursorColor), lineWidth: cursorThickness)

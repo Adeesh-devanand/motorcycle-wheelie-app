@@ -44,6 +44,22 @@ struct SettingsView: View {
                 }
             }
 
+            Section {
+                colorPicker(title: "Angle color", selection: $preferences.angleColorHex)
+                colorPicker(title: "Speed color", selection: $preferences.speedColorHex)
+                Button("Reset colors") { preferences.resetColors() }
+                    .foregroundStyle(AppColors.accent)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Angle and speed each use their own color across the live meter, "
+                     + "value, target band, and detail charts. Labels and units stay "
+                     + "visible, so color is never the only cue. Reset restores teal "
+                     + "for angle and blue for speed.")
+                    .font(.footnote)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+
             #if BETA
             Section {
                 Toggle("Share diagnostics", isOn: $preferences.diagnosticUploadsEnabled)
@@ -71,6 +87,25 @@ struct SettingsView: View {
         .background(AppColors.background)
         .navigationTitle("Settings")
         .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Appearance
+
+    /// A swatch menu over the curated palette (`RiderPreferences.colorPalette`).
+    /// Persists the chosen hex through the binding (which write-backs via the
+    /// preference's `didSet` → `save()`).
+    private func colorPicker(title: String, selection: Binding<UInt>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(RiderPreferences.colorPalette, id: \.hex) { entry in
+                HStack {
+                    Circle()
+                        .fill(Color(hex: entry.hex))
+                        .frame(width: 14, height: 14)
+                    Text(entry.name)
+                }
+                .tag(entry.hex)
+            }
+        }
     }
 
     // MARK: - Gauge maximum

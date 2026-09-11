@@ -75,6 +75,43 @@ final class RiderPreferences {
         didSet { save() }
     }
 
+    // MARK: - Measurement colors (Appearance)
+
+    /// Rider-selected accent for the ANGLE channel (live bar, value, target band,
+    /// detail-chart trace + legend). Stored as an sRGB hex `UInt`. Defaults to teal
+    /// `0x19C5BA`. Existing installs with no saved value receive this default (the
+    /// stored key is optional — see `StoredPreferences`).
+    var angleColorHex: UInt {
+        didSet { save() }
+    }
+    /// Rider-selected accent for the SPEED channel. Defaults to blue `0x3B82F6`.
+    var speedColorHex: UInt {
+        didSet { save() }
+    }
+
+    /// Curated, accessible palette offered in Settings → Appearance. Kept small on
+    /// purpose; every entry is legible on the dark background and distinct from the
+    /// semantic warning/rank colors, which are never recolored.
+    static let colorPalette: [(name: String, hex: UInt)] = [
+        ("Teal", 0x19C5BA),
+        ("Blue", 0x3B82F6),
+        ("Violet", 0x8B5CF6),
+        ("Amber", 0xF5A524),
+        ("Rose", 0xF43F5E),
+        ("Green", 0x22C55E),
+        ("Cyan", 0x22D3EE),
+        ("Slate", 0x94A3B8)
+    ]
+
+    static let defaultAngleColorHex: UInt = 0x19C5BA
+    static let defaultSpeedColorHex: UInt = 0x3B82F6
+
+    /// Restore both channels to their shipped defaults (teal angle, blue speed).
+    func resetColors() {
+        angleColorHex = Self.defaultAngleColorHex
+        speedColorHex = Self.defaultSpeedColorHex
+    }
+
     var diagnosticUploadsEnabled: Bool = UserDefaults.standard.bool(forKey: "beta.uploadConsent") {
         didSet {
             UserDefaults.standard.set(diagnosticUploadsEnabled, forKey: "beta.uploadConsent")
@@ -98,6 +135,11 @@ final class RiderPreferences {
             // silently, on the strength of a preference key they never saw.
             self.speedEnabled = stored.speedEnabled ?? true
             self.speedUnit = stored.speedUnit
+            // Absent from preferences written before Appearance shipped, so an
+            // existing install with no saved color falls back to the new defaults
+            // (teal angle, blue speed) rather than throwing on decode.
+            self.angleColorHex = stored.angleColorHex ?? Self.defaultAngleColorHex
+            self.speedColorHex = stored.speedColorHex ?? Self.defaultSpeedColorHex
             // Property observers do not fire during init, so the band/ceiling
             // reconciliation that `speedGaugeMaximum.didSet` performs has to be
             // repeated here for a stored pair that is already inconsistent (a
@@ -127,6 +169,8 @@ final class RiderPreferences {
             // are still seeded so the meter has sane values the moment it is switched on.
             self.speedEnabled = false
             self.speedUnit = .kph
+            self.angleColorHex = Self.defaultAngleColorHex
+            self.speedColorHex = Self.defaultSpeedColorHex
         }
     }
 
@@ -156,7 +200,9 @@ final class RiderPreferences {
             speedTarget: speedTarget,
             speedGaugeMaximum: speedGaugeMaximum,
             speedEnabled: speedEnabled,
-            speedUnit: speedUnit
+            speedUnit: speedUnit,
+            angleColorHex: angleColorHex,
+            speedColorHex: speedColorHex
         )
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
@@ -173,4 +219,8 @@ private struct StoredPreferences: Codable {
     /// install, silently resetting every target the rider had set.
     let speedEnabled: Bool?
     let speedUnit: SpeedUnit
+    /// Optional so preferences written before Appearance shipped still decode; a
+    /// missing value falls back to the new defaults in `init`.
+    let angleColorHex: UInt?
+    let speedColorHex: UInt?
 }

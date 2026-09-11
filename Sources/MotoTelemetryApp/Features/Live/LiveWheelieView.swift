@@ -217,6 +217,7 @@ struct LiveScreen: View {
             rangeStatus: viewModel.angleInRange
         )
         meter.labelsOnLeading = true
+        meter.accentColor = Color(hex: viewModel.preferences.angleColorHex)
         meter.targetDragStep = 2.5
         // Only when the two meters share the width. On its own the angle meter has the
         // whole screen and shifting it would just look off-centre.
@@ -241,6 +242,7 @@ struct LiveScreen: View {
             rangeStatus: viewModel.speedInRange
         )
         meter.labelsOnLeading = false
+        meter.accentColor = Color(hex: viewModel.preferences.speedColorHex)
         meter.targetDragStep = 2.5
         // The one meter that can genuinely have nothing to report: GNSS may hold no speed
         // solution. The view model HOLDS the last displayed speed in that case rather than

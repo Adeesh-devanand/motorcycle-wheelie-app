@@ -32,21 +32,30 @@ struct CalibrationScreen: View {
         ZStack {
             AppColors.background.ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.xl) {
-                Spacer()
+            // Scrollable so the largest accessibility text can't clip the instruction
+            // or push the action button off-screen. On normal sizes the min-height frame
+            // keeps the VStack full-height, so the Spacers still center everything and
+            // nothing actually scrolls; only oversized text engages the scroll.
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(spacing: AppSpacing.xl) {
+                        Spacer(minLength: 0)
 
-                Image(systemName: icon)
-                    .font(.system(size: 72, weight: .light))
-                    .foregroundStyle(iconColor)
-                    .scaleEffect(isPulsing ? 1.08 : 0.96)
-                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                               value: isPulsing)
+                        Image(systemName: icon)
+                            .font(.system(size: 72, weight: .light))
+                            .foregroundStyle(iconColor)
+                            .scaleEffect(isPulsing ? 1.08 : 0.96)
+                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                                       value: isPulsing)
 
-                Text(title)
+                        Text(title)
                     .font(AppTypography.meterValue)
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, AppSpacing.xxl)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, AppSpacing.xl)
 
                 // Progress fraction = how much of the 2 s still-window is complete.
                 if case .measuring(let progress) = service.phase {
@@ -72,10 +81,14 @@ struct CalibrationScreen: View {
                         .transition(.opacity)
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 actionButton
                     .padding(.bottom, AppSpacing.xxl)
+                    }
+                    .frame(minHeight: proxy.size.height)
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
         .onAppear { isPulsing = true }
@@ -131,13 +144,13 @@ struct CalibrationScreen: View {
     private var title: LocalizedStringKey {
         switch service.phase {
         case .measuring:
-            "Hold the bike upright and still,\nengine off"
+            "Hold the bike upright and still, engine off"
         case .measured:
             "Calibrated"
         case .failed(let message):
-            "Couldn't calibrate:\n\(message)"
+            "Couldn't calibrate: \(message)"
         case .unavailable:
-            "Motion sensors unavailable.\nCheck permissions in Settings."
+            "Motion sensors unavailable. Check permissions in Settings."
         }
     }
 }

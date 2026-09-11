@@ -23,6 +23,12 @@ struct TelemetryChart: View {
     /// call site's arguments.
     var plotHeight: CGFloat? = 180
 
+    /// Optional rider-selected accent overrides. Nil (the default) falls back to the
+    /// metric-based `AppColors` tokens, preserving every existing call site and the
+    /// memberwise-init argument order. Declared last for the same reason as `plotHeight`.
+    var accentColor: Color? = nil
+    var bandColor: Color? = nil
+
     /// Applied as `.frame(height:)`. Nil leaves the plot unconstrained so the
     /// companion `flexiblePlotMax` can let it fill the parent instead.
     private var fixedPlotHeight: CGFloat? { plotHeight }
@@ -37,11 +43,13 @@ struct TelemetryChart: View {
     // MARK: - Derived colours from AppColors tokens
 
     private var traceColor: Color {
-        metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
+        accentColor ?? (metric == .angle ? AppColors.angleMetric : AppColors.speedMetric)
     }
 
     private var bandFillColor: Color {
-        metric == .angle ? AppColors.targetBandChartAngle : AppColors.targetBandChartSpeed
+        // Prefer a derived translucent shade of the rider accent; else the token.
+        if let bandColor { return bandColor }
+        return metric == .angle ? AppColors.targetBandChartAngle : AppColors.targetBandChartSpeed
     }
 
     private var maxValue: Double {

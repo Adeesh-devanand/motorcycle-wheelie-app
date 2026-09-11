@@ -33,8 +33,20 @@ struct RunDetailsView: View {
     private let isLongestRun: Bool
     private let exportURL: URL?
 
+    /// Rider-selected channel colours, read once at init from persisted preferences
+    /// (UserDefaults-backed, cheap). Applied to each chart's trace, target band and
+    /// title so Run Details matches the live meters.
+    private let angleColor: Color
+    private let speedColor: Color
+
+    /// Whether the angle-smoothing explanation popover is showing (change #4).
+    @State private var showSmoothingInfo = false
+
     init(runID: UUID, repository: RunRepository) {
         self.exportURL = repository.exportURL(for: runID)
+        let prefs = RiderPreferences()
+        self.angleColor = Color(hex: prefs.angleColorHex)
+        self.speedColor = Color(hex: prefs.speedColorHex)
         let allRuns = repository.allRuns
         let verifiedRuns = allRuns.filter { $0.qualityFlags.isTrustworthy }
         let run = allRuns.first { $0.id == runID }
@@ -369,7 +381,22 @@ struct RunDetailsView: View {
     private var angleChart: some View {
         TelemetryCard {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                chartTitle("ANGLE · SMOOTHED WHEN AVAILABLE", color: AppColors.angleMetric)
+                // Change #4: plain "ANGLE" heading + an info button that explains the
+                // actual (offline, zero-phase jitter-blur) smoothing in plain language.
+                HStack(spacing: AppSpacing.xs) {
+                    chartTitle("ANGLE", color: angleColor)
+                    Button {
+                        showSmoothingInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                    .accessibilityLabel("About angle smoothing")
+                    .popover(isPresented: $showSmoothingInfo) {
+                        smoothingInfoPopover
+                    }
+                }
 
                 TelemetryChart(
                     points: viewModel.anglePoints,
@@ -380,17 +407,47 @@ struct RunDetailsView: View {
                     yDomain: viewModel.angleDomain,
                     runDuration: viewModel.duration,
                     selectedTime: $viewModel.selectedTime,
-                    plotHeight: nil
+                    plotHeight: nil,
+                    accentColor: angleColor,
+                    bandColor: angleColor.opacity(0.14)
                 )
             }
         }
         .frame(maxHeight: .infinity)
     }
 
+    /// Plain-language explanation of the angle smoothing, written against the actual
+    /// `JitterBlur` implementation: offline, zero-phase, removes vibration jitter only,
+    /// does NOT correct drift, and falls back to the raw angle ("when available").
+    private var smoothingInfoPopover: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("About the angle line")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppColors.textPrimary)
+            Text("""
+                After a run, the angle is lightly smoothed to remove sensor vibration \
+                jitter. The smoothing looks at each point's neighbours on both sides, so \
+                it doesn't shift the line in time — peaks stay where they happened. It \
+                only cleans up fast wiggle; it does not correct slow drift, and it never \
+                changes your stored measurements or your max angle. Very short runs can't \
+                be smoothed, so the raw angle is shown instead.
+                """)
+                .font(.system(size: 13))
+                .foregroundStyle(AppColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Done") { showSmoothingInfo = false }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppColors.accent)
+        }
+        .padding(AppSpacing.lg)
+        .frame(maxWidth: 320)
+        .presentationCompactAdaptation(.popover)
+    }
+
     private var speedChart: some View {
         TelemetryCard {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                chartTitle("SPEED", color: AppColors.speedMetric)
+                chartTitle("SPEED", color: speedColor)
 
                 TelemetryChart(
                     points: viewModel.speedPoints,
@@ -401,7 +458,9 @@ struct RunDetailsView: View {
                     yDomain: viewModel.speedDomain,
                     runDuration: viewModel.duration,
                     selectedTime: $viewModel.selectedTime,
-                    plotHeight: nil
+                    plotHeight: nil,
+                    accentColor: speedColor,
+                    bandColor: speedColor.opacity(0.16)
                 )
             }
         }
