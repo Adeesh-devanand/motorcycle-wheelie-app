@@ -1,7 +1,8 @@
 # Beta diagnostic-log upload backend (infra)
 
 **BETA-ONLY.** This stack exists so beta testers' iOS clients can upload
-anonymous NDJSON diagnostic logs. The **production app does not upload** — this
+NDJSON diagnostic logs, including raw traces that can contain precise location.
+Installation IDs group files by installation; these logs are not anonymous. The **production app does not upload** — this
 backend is only wired into beta builds.
 
 ## Architecture
@@ -93,10 +94,9 @@ presigned PUT inherits the signer's permissions.)
 - Objects expire after `RetentionDays` (default **90**) via an S3 lifecycle rule.
 - Bucket is fully private (all four public-access blocks on) with SSE-S3
   (AES256) default encryption.
-- API Gateway is throttled (burst 20 / rate 10) so a runaway client cannot
-  rack up cost. Expected beta volume (a handful of testers, small NDJSON logs)
-  is well within the AWS credits budget — dominant costs would be S3 storage
-  (pennies at 90-day retention) and per-request API/Lambda charges.
+- API Gateway is throttled (burst 20 / rate 10). This limits request rate,
+  not upload size, total storage, or spending. Review storage growth and costs;
+  the shared token does not provide per-installation quotas.
 
 ## Teardown
 
@@ -104,3 +104,50 @@ The bucket has `DeletionPolicy: Retain`, so deleting the stack leaves the
 bucket (and any logs) in place. To fully remove: empty the bucket, then
 `aws cloudformation delete-stack --stack-name loftmeter-beta-diag`, then delete
 the retained bucket manually.
+
+## Reviewed K14 safeguards (deployment required)
+
+The template denies non-TLS S3 access for both the bucket and its objects.
+Existing encryption, object retention, presign expiry and client protocol remain
+unchanged. Updating this template does not itself change the deployed stack.
+
+HTTP API access logs retain only request ID, HTTP status and response latency
+for 14 days. They deliberately omit source IP, installation/session identifiers,
+headers, query strings, URLs, signed URLs and bodies. This does **not** redact
+raw diagnostic objects already uploaded to S3 or solve client consent (K13).
+
+Four CloudWatch alarms use five-minute sums:
+
+| Alarm | Threshold | Purpose |
+|---|---:|---|
+| API `5xx` | 1 | Includes a handled presigner failure returning HTTP 500 |
+| API `4xx` | 20 | Invalid requests, rejected tokens or request throttling |
+| Lambda `Errors` | 1 | Unhandled execution failures |
+| Lambda `Throttles` | 1 | Rejected Lambda invocations |
+
+Missing data is treated as not breaching because an idle beta is normal.
+These alarms do not detect an entirely silent client or measure upload success
+at S3. Start with these thresholds and adjust using actual beta traffic.
+
+`AlarmTopicArn=<existing-SNS-topic-ARN>` optionally routes alarm transitions to
+SNS. **The default is alarm state in CloudWatch only; nobody is notified.**
+Before relying on notifications, configure a same-region topic, its publish
+permissions (and KMS policy if encrypted), confirmed subscriptions and a delivery
+test. No topic, subscription, email recipient or deployment is created by this
+change. Review the CloudFormation change set before deployment; API access-log
+creation also requires the deployer's CloudWatch Logs delivery permissions.
+
+Offline checks (Python with PyYAML available):
+
+```sh
+python -m unittest discover -s infra/tests -v
+```
+
+Tests check TLS policy scope, logging allowlist and metric dimensions/actions,
+and deliberately mutate controls to prove regressions are rejected. They do
+not replace CloudFormation validation or an approved deployment/delivery test.
+
+AWS references: [HTTP API metrics](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-metrics.html),
+[HTTP API logging](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html),
+[access log variables](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging-variables.html),
+and [S3 transport security](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html).
