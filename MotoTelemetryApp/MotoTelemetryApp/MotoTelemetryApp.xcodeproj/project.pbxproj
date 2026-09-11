@@ -40,7 +40,6 @@
 		9D956C13303F37E10071582A /* MotoTelemetryAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */; };
 		9D956C15303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D956C14303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift */; };
 		9D956C23303F386E0071582A /* MotoTelemetryCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9D956C22303F386E0071582A /* MotoTelemetryCore */; };
-		9D956C25303F386E0071582A /* motolog in Frameworks */ = {isa = PBXBuildFile; productRef = 9D956C24303F386E0071582A /* motolog */; };
 		9E44A6FF105C10D4B1F30159 /* TelemetryChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43523B778E635A1FB725AB6 /* TelemetryChart.swift */; };
 		A21CBF14EC802ECD27AEE6AF /* PastRunsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D13738221370270E218612 /* PastRunsView.swift */; };
 		CD1399595F79C0C35BA00CD5 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D957BCAACA74EE0C875D4C6D /* StatusPill.swift */; };
@@ -78,40 +77,40 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		05189703D2E55965A4FFAFCA /* TelemetrySample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetrySample.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/TelemetrySample.swift"; sourceTree = SOURCE_ROOT; };
-		06033950F92346AA1AE9F229 /* CueAudioRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CueAudioRenderer.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/CueAudioRenderer.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000001A /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticLog.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/Diagnostics/DiagnosticLog.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000002A /* RawSampleRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RawSampleRecorder.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/Diagnostics/RawSampleRecorder.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000003A /* LogFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LogFileBrowser.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/LogFileBrowser.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000004A /* NDJSONReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NDJSONReader.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/NDJSONReader.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000005A /* SessionSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SessionSummaryCard.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/SessionSummaryCard.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000006A /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LogViewerView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/LogViewerView.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000007A /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Diagnostics/DiagnosticsView.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000008A /* BetaDiagnosticUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaDiagnosticUploader.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/Diagnostics/BetaDiagnosticUploader.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C1057100000000000009A /* BetaUpload.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = BetaUpload.xcconfig; path = BetaUpload.xcconfig; sourceTree = SOURCE_ROOT; };
-		0AD62C6C8782A12897D1A787 /* CalibrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationState.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/CalibrationState.swift"; sourceTree = SOURCE_ROOT; };
-		0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunHistoryRow.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunHistoryRow.swift"; sourceTree = SOURCE_ROOT; };
-		178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RiderPreferences.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/RiderPreferences.swift"; sourceTree = SOURCE_ROOT; };
-		199BDF52DFFDFB9E4F7EF3DF /* IntegrityReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IntegrityReportView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Setup/IntegrityReportView.swift"; sourceTree = SOURCE_ROOT; };
-		1F1E188D491D14F126393B41 /* RunRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRepository.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/RunRepository.swift"; sourceTree = SOURCE_ROOT; };
-		307660157200E539C85ABCE7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Setup/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
-		308F5348665941F9F428E1DD /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppColors.swift"; sourceTree = SOURCE_ROOT; };
-		36CD0DE818EEE6EB208F4D5E /* LiveWheelieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/LiveWheelieView.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C10571000000000000101 /* CalibrationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationScreen.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/CalibrationScreen.swift"; sourceTree = SOURCE_ROOT; };
-		DA6C10571000000000000103 /* SwipeAlignmentScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SwipeAlignmentScreen.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/SwipeAlignmentScreen.swift"; sourceTree = SOURCE_ROOT; };
-		3B64E2E8F632A902E50942C1 /* RunRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRecorder.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/RunRecorder.swift"; sourceTree = SOURCE_ROOT; };
-		5321C4596E1ED9D05AB014EA /* WheelieTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieTrackerApp.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/App/WheelieTrackerApp.swift"; sourceTree = SOURCE_ROOT; };
-		55F01A8933247C8727399794 /* RunDetailsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsViewModel.swift"; sourceTree = SOURCE_ROOT; };
-		5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/PastRunsViewModel.swift"; sourceTree = SOURCE_ROOT; };
-		6BF0A5B84B62088F87F76DFD /* LiveWheelieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieViewModel.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/LiveWheelieViewModel.swift"; sourceTree = SOURCE_ROOT; };
-		6C1074D78E8227A2DB2F2310 /* MotionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MotionService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/MotionService.swift"; sourceTree = SOURCE_ROOT; };
-		7849EC04C6F5594BE1A33D5B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootTabView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/App/RootTabView.swift"; sourceTree = SOURCE_ROOT; };
-		86BD1C0F9B1A28303A09A56C /* RangeInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeInterval.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/RangeInterval.swift"; sourceTree = SOURCE_ROOT; };
-		8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetricRange.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/MetricRange.swift"; sourceTree = SOURCE_ROOT; };
-		92A3F54540EEBFF633E593CC /* RunDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsView.swift"; sourceTree = SOURCE_ROOT; };
-		9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryCard.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/TelemetryCard.swift"; sourceTree = SOURCE_ROOT; };
-		972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunSettingsSheet.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/RunSettingsSheet.swift"; sourceTree = SOURCE_ROOT; };
-		9891B30483FE6C3270B64D2B /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppSpacing.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppSpacing.swift"; sourceTree = SOURCE_ROOT; };
+		05189703D2E55965A4FFAFCA /* TelemetrySample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetrySample.swift; path = "../../Sources/MotoTelemetryApp/Models/TelemetrySample.swift"; sourceTree = SOURCE_ROOT; };
+		06033950F92346AA1AE9F229 /* CueAudioRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CueAudioRenderer.swift; path = "../../Sources/MotoTelemetryApp/Services/CueAudioRenderer.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000001A /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticLog.swift; path = "../../Sources/MotoTelemetryApp/Services/Diagnostics/DiagnosticLog.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000002A /* RawSampleRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RawSampleRecorder.swift; path = "../../Sources/MotoTelemetryApp/Services/Diagnostics/RawSampleRecorder.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000003A /* LogFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LogFileBrowser.swift; path = "../../Sources/MotoTelemetryApp/Features/Diagnostics/LogFileBrowser.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000004A /* NDJSONReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NDJSONReader.swift; path = "../../Sources/MotoTelemetryApp/Features/Diagnostics/NDJSONReader.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000005A /* SessionSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SessionSummaryCard.swift; path = "../../Sources/MotoTelemetryApp/Features/Diagnostics/SessionSummaryCard.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000006A /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LogViewerView.swift; path = "../../Sources/MotoTelemetryApp/Features/Diagnostics/LogViewerView.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000007A /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiagnosticsView.swift; path = "../../Sources/MotoTelemetryApp/Features/Diagnostics/DiagnosticsView.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000008A /* BetaDiagnosticUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BetaDiagnosticUploader.swift; path = "../../Sources/MotoTelemetryApp/Services/Diagnostics/BetaDiagnosticUploader.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C1057100000000000009A /* BetaUploadDefaults.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = BetaUploadDefaults.xcconfig; path = BetaUploadDefaults.xcconfig; sourceTree = SOURCE_ROOT; };
+		0AD62C6C8782A12897D1A787 /* CalibrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationState.swift; path = "../../Sources/MotoTelemetryApp/Models/CalibrationState.swift"; sourceTree = SOURCE_ROOT; };
+		0EF7847AAE5B2AA51DC21798 /* RunHistoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunHistoryRow.swift; path = "../../Sources/MotoTelemetryApp/Features/Runs/RunHistoryRow.swift"; sourceTree = SOURCE_ROOT; };
+		178C29A3632DAA1E78BEB8B4 /* RiderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RiderPreferences.swift; path = "../../Sources/MotoTelemetryApp/Models/RiderPreferences.swift"; sourceTree = SOURCE_ROOT; };
+		199BDF52DFFDFB9E4F7EF3DF /* IntegrityReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IntegrityReportView.swift; path = "../../Sources/MotoTelemetryApp/Features/Setup/IntegrityReportView.swift"; sourceTree = SOURCE_ROOT; };
+		1F1E188D491D14F126393B41 /* RunRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRepository.swift; path = "../../Sources/MotoTelemetryApp/Services/RunRepository.swift"; sourceTree = SOURCE_ROOT; };
+		307660157200E539C85ABCE7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = "../../Sources/MotoTelemetryApp/Features/Setup/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		308F5348665941F9F428E1DD /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/AppColors.swift"; sourceTree = SOURCE_ROOT; };
+		36CD0DE818EEE6EB208F4D5E /* LiveWheelieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieView.swift; path = "../../Sources/MotoTelemetryApp/Features/Live/LiveWheelieView.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C10571000000000000101 /* CalibrationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationScreen.swift; path = "../../Sources/MotoTelemetryApp/Features/Live/CalibrationScreen.swift"; sourceTree = SOURCE_ROOT; };
+		DA6C10571000000000000103 /* SwipeAlignmentScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SwipeAlignmentScreen.swift; path = "../../Sources/MotoTelemetryApp/Features/Live/SwipeAlignmentScreen.swift"; sourceTree = SOURCE_ROOT; };
+		3B64E2E8F632A902E50942C1 /* RunRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunRecorder.swift; path = "../../Sources/MotoTelemetryApp/Services/RunRecorder.swift"; sourceTree = SOURCE_ROOT; };
+		5321C4596E1ED9D05AB014EA /* WheelieTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieTrackerApp.swift; path = "../../Sources/MotoTelemetryApp/App/WheelieTrackerApp.swift"; sourceTree = SOURCE_ROOT; };
+		55F01A8933247C8727399794 /* RunDetailsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsViewModel.swift; path = "../../Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		5D7663722C1019F2B74C5D06 /* PastRunsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsViewModel.swift; path = "../../Sources/MotoTelemetryApp/Features/Runs/PastRunsViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		6BF0A5B84B62088F87F76DFD /* LiveWheelieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveWheelieViewModel.swift; path = "../../Sources/MotoTelemetryApp/Features/Live/LiveWheelieViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		6C1074D78E8227A2DB2F2310 /* MotionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MotionService.swift; path = "../../Sources/MotoTelemetryApp/Services/MotionService.swift"; sourceTree = SOURCE_ROOT; };
+		7849EC04C6F5594BE1A33D5B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootTabView.swift; path = "../../Sources/MotoTelemetryApp/App/RootTabView.swift"; sourceTree = SOURCE_ROOT; };
+		86BD1C0F9B1A28303A09A56C /* RangeInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeInterval.swift; path = "../../Sources/MotoTelemetryApp/Models/RangeInterval.swift"; sourceTree = SOURCE_ROOT; };
+		8AC5DDFA41F33C2F7DA8BCB5 /* MetricRange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetricRange.swift; path = "../../Sources/MotoTelemetryApp/Models/MetricRange.swift"; sourceTree = SOURCE_ROOT; };
+		92A3F54540EEBFF633E593CC /* RunDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunDetailsView.swift; path = "../../Sources/MotoTelemetryApp/Features/RunDetails/RunDetailsView.swift"; sourceTree = SOURCE_ROOT; };
+		9400CC5BE2E4D5B13B91D37B /* TelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryCard.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/TelemetryCard.swift"; sourceTree = SOURCE_ROOT; };
+		972C10E128D63A89B8ED0AA3 /* RunSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RunSettingsSheet.swift; path = "../../Sources/MotoTelemetryApp/Features/Runs/RunSettingsSheet.swift"; sourceTree = SOURCE_ROOT; };
+		9891B30483FE6C3270B64D2B /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppSpacing.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/AppSpacing.swift"; sourceTree = SOURCE_ROOT; };
 		9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MotoTelemetryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D956BF6303F37E10071582A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9DL0CA7B303F37E10071582A /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -123,15 +122,15 @@
 		9D956C12303F37E10071582A /* MotoTelemetryAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppUITests.swift; sourceTree = "<group>"; };
 		9D956C14303F37E10071582A /* MotoTelemetryAppUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotoTelemetryAppUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		9D956C26303F43D40071582A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VerticalTelemetryMeter.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Live/VerticalTelemetryMeter.swift"; sourceTree = SOURCE_ROOT; };
-		B80DE1911D70D3E949201E7E /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppTypography.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/AppTypography.swift"; sourceTree = SOURCE_ROOT; };
-		B9D13738221370270E218612 /* PastRunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsView.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/Runs/PastRunsView.swift"; sourceTree = SOURCE_ROOT; };
-		BEC627DDB75B086E398F821E /* SpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeedService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/SpeedService.swift"; sourceTree = SOURCE_ROOT; };
-		CF6C9AE8584E255A63B9A61B /* RangeIntervalTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeIntervalTimeline.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/RangeIntervalTimeline.swift"; sourceTree = SOURCE_ROOT; };
-		D7C2F606FE0CEF07875FDAF5 /* WheelieRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieRun.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Models/WheelieRun.swift"; sourceTree = SOURCE_ROOT; };
-		D957BCAACA74EE0C875D4C6D /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusPill.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/DesignSystem/StatusPill.swift"; sourceTree = SOURCE_ROOT; };
-		D9843BE5D011EB29560B8819 /* CalibrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationService.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Services/CalibrationService.swift"; sourceTree = SOURCE_ROOT; };
-		E43523B778E635A1FB725AB6 /* TelemetryChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryChart.swift; path = "/Users/vinothiniraju/Documents/Adeesh/motorcycle-wheelie-app/Sources/MotoTelemetryApp/Features/RunDetails/TelemetryChart.swift"; sourceTree = SOURCE_ROOT; };
+		A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VerticalTelemetryMeter.swift; path = "../../Sources/MotoTelemetryApp/Features/Live/VerticalTelemetryMeter.swift"; sourceTree = SOURCE_ROOT; };
+		B80DE1911D70D3E949201E7E /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppTypography.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/AppTypography.swift"; sourceTree = SOURCE_ROOT; };
+		B9D13738221370270E218612 /* PastRunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PastRunsView.swift; path = "../../Sources/MotoTelemetryApp/Features/Runs/PastRunsView.swift"; sourceTree = SOURCE_ROOT; };
+		BEC627DDB75B086E398F821E /* SpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeedService.swift; path = "../../Sources/MotoTelemetryApp/Services/SpeedService.swift"; sourceTree = SOURCE_ROOT; };
+		CF6C9AE8584E255A63B9A61B /* RangeIntervalTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RangeIntervalTimeline.swift; path = "../../Sources/MotoTelemetryApp/Features/RunDetails/RangeIntervalTimeline.swift"; sourceTree = SOURCE_ROOT; };
+		D7C2F606FE0CEF07875FDAF5 /* WheelieRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WheelieRun.swift; path = "../../Sources/MotoTelemetryApp/Models/WheelieRun.swift"; sourceTree = SOURCE_ROOT; };
+		D957BCAACA74EE0C875D4C6D /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusPill.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/StatusPill.swift"; sourceTree = SOURCE_ROOT; };
+		D9843BE5D011EB29560B8819 /* CalibrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationService.swift; path = "../../Sources/MotoTelemetryApp/Services/CalibrationService.swift"; sourceTree = SOURCE_ROOT; };
+		E43523B778E635A1FB725AB6 /* TelemetryChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryChart.swift; path = "../../Sources/MotoTelemetryApp/Features/RunDetails/TelemetryChart.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,7 +138,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9D956C25303F386E0071582A /* motolog in Frameworks */,
 				9D956C23303F386E0071582A /* MotoTelemetryCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -278,7 +276,6 @@
 			name = MotoTelemetryApp;
 			packageProductDependencies = (
 				9D956C22303F386E0071582A /* MotoTelemetryCore */,
-				9D956C24303F386E0071582A /* motolog */,
 			);
 			productName = MotoTelemetryApp;
 			productReference = 9D956BEF303F37DE0071582A /* MotoTelemetryApp.app */;
@@ -599,7 +596,7 @@
 		};
 		9D956C19303F37E10071582A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DA6C1057100000000000009A /* BetaUpload.xcconfig */;
+			baseConfigurationReference = DA6C1057100000000000009A /* BetaUploadDefaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -805,7 +802,7 @@
 		};
 		DA6C10571000000000000B02 /* Beta */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DA6C1057100000000000009A /* BetaUpload.xcconfig */;
+			baseConfigurationReference = DA6C1057100000000000009A /* BetaUploadDefaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -936,10 +933,7 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = MotoTelemetryCore;
 		};
-		9D956C24303F386E0071582A /* motolog */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = motolog;
-		};
+
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9D956BE7303F37DE0071582A /* Project object */;

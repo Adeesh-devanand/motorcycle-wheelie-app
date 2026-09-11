@@ -1,0 +1,6 @@
+// Clean checkouts build with diagnostic uploads disabled. A developer's
+// gitignored configuration overrides these defaults when present.
+BetaUploadAPIBase =
+BetaUploadToken =
+
+#include? "BetaUpload.xcconfig"
