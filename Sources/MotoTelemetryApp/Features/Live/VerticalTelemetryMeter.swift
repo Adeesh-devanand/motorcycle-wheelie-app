@@ -60,11 +60,15 @@ struct VerticalTelemetryMeter: View {
     /// Clear air between the track's edge and where a spoke begins. Was effectively 1 pt,
     /// which read as the spokes growing out of the bar; they are a separate scale.
     private let tickGap: CGFloat = 4
-    private let minorTickWidth: CGFloat = 1
-    private let majorTickWidth: CGFloat = 2
+    private let minorTickWidth: CGFloat = 0.5
+    private let majorTickWidth: CGFloat = 0.75
     private let cursorOverhang: CGFloat = 6
-    private let cursorThickness: CGFloat = 2
-    private let cursorDotSize: CGFloat = 10
+    private let cursorThickness: CGFloat = 1
+    private let cursorDotSize: CGFloat = 7
+
+    // Meter-only colors: tuning these must not recolor cards, labels or run charts.
+    private let targetBlue = Color(hex: 0x159BFF)
+    private let cursorBlue = Color(hex: 0x348BFF)
 
     /// How far the band spills past the track on the TARGET-label side. Deliberately
     /// tighter than the open side: the dashed top and bottom lines run the band's full
@@ -75,7 +79,7 @@ struct VerticalTelemetryMeter: View {
     /// How far it spills on the opposite side, which holds nothing but tick marks. This
     /// is the only edge that fades, so it is also the fade's runway — hence the extra
     /// width.
-    private let bandSpillOpenSide: CGFloat = 22
+    private let bandSpillOpenSide: CGFloat = 36
 
     /// Whether `value` is a real measurement.
     ///
@@ -243,12 +247,14 @@ struct VerticalTelemetryMeter: View {
         let totalTrackWidth = trackWidth + cursorOverhang * 2
 
         return ZStack(alignment: .bottom) {
-            // Track background
+            // Quiet, neutral glass behind the target band and the blue column.
             Capsule()
-                .fill(AppColors.surfaceMeter)
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x0C1012), Color(hex: 0x090C0F)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
                 )
                 .frame(width: trackWidth, height: height)
 
@@ -257,18 +263,40 @@ struct VerticalTelemetryMeter: View {
                 targetBandOverlay(band: band, height: height)
             }
 
-            // Fill from the bottom up to the cursor — flat top edge at the
-            // cursor, rounded bottom corners only (M-UI15); two-stop ramp (M-UI1).
-            BottomRoundedRect(radius: trackWidth / 2)
-                .fill(
-                    LinearGradient(
-                        colors: [AppColors.meterFillBottom, AppColors.meterFillTop],
-                        startPoint: .bottom,
-                        endPoint: .top
+            // Clip a bottom-aligned column to the full track. This preserves the
+            // capsule at both ends, even at full scale, and leaves a dark inset
+            // between the blue fill and the silver rim.
+            ZStack(alignment: .bottom) {
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color(hex: 0x0C2036), location: 0),
+                                .init(color: Color(hex: 0x123767), location: 0.55),
+                                .init(color: Color(hex: 0x1D59B2), location: 1)
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
                     )
-                )
-                .frame(width: trackWidth, height: max(fraction * height, 0))
+                    .frame(height: max(fraction * height, 0))
+            }
+                .frame(width: trackWidth, height: height)
+                .clipShape(Capsule().inset(by: 1.5))
                 .animation(.easeOut(duration: 0.05), value: value)
+
+            // The rim belongs above both the fill and target band, so it remains
+            // legible through the target range and around the bottom of the gauge.
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.72), .white.opacity(0.38), .white.opacity(0.65)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.65
+                )
+                .frame(width: trackWidth, height: height)
 
             // Ticks on both sides. Sized from the tick geometry, NOT `totalTrackWidth` —
             // a Canvas clips to its bounds, and the major spokes now reach further out
@@ -386,34 +414,30 @@ struct VerticalTelemetryMeter: View {
         let holdUntil = (bandSpillLabelSide + trackWidth) / bandWidth
 
         return ZStack {
-            Rectangle()
-                .fill(openEdgeFadeFill(holdUntil: holdUntil))
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(openEdgeFade(color: targetBlue.opacity(0.17), holdUntil: holdUntil))
 
             // Three sides, not four: top and bottom are the target's actual bounds, the
             // pointer side is closed because the arrow hangs off it, and the side away
             // from the label has no dashed edge at all.
             BandBracket(closedEdgeLeading: labelsOnLeading)
                 .stroke(
-                    AppColors.targetBandStroke,
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    targetBlue.opacity(0.75),
+                    style: StrokeStyle(lineWidth: 0.65, dash: [2.5, 2.5])
                 )
+                .mask(openEdgeFade(color: .white, holdUntil: holdUntil))
                 // The pointer, sitting ON the band's closed edge and aimed OUTWARD, at
                 // the TARGET label.
                 //
                 // It used to be the last item in the label's own VStack — a triangle
                 // under the text, pointing back at the band from a distance, with nothing
-                // joining the two. Anchoring it to the outline instead means the band is
-                // the thing doing the pointing: the mark starts on the dashed line and
-                // leads the eye out to the text that describes it. It takes the band's
-                // stroke colour for the same reason — it is part of that line, not part
-                // of the label.
+                // joining the two. Its base now touches the bracket exactly and its
+                // saturated blue tip points toward the existing label.
                 .overlay(alignment: labelsOnLeading ? .leading : .trailing) {
-                    Image(systemName: labelsOnLeading
-                          ? "arrowtriangle.left.fill"
-                          : "arrowtriangle.right.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(AppColors.targetBandStroke)
-                        .offset(x: labelsOnLeading ? -7 : 7)
+                    BandPointer(pointsLeading: labelsOnLeading)
+                        .fill(targetBlue)
+                        .frame(width: 5, height: 8)
+                        .offset(x: labelsOnLeading ? -5 : 5)
                 }
         }
         .frame(width: bandWidth, height: bandHeight)
@@ -423,13 +447,12 @@ struct VerticalTelemetryMeter: View {
     /// Solid from the TARGET-label edge across the track, then a fade to nothing over the
     /// spill on the open side. The gradient runs label-side to open-side, which is why its
     /// start and end flip with `labelsOnLeading`.
-    private func openEdgeFadeFill(holdUntil: CGFloat) -> LinearGradient {
-        let solid = AppColors.targetBandFill
+    private func openEdgeFade(color: Color, holdUntil: CGFloat) -> LinearGradient {
         return LinearGradient(
             stops: [
-                .init(color: solid, location: 0),
-                .init(color: solid, location: holdUntil),
-                .init(color: solid.opacity(0), location: 1)
+                .init(color: color, location: 0),
+                .init(color: color, location: holdUntil),
+                .init(color: color.opacity(0), location: 1)
             ],
             startPoint: labelsOnLeading ? .leading : .trailing,
             endPoint: labelsOnLeading ? .trailing : .leading
@@ -535,27 +558,23 @@ struct VerticalTelemetryMeter: View {
             var linePath = Path()
             linePath.move(to: CGPoint(x: 0, y: y))
             linePath.addLine(to: CGPoint(x: size.width, y: y))
-            context.stroke(linePath, with: .color(AppColors.cursor), lineWidth: cursorThickness)
-
             let dotRect = CGRect(
                 x: size.width / 2 - cursorDotSize / 2,
                 y: y - cursorDotSize / 2,
                 width: cursorDotSize, height: cursorDotSize
             )
 
-            // Glow CONCENTRIC with the dot, drawn under it.
-            //
-            // This was an `Ellipse` spanning the full canvas width (42 pt) and 12 pt
-            // tall, meant to make the cursor pop. Because an ellipse is widest at its
-            // centre and the centre is covered by the dot and the meter fill, the only
-            // visible parts were its two tapered ends sticking out past the track edges
-            // — so instead of a glow on the dot it read as a smudge on either side of
-            // the bar, which is what it was. A concentric circle 4 pt larger than the
-            // dot puts the glow where the thing it is glowing actually is.
-            context.fill(
-                Circle().path(in: dotRect.insetBy(dx: -4, dy: -4)),
-                with: .color(.white.opacity(0.18))
-            )
+            // Diffuse blue light under a crisp white hairline and marker, rather
+            // than a second hard-edged circle around the marker.
+            context.drawLayer { glow in
+                glow.addFilter(.blur(radius: 4))
+                glow.stroke(linePath, with: .color(cursorBlue.opacity(0.65)), lineWidth: 3)
+                glow.fill(
+                    Circle().path(in: dotRect.insetBy(dx: -3, dy: -3)),
+                    with: .color(cursorBlue.opacity(0.55))
+                )
+            }
+            context.stroke(linePath, with: .color(AppColors.cursor), lineWidth: cursorThickness)
             context.fill(Circle().path(in: dotRect), with: .color(AppColors.cursor))
         }
         .animation(.easeOut(duration: 0.05), value: value)
@@ -770,36 +789,81 @@ private struct BandBracket: Shape {
     var closedEdgeLeading: Bool
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        let r = min(2.5, rect.height / 2)
         let closedX = closedEdgeLeading ? rect.minX : rect.maxX
-        path.move(to: CGPoint(x: closedX, y: rect.minY))
-        path.addLine(to: CGPoint(x: closedX, y: rect.maxY))
+        let openX = closedEdgeLeading ? rect.maxX : rect.minX
+        let direction: CGFloat = closedEdgeLeading ? 1 : -1
+        var path = Path()
+        path.move(to: CGPoint(x: openX, y: rect.minY))
+        path.addLine(to: CGPoint(x: closedX + direction * r, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: closedX, y: rect.minY + r),
+            control: CGPoint(x: closedX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: closedX, y: rect.maxY - r))
+        path.addQuadCurve(
+            to: CGPoint(x: closedX + direction * r, y: rect.maxY),
+            control: CGPoint(x: closedX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: openX, y: rect.maxY))
         return path
     }
 }
 
-/// A rectangle rounded on the bottom two corners only, with a flat top edge.
-/// Used for the meter fill so it reads as a solid column meeting the cursor
-/// line flat, while the track outline supplies the rounded look (M-UI15).
-private struct BottomRoundedRect: Shape {
-    var radius: CGFloat
+/// Its base touches the bracket; its tip points out toward the target label.
+private struct BandPointer: Shape {
+    var pointsLeading: Bool
 
     func path(in rect: CGRect) -> Path {
-        let r = min(radius, min(rect.width, rect.height) / 2)
+        let baseX = pointsLeading ? rect.maxX : rect.minX
+        let tipX = pointsLeading ? rect.minX : rect.maxX
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-        path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
-                    radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
-        path.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
-                    radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.move(to: CGPoint(x: baseX, y: rect.minY))
+        path.addLine(to: CGPoint(x: tipX, y: rect.midY))
+        path.addLine(to: CGPoint(x: baseX, y: rect.maxY))
         path.closeSubpath()
         return path
     }
 }
+
+#if DEBUG
+/// Static fixtures for comparing the meter artwork without a sensor session.
+private struct MeterArtworkPreview: View {
+    var atLimits = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            meter(value: atLimits ? 90 : 38, label: "ANGLE", leading: true,
+                  target: MetricRange(lower: atLimits ? 80 : 35, upper: atLimits ? 90 : 45))
+            meter(value: atLimits ? 0 : 42, label: "SPEED", leading: false,
+                  target: MetricRange(lower: atLimits ? 0 : 35, upper: atLimits ? 10 : 50))
+        }
+        .padding(16)
+        .background(AppColors.background)
+    }
+
+    private func meter(value: Double, label: String, leading: Bool, target: MetricRange) -> some View {
+        var meter = VerticalTelemetryMeter(
+            value: value, range: 0...90, targetBand: target,
+            unit: leading ? "°" : "km/h", label: label
+        )
+        meter.labelsOnLeading = leading
+        meter.trackShiftTowardCenter = 16
+        return meter
+    }
+}
+
+struct VerticalTelemetryMeter_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            MeterArtworkPreview()
+                .previewLayout(.fixed(width: 375, height: 560))
+                .previewDisplayName("Target bands — 38° / 42 km/h")
+            MeterArtworkPreview(atLimits: true)
+                .previewLayout(.fixed(width: 320, height: 480))
+                .previewDisplayName("Compact — empty / full scale")
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+#endif
