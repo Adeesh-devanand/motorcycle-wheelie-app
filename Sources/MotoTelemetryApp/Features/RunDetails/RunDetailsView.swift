@@ -178,7 +178,7 @@ struct RunDetailsView: View {
                                  unit: "°",
                                  valueSize: 26,
                                  color: AppColors.angleMetric,
-                                 labelColor: AppColors.accent)
+                                 labelColor: AppColors.angleMetric)
                     verticalDivider(height: 34)
                     metricColumn(label: "MAX SPEED",
                                  value: String(format: "%.0f", viewModel.maxSpeed),
