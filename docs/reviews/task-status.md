@@ -4,8 +4,9 @@ Check and update this file on `codex/live-meter-reference-polish` before editing
 
 | Task | Status | Owner | Working branch | Notes |
 | --- | --- | --- | --- | --- |
-| K01 | **READY FOR REVIEW** | Codex (this ChatGPT session) | `codex/k01-portable-ios-build` | [Draft PR #3](https://github.com/Adeesh-devanand/motorcycle-wheelie-app/pull/3), commit `bba0aeb`. [CI run 34642324805](https://github.com/Adeesh-devanand/motorcycle-wheelie-app/actions/runs/34642324805) passed: Debug/Beta/Release iOS builds, 175 core tests, 2 existing app template tests on iPhone 16 / iOS 18.5 with Xcode 16.4. User meter correction preserved. Awaiting review/integration; do not duplicate this task. |
-| K02–K10 | BLOCKED | — | — | App build gate now passes in K01's draft; await accepted integration before coordinator tasks. K02 is unclaimed; see plan. |
+| K01 | **DONE** | Codex (this ChatGPT session) | `codex/k01-portable-ios-build` | Merged via [PR #3](https://github.com/Adeesh-devanand/motorcycle-wheelie-app/pull/3) as `1155704` on the integration branch (`bba0aeb` reachable). [CI run 34642324805](https://github.com/Adeesh-devanand/motorcycle-wheelie-app/actions/runs/34642324805) passed: Debug/Beta/Release iOS builds, 175 core tests, 2 app template tests on iPhone 16 / iOS 18.5 / Xcode 16.4. User meter correction preserved. |
+| K02 | **IN PROGRESS** | Kiro (EC2 session) | `kiro/k02-integration-harness` | Claimed after confirming K01 merged (`1155704`). Building the minimal app integration harness (controlled clock, scripted motion/GNSS, isolated temp store, injectable write failure) per plan. NOTE: EC2 has no Xcode — code + APPTEST written here, but the build/simulator keep-gate must run on the maintainer's Mac before this moves to READY FOR REVIEW. |
+| K03–K10 | UNBLOCKED — SEQUENTIAL | — | — | K01 integrated. These form a strict chain on `RunRecorder` (K03→K04→K05→K06→K07→K08→K09, plus K10 after K06+K09); each rebased/remeasured on its accepted predecessor. Do not edit simultaneously. K03 opens once K02 is accepted. |
 | K11 | BLOCKED | — | — | Await K02/K05; separate interval and chart PRs. |
 | K12 | UNCLAIMED — DESIGN REVIEW | — | — | Uncertainty contract before implementation. |
 | K13 | UNCLAIMED — DOCS FIRST | — | — | Privacy documentation can be scoped independently; app changes depend on K02 and product decision. |
