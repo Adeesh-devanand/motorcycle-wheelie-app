@@ -690,10 +690,10 @@ struct VerticalTelemetryMeter: View {
         return VStack(spacing: AppSpacing.xxs) {
             Text("TARGET")
                 .font(.system(size: 11))
-                .foregroundStyle(AppColors.accent)
+                .foregroundStyle(accentColor)
             Text(rangeText)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(AppColors.accent)
+                .foregroundStyle(accentColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }

@@ -275,7 +275,7 @@ struct LiveScreen: View {
                 valueContent: AnyView(
                     Text("\(Int(viewModel.currentAngle))°")
                         .font(.system(size: 34, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color(hex: viewModel.preferences.angleColorHex))
                 ),
                 sublabel: String(localized: "MAX \(Int(viewModel.attemptMaxAngle))°")
             )
