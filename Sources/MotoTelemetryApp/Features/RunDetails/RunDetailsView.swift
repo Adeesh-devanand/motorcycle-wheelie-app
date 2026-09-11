@@ -170,7 +170,7 @@ struct RunDetailsView: View {
                                  value: String(format: "%.1f", viewModel.duration),
                                  unit: "s",
                                  valueSize: 26,
-                                 color: AppColors.success,
+                                 color: AppColors.accent,
                                  labelColor: AppColors.accent)
                     verticalDivider(height: 34)
                     metricColumn(label: "MAX ANGLE",
