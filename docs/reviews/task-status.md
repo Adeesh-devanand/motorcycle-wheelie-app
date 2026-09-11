@@ -86,3 +86,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K08 IN PROGRESS — Codex (sole agent)**: Per-attempt quality and verified rankings. Files Pipeline.swift, RunRecorder.swift, RunRepository.swift, PastRunsViewModel.swift; existing core/app test files.
 
 **K09 IN PROGRESS — Codex (sole agent)**: Truthful save/delete outcomes and visible retry queue. Files RunRepository.swift, RunRecorder.swift, LiveWheelieView.swift, existing harness tests; PastRunsView.swift if needed to surface deletion errors. Retain unsaved attempts; retry idempotent.
+
+**K10 IN PROGRESS — Codex (sole agent)**: Audio intended-running state, synchronized control-path latch reset, stale render input expiry. Files CueAudioRenderer.swift plus existing app harness tests. K02 native named tests passed and PR7 merged e17fbba.
