@@ -38,11 +38,30 @@ struct WheelieTrackerApp: App {
                 .environment(services.repository)
                 .environment(services.preferences)
                 #if BETA
+                // BETA ONLY: attempt an upload at LAUNCH, not just on background.
+                //
+                // The background transition was the only trigger, and that made the
+                // whole feature depend on a signal we could neither guarantee nor
+                // observe: if `.background` is never delivered — the app killed from
+                // Xcode's Stop button, force-quit from the app switcher — nothing
+                // uploads and nothing is logged, which is exactly the dead end this
+                // hit. `.task` runs when the root view appears, so it always fires.
+                //
+                // Launch is also the *better* moment: the previous session's files are
+                // closed by then, and the app has full foreground time, so the presign
+                // leg cannot be cut short by suspension. It never touches the live
+                // session file — `pendingFiles()` excludes it by name.
+                .task {
+                    betaUploader?.start()
+                }
                 // BETA ONLY: on app background, upload not-yet-sent NDJSON diagnostic
                 // logs. Never fires mid-ride (only on the background transition) and
-                // uses a URLSession background config so the upload survives suspension.
-                // Absent entirely from a production (non-BETA) build.
+                // the PUT uses a URLSession background config so it survives
+                // suspension. Absent entirely from a production (non-BETA) build.
                 .onChange(of: scenePhase) { _, newPhase in
+                    // Logged unconditionally so a missing `.background` is visible
+                    // rather than indistinguishable from "fired but found nothing".
+                    betaUploader?.noteScenePhase(String(describing: newPhase))
                     if newPhase == .background {
                         betaUploader?.start()
                     }

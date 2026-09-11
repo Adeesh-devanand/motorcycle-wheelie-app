@@ -16,3 +16,11 @@ Rides/
 # Xcode per-user state
 *.xcuserstate
 xcuserdata/
+
+# Beta diagnostic-upload config. Holds the live API endpoint and the X-Beta-Key
+# abuse-gate token, so it must never enter git history. The committed
+# BetaUpload.xcconfig.example is the template; copy it and fill in the values from
+# the loftmeter-beta-diag stack outputs. Attached as the app target's Debug base
+# configuration, so a missing file just means beta upload no-ops.
+BetaUpload.xcconfig
+!BetaUpload.xcconfig.example

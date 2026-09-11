@@ -60,7 +60,7 @@ xcrun --sdk iphoneos swiftc -typecheck -target "$TARGET" -sdk "$SDK" \
     -I "$MODULE_DIR" \
     -load-plugin-library "$PLUGIN_DIR/libObservationMacros.dylib" \
     -load-plugin-library "$PLUGIN_DIR/libSwiftMacros.dylib" \
-    -swift-version 5 "$STAGE_DIR"/*.swift 2>&1 | tee "$LOG"
+    -swift-version 5 "$@" "$STAGE_DIR"/*.swift 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 echo "----"
 echo "errors:   $(grep -c ': error:' "$LOG")"

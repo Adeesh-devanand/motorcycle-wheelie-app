@@ -2,6 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- BETA diagnostic upload config. These MUST live in this file, not as
+	     INFOPLIST_KEY_BetaUploadAPIBase / INFOPLIST_KEY_BetaUploadToken build
+	     settings: Xcode's INFOPLIST_KEY_ prefix only honours Info.plist keys
+	     Apple defines, and silently drops custom ones — verified on a clean
+	     rebuild, where the generated plist contained every Apple key and
+	     neither of these. The values still come from build settings via the
+	     $( ) substitution below, which the plist step expands because it runs
+	     with -expandbuildsettings. Both settings are defined only in the app
+	     target's Debug (BETA) config, so in Release these expand to empty
+	     strings and BetaDiagnosticUploader.makeUploader() returns nil. -->
+	<key>BetaUploadAPIBase</key>
+	<string>$(BetaUploadAPIBase)</string>
+	<key>BetaUploadToken</key>
+	<string>$(BetaUploadToken)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

@@ -1,0 +1,28 @@
+// BetaUpload.xcconfig.example — TEMPLATE. This file IS committed; the real
+// BetaUpload.xcconfig is gitignored so the beta token never enters git history.
+//
+// Setup:
+//   cp BetaUpload.xcconfig.example BetaUpload.xcconfig
+// then fill in both values from the CloudFormation stack outputs:
+//   aws cloudformation describe-stacks --region us-east-1 \
+//     --stack-name loftmeter-beta-diag --query 'Stacks[0].Outputs' --output table
+//
+// BetaUploadAPIBase — the stack's ApiEndpoint output. The client appends /presign.
+// BetaUploadToken   — the BetaUploadToken parameter the stack was deployed with.
+//                     It is the X-Beta-Key abuse gate, not real auth.
+//
+// These reach the app through MotoTelemetryApp/Info.plist, which references them as
+// $(BetaUploadAPIBase) / $(BetaUploadToken). Do NOT try to set them as
+// INFOPLIST_KEY_BetaUploadAPIBase build settings instead: Xcode's INFOPLIST_KEY_
+// prefix only honours Info.plist keys Apple defines and silently drops custom ones.
+//
+// Attached as the app target's DEBUG baseConfigurationReference only. Release gets
+// neither value, and the uploader is behind #if BETA regardless.
+//
+// NOTE the SLASH indirection. In an .xcconfig file `//` begins a comment, so writing
+// the URL literally truncates the value to `https:` with no warning.
+
+SLASH = /
+
+BetaUploadAPIBase = https:$(SLASH)$(SLASH)REPLACE-WITH-ApiEndpoint-HOST
+BetaUploadToken = REPLACE_WITH_BETA_TOKEN
