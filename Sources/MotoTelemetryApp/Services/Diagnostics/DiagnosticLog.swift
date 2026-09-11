@@ -7,7 +7,8 @@ import UIKit
 
 /// App-side implementation of the core `DiagnosticSink` seam. Writes one JSON
 /// object per line (NDJSON) to `<Documents>/logs/session-<stamp>.ndjson`, mirrors
-/// `.info` and above into OSLog, rotates at ~20 MB keeping the newest 5 files, and
+/// `.info` and above into OSLog, prunes old `session-*` and `raw-*` files at launch
+/// (and on rotation) keeping only the newest few, rotates a single file at ~20 MB, and
 /// flushes on background / terminate so a kill never loses the tail.
 ///
 /// ## The clock (`t`)
@@ -117,6 +118,11 @@ final class DiagnosticLog: DiagnosticSink {
 
         openCurrentFile()
         writeHeaderLine()
+        // Prune at LAUNCH, not only from `rotate()`. See `pruneOldFiles` — the
+        // rotate-only call site meant pruning effectively never ran. Safe here
+        // because no session (and therefore no RawSampleRecorder file handle) exists
+        // yet at construction time.
+        pruneOldFiles()
         startTimer()
         registerLifecycleObservers()
     }
@@ -366,26 +372,95 @@ final class DiagnosticLog: DiagnosticSink {
         }
         openCurrentFile()
         writeHeaderLine()
-        pruneOldFiles(keepNewest: 5)
+        pruneOldFiles()
     }
 
-    /// Keep the newest `keepNewest` session files, delete the rest.
-    private func pruneOldFiles(keepNewest: Int) {
+    /// Enforce a SIZE budget on the log directory: if the total exceeds
+    /// `pruneHighWaterMarkBytes`, delete oldest-first until back under
+    /// `pruneLowWaterMarkBytes`.
+    ///
+    /// Called at LAUNCH as well as from `rotate()`. The rotate-only call site was a
+    /// bug: `rotate()` only fires when a single session file crosses
+    /// `rotateThresholdBytes` (20 MB), and a normal session file is a few hundred KB,
+    /// so rotation never happened and pruning never ran — the directory grew by one
+    /// session file plus one raw file per launch, indefinitely. Observed live: 16
+    /// accumulated files totalling ~28 MB on a development device.
+    ///
+    /// A size budget rather than a file count because the two kinds differ by orders
+    /// of magnitude — a session file is a few hundred KB while `RawSampleRecorder`
+    /// caps a single raw file at 64 MB — so "keep N files" bounds the real footprint
+    /// very poorly in either direction. Both kinds compete for one budget, oldest
+    /// first. The high/low watermark pair means this runs rarely and frees a
+    /// meaningful amount, rather than nibbling one file off on every launch.
+    ///
+    /// NEVER deletes a file that is still being written: the current session file is
+    /// excluded by name, and so is anything modified within `activeFileGraceInterval`,
+    /// because `RawSampleRecorder` holds an open `FileHandle` on its file for the
+    /// whole session and unlinking that would leave it writing to a vanished inode,
+    /// losing the recording with no error at all.
+    private func pruneOldFiles() {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: logDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        let sessions = urls
-            .filter { $0.lastPathComponent.hasPrefix("session-") && $0.pathExtension == "ndjson" }
-            .sorted { a, b in
-                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-                return da > db
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])
+        else { return }
+
+        struct Entry {
+            let url: URL
+            let size: UInt64
+            let modified: Date
+            let deletable: Bool
+        }
+
+        let liveName = currentFileURLLock.withLock { $0 }.lastPathComponent
+        let now = Date()
+
+        var entries: [Entry] = []
+        var total: UInt64 = 0
+
+        for url in urls where url.pathExtension == "ndjson" {
+            let values = try? url.resourceValues(
+                forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let size = UInt64(values?.fileSize ?? 0)
+            total += size
+
+            guard let modified = values?.contentModificationDate else {
+                // No modification date → treat as possibly open and never delete.
+                entries.append(Entry(url: url, size: size,
+                                     modified: .distantFuture, deletable: false))
+                continue
             }
-        for stale in sessions.dropFirst(keepNewest) {
-            try? fm.removeItem(at: stale)
+            let stillOpen = now.timeIntervalSince(modified) < Self.activeFileGraceInterval
+            entries.append(Entry(url: url, size: size, modified: modified,
+                                 deletable: url.lastPathComponent != liveName && !stillOpen))
+        }
+
+        guard total > Self.pruneHighWaterMarkBytes else { return }
+
+        let oldestFirst = entries
+            .filter { $0.deletable }
+            .sorted { $0.modified < $1.modified }
+
+        for entry in oldestFirst {
+            if total <= Self.pruneLowWaterMarkBytes { break }
+            do {
+                try fm.removeItem(at: entry.url)
+                total -= min(total, entry.size)
+            } catch {
+                continue
+            }
         }
     }
+
+    /// Total-size budget for `<Documents>/logs`: prune above the high mark, down to
+    /// the low mark.
+    private static let pruneHighWaterMarkBytes: UInt64 = 100 * 1024 * 1024
+    private static let pruneLowWaterMarkBytes: UInt64 = 50 * 1024 * 1024
+
+    /// A file modified more recently than this is assumed to still have an open write
+    /// handle and is never deleted. `RawSampleRecorder` flushes every 0.5 s, so an
+    /// actively-written file is always well inside this window.
+    static let activeFileGraceInterval: TimeInterval = 60
 
     // MARK: - Background / terminate flush
 
