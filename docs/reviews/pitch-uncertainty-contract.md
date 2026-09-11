@@ -1,3 +1,18 @@
+# K12 implementation decision (2026-09-11)
+
+The maintainer delegated implementation decisions to Codex. The scalar analytical
+reference below is implemented and tested independently of production parameter
+calibration. Runtime now grows the **calibration-mean sampling uncertainty
+component** since anchoring, rather than passing zero hold duration. Output
+metadata explicitly identifies the omitted anchor/mount error, rate noise and
+thermal drift. It is model-only, not a full absolute error estimate or validated
+coverage. Missing calibration and integration discontinuities invalidate it.
+Attempt boundaries do not reset the anchor clock. No old walk constant is
+reinterpreted or tuned. Full physical accuracy/coverage remains unvalidated until
+reference-device data exists. The following original design provides the broader
+model and required physical protocol; its historical observations refer to the
+pre-fix baseline.
+
 # K12: Pitch uncertainty contract — proposed, awaiting measurement-design review
 
 Status: specification only; no estimator, thresholds, persisted schema, or runtime behaviour changed. This document does not complete K12 implementation or validate physical accuracy.

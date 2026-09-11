@@ -52,12 +52,16 @@ struct WheelieTrackerApp: App {
                 // leg cannot be cut short by suspension. It never touches the live
                 // session file — `pendingFiles()` excludes it by name.
                 .task {
+                    betaUploader?.privacyDidChange()
                     betaUploader?.start()
                 }
                 // BETA ONLY: on app background, upload not-yet-sent NDJSON diagnostic
                 // logs. Never fires mid-ride (only on the background transition) and
                 // the PUT uses a URLSession background config so it survives
                 // suspension. Absent entirely from a production (non-BETA) build.
+                .onChange(of: services.preferences.diagnosticUploadsEnabled) { _, _ in
+                    betaUploader?.privacyDidChange()
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     // Logged unconditionally so a missing `.background` is visible
                     // rather than indistinguishable from "fired but found nothing".

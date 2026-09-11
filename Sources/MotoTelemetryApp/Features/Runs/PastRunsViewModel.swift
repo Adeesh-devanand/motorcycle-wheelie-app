@@ -48,7 +48,7 @@ final class PastRunsViewModel {
 
     /// §8.4: anchors come from the full date scope BEFORE row-level metric
     /// filters, so colours do not jump while filtering.
-    var fieldAnchors: FieldAnchors { computeAnchors(scopedRuns) }
+    var fieldAnchors: FieldAnchors { computeAnchors(scopedRuns.filter { $0.qualityFlags.isTrustworthy }) }
 
     private(set) var isLoading = false
 
@@ -156,6 +156,9 @@ final class PastRunsViewModel {
         // load in — two 42° runs should still read newest-first.
         func byMetric(_ value: @escaping (WheelieRun) -> Double) -> (WheelieRun, WheelieRun) -> Bool {
             { lhs, rhs in
+                if lhs.qualityFlags.isTrustworthy != rhs.qualityFlags.isTrustworthy {
+                    return lhs.qualityFlags.isTrustworthy
+                }
                 let a = value(lhs), b = value(rhs)
                 if a == b { return lhs.startedAt > rhs.startedAt }
                 return self.sortDescending ? a > b : a < b

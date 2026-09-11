@@ -289,6 +289,7 @@ final class CalibrationService: @unchecked Sendable {
     }
 
     private func restartLocked() {
+        internalHasSeenSample = false
         estimator = BiasEstimator(config: config,
                                   bikeProfileID: bikeProfileID,
                                   thermalState: ProcessInfo.processInfo.thermalState.rawValue,

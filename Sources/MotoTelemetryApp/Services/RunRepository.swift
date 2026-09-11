@@ -11,6 +11,8 @@ final class RunRepository: @unchecked Sendable {
     // MARK: - Published
 
     private(set) var allRuns: [WheelieRun] = []
+    private(set) var lastError: String?
+    var deleteInterceptor: ((URL) throws -> Void)?
 
     // MARK: - Private
 
@@ -60,12 +62,12 @@ final class RunRepository: @unchecked Sendable {
 
     /// Personal bests by max angle, sorted descending.
     var personalBests: [WheelieRun] {
-        allRuns.sorted { $0.maxAngle > $1.maxAngle }
+        allRuns.filter { $0.qualityFlags.isTrustworthy }.sorted { $0.maxAngle > $1.maxAngle }
     }
 
     /// Best run by max angle.
     var allTimeBest: WheelieRun? {
-        allRuns.max { $0.maxAngle < $1.maxAngle }
+        allRuns.filter { $0.qualityFlags.isTrustworthy }.max { $0.maxAngle < $1.maxAngle }
     }
 
     /// Runs from the last N days.
@@ -77,7 +79,8 @@ final class RunRepository: @unchecked Sendable {
 
     // MARK: - Mutations
 
-    func save(_ run: WheelieRun) {
+    @discardableResult
+    func save(_ run: WheelieRun) -> Bool {
         do {
             let data = try encoder.encode(run)
             let fileURL = url(for: run.id)
@@ -91,31 +94,44 @@ final class RunRepository: @unchecked Sendable {
             } else {
                 try data.write(to: fileURL, options: .atomic)
             }
+            allRuns.removeAll { $0.id == run.id }
             allRuns.append(run)
             allRuns.sort { $0.startedAt > $1.startedAt }
             log.info("Saved run \(run.id): \(run.maxAngle, format: .fixed(precision: 1))° max, \(run.duration, format: .fixed(precision: 1))s")
+            lastError = nil
+            return true
         } catch {
+            lastError = "Could not save the attempt. Free storage and retry."
             log.error("Failed to save run \(run.id): \(error.localizedDescription)")
+            return false
         }
     }
 
-    func delete(id: UUID) {
+    @discardableResult
+    func delete(id: UUID) -> Bool {
         let fileURL = url(for: id)
         do {
-            try FileManager.default.removeItem(at: fileURL)
+            if let deleteInterceptor { try deleteInterceptor(fileURL) }
+            else if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
             allRuns.removeAll { $0.id == id }
-            log.info("Deleted run \(id)")
+            lastError = nil
+            return true
         } catch {
-            log.error("Failed to delete run \(id): \(error.localizedDescription)")
+            lastError = "Some attempts could not be deleted. They remain in your history."
+            log.error("Failed to delete run: \(error.localizedDescription)")
+            return false
         }
     }
 
-    func deleteAll() {
-        for run in allRuns {
-            try? FileManager.default.removeItem(at: url(for: run.id))
-        }
-        allRuns.removeAll()
-        log.info("Deleted all runs")
+    @discardableResult
+    func deleteAll() -> Bool {
+        let ids = allRuns.map(\.id)
+        var succeeded = true
+        for id in ids { if !delete(id: id) { succeeded = false } }
+        if !succeeded { lastError = "Some attempts could not be deleted. They remain in your history." }
+        return succeeded
     }
 
     // MARK: - Export

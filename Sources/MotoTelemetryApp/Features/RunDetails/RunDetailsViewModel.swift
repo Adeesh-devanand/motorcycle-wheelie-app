@@ -10,6 +10,11 @@ final class RunDetailsViewModel {
     // MARK: - Public State
 
     let run: WheelieRun
+    let angleIntervals: [RangeInterval]
+    let speedIntervals: [RangeInterval]
+    let displaySamples: [TelemetrySample]
+    private(set) var angleSegments: [[Downsample.Point]] = []
+    private(set) var speedSegments: [[Downsample.Point]] = []
     private(set) var anglePoints: [Downsample.Point] = []
     private(set) var speedPoints: [Downsample.Point] = []
     var selectedTime: TimeInterval?
@@ -22,11 +27,11 @@ final class RunDetailsViewModel {
     var averageSpeed: Double { run.averageSpeed }
 
     var totalAngleInRange: TimeInterval {
-        run.angleIntervals.reduce(0) { $0 + $1.duration }
+        angleIntervals.reduce(0) { $0 + $1.duration }
     }
 
     var totalSpeedInRange: TimeInterval {
-        run.speedIntervals.reduce(0) { $0 + $1.duration }
+        speedIntervals.reduce(0) { $0 + $1.duration }
     }
 
     // MARK: - Chart Domains
@@ -50,13 +55,21 @@ final class RunDetailsViewModel {
 
     init(run: WheelieRun) {
         self.run = run
+        angleIntervals = run.angleIntervals
+        speedIntervals = run.speedIntervals
+        displaySamples = run.samples.map {
+            TelemetrySample(id: $0.id, elapsed: $0.elapsed,
+                angleDegrees: $0.blurredAngleDegrees ?? $0.angleDegrees,
+                speedKPH: $0.speedValid == true ? $0.speedKPH : .nan,
+                speedValid: $0.speedValid)
+        }
         downsample()
     }
 
     // MARK: - Interpolation (§9.4 scrubber)
 
     func valuesAtTime(_ time: TimeInterval) -> (angle: Double, speed: Double) {
-        let samples = run.samples
+        let samples = displaySamples
         guard samples.count >= 2 else {
             let s = samples.first
             return (s?.angleDegrees ?? 0, s?.speedKPH ?? 0)
@@ -81,6 +94,7 @@ final class RunDetailsViewModel {
             return (a.angleDegrees, a.speedKPH)
         }
 
+        guard b.elapsed - a.elapsed <= 0.25 else { return (.nan, .nan) }
         let u = (time - a.elapsed) / (b.elapsed - a.elapsed)
         let clampedU = max(0, min(1, u))
         let angle = a.angleDegrees + clampedU * (b.angleDegrees - a.angleDegrees)
@@ -91,12 +105,29 @@ final class RunDetailsViewModel {
     // MARK: - Downsampling
 
     private func downsample() {
-        let samples = run.samples
+        let samples = displaySamples
 
         let rawAngle = samples.map { Downsample.Point(x: $0.elapsed, y: $0.angleDegrees) }
         let rawSpeed = samples.map { Downsample.Point(x: $0.elapsed, y: $0.speedKPH) }
 
-        anglePoints = Downsample.lttb(rawAngle, threshold: Downsample.defaultThreshold)
-        speedPoints = Downsample.lttb(rawSpeed, threshold: Downsample.defaultThreshold)
+        angleSegments = continuousSegments(rawAngle)
+        speedSegments = continuousSegments(rawSpeed)
+        anglePoints = angleSegments.flatMap { $0 }
+        speedPoints = speedSegments.flatMap { $0 }
+    }
+
+    private func continuousSegments(_ points: [Downsample.Point]) -> [[Downsample.Point]] {
+        var result: [[Downsample.Point]] = []
+        var segment: [Downsample.Point] = []
+        for point in points {
+            let discontinuity = segment.last.map { point.x <= $0.x || point.x - $0.x > 0.25 } ?? false
+            if !point.x.isFinite || !point.y.isFinite || discontinuity {
+                if !segment.isEmpty { result.append(Downsample.lttb(segment, threshold: Downsample.defaultThreshold)) }
+                segment.removeAll(keepingCapacity: true)
+            }
+            if point.x.isFinite && point.y.isFinite { segment.append(point) }
+        }
+        if !segment.isEmpty { result.append(Downsample.lttb(segment, threshold: Downsample.defaultThreshold)) }
+        return result
     }
 }

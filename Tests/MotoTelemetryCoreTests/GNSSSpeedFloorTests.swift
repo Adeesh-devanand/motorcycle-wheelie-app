@@ -138,4 +138,21 @@ final class GNSSSpeedFloorTests: XCTestCase {
         XCTAssertEqual(pitchTick(3)?.speed, 16.7,
                        "a real riding speed must still reach the display")
     }
+
+    func testSpeedExpiresDuringIMUSilenceAndOldFixCannotRefreshIt() {
+        var pipe = Pipeline(config: Config(), alignment: .identity(), initialBias: nil,
+                            gravityAnchor: Conventions.restSpecificForce)
+        _ = pipe.process(.gnss(fix(speed: 10, accuracy: 1, at: 10)))
+        func imu(_ t: Double) -> Sample {
+            .imu(IMUSample(time: t, rotationRate: .zero,
+                           specificForce: Conventions.restSpecificForce))
+        }
+        XCTAssertEqual(pipe.process(imu(10.1))?.speed, 10)
+        XCTAssertNil(pipe.process(imu(12.6))?.speed)
+        _ = pipe.process(.gnss(fix(speed: 20, accuracy: 1, at: 9)))
+        XCTAssertNil(pipe.process(imu(12.7))?.speed)
+        _ = pipe.process(.gnss(GNSSFix(fixTime: 5, arrivalTime: 20,
+            speed: 30, speedAccuracy: 1, horizontalAccuracy: 5)))
+        XCTAssertNil(pipe.process(imu(20))?.speed)
+    }
 }

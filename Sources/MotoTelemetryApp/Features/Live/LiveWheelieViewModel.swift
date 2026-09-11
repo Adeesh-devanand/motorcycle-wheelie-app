@@ -50,10 +50,22 @@ final class LiveWheelieViewModel {
     /// Live duration of the attempt in progress, seconds. Reads `0.0` when idle.
     private(set) var wheelieTime: TimeInterval = 0
 
+    var effectiveAngleTarget: MetricRange { recorder.effectiveSettings.angle ?? preferences.angleTarget }
+    var effectiveSpeedTarget: MetricRange { recorder.effectiveSettings.speed }
+    var effectiveSpeedMaximum: Double { recorder.effectiveSettings.maximum }
+    var speedometerEnabled: Bool { recorder.effectiveSettings.enabled }
+
+    var acquisitionStatus: String {
+        if !recorder.unsavedRuns.isEmpty { return "Attempt not saved — retry above" }
+        if !recorder.sensorHealthy { return "Waiting for fresh motion data" }
+        if recorder.eventActive { return "Recording attempt" }
+        return "Ready — attempts save automatically"
+    }
+
     // MARK: - Range Status
 
     var angleInRange: RangeStatus {
-        rangeStatus(value: currentAngle, target: preferences.angleTarget, nearThreshold: 5)
+        rangeStatus(value: currentAngle, target: effectiveAngleTarget, nearThreshold: 5)
     }
 
     var speedInRange: RangeStatus {
@@ -64,7 +76,7 @@ final class LiveWheelieViewModel {
         // no neutral case, so fall to the non-flattering side instead of inventing one
         // and threading it through the meter.
         guard speedAvailable else { return .outOfRange }
-        return rangeStatus(value: currentSpeed, target: preferences.speedTarget, nearThreshold: 5)
+        return rangeStatus(value: currentSpeed, target: effectiveSpeedTarget, nearThreshold: 5)
     }
 
     /// Live values are only trustworthy once calibrated. §7.2 requires them frozen
@@ -207,6 +219,10 @@ final class LiveWheelieViewModel {
         // observable properties, here on the main actor, before reading them. This is
         // the single coalescing hop — 100 Hz of sensor writes become one apply per
         // 30 Hz data frame.
+        recorder.updateSettings(angleTarget: preferences.angleTarget,
+            speedTarget: preferences.speedTarget,
+            speedGaugeMaximum: preferences.speedGaugeMaximum,
+            speedEnabled: preferences.speedEnabled)
         recorder.flushDisplay()
 
         calibrationState = calibrationService.state
@@ -227,7 +243,10 @@ final class LiveWheelieViewModel {
         }
 
         // §7.2: freeze live values unless calibrated.
-        guard isCalibrated else { return }
+        guard isCalibrated, recorder.sensorHealthy else {
+            speedAvailable = false
+            return
+        }
 
         let nextAngle = currentAngle + alpha * (recorder.livePitch - currentAngle)
 

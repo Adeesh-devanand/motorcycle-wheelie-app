@@ -6,6 +6,7 @@ import SwiftUI
 /// target band as RectangleMark, max marker, scrubber with value dots.
 struct TelemetryChart: View {
     let points: [Downsample.Point]
+    var segments: [[Downsample.Point]]? = nil
     let rawSamples: [TelemetrySample]
     let targetBand: MetricRange
     let metric: MetricKind
@@ -46,14 +47,14 @@ struct TelemetryChart: View {
     private var maxValue: Double {
         metric == .angle
             ? rawSamples.map(\.angleDegrees).max() ?? 0
-            : rawSamples.map(\.speedKPH).max() ?? 0
+            : rawSamples.map(\.speedKPH).filter(\.isFinite).max() ?? 0
     }
 
     private var maxTime: TimeInterval? {
         if metric == .angle {
             return rawSamples.max(by: { $0.angleDegrees < $1.angleDegrees })?.elapsed
         } else {
-            return rawSamples.max(by: { $0.speedKPH < $1.speedKPH })?.elapsed
+            return rawSamples.filter { $0.speedKPH.isFinite }.max(by: { $0.speedKPH < $1.speedKPH })?.elapsed
         }
     }
 
@@ -74,6 +75,7 @@ struct TelemetryChart: View {
         guard b.elapsed != a.elapsed else {
             return metric == .angle ? a.angleDegrees : a.speedKPH
         }
+        guard b.elapsed - a.elapsed <= 0.25 else { return .nan }
         let u = max(0, min(1, (time - a.elapsed) / (b.elapsed - a.elapsed)))
         if metric == .angle {
             return a.angleDegrees + u * (b.angleDegrees - a.angleDegrees)
@@ -157,14 +159,17 @@ struct TelemetryChart: View {
                 }
 
                 // Trace line
-                ForEach(Array(points.enumerated()), id: \.offset) { _, pt in
+                ForEach(Array((segments ?? [points]).enumerated()), id: \.offset) { segmentIndex, segment in
+                ForEach(Array(segment.enumerated()), id: \.offset) { _, pt in
                     LineMark(
                         x: .value("Time", pt.x),
-                        y: .value("Value", pt.y)
+                        y: .value("Value", pt.y),
+                        series: .value("Segment", segmentIndex)
                     )
                     .foregroundStyle(traceColor)
                     .lineStyle(StrokeStyle(lineWidth: 2))
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
+                }
                 }
 
                 // Max marker
@@ -195,12 +200,14 @@ struct TelemetryChart: View {
                 // nothing else lives.
                 if let time = selectedTime {
                     let val = valueAt(time)
+                    if val.isFinite {
                     PointMark(
                         x: .value("Time", time),
                         y: .value("Value", val)
                     )
                     .foregroundStyle(traceColor)
                     .symbolSize(50)
+                    }
                 }
             }
             .chartXScale(domain: 0...runDuration)
@@ -276,10 +283,12 @@ struct TelemetryChart: View {
             // `proxy.position(forY:)` is relative to it, so one origin shift converts
             // both. Reported even when `scrubX` is nil is not useful, but harmless.
             let value = valueAt(time)
-            if let localY = proxy.position(forY: value) {
-                dotY = plot.minY + localY
+            if value.isFinite {
+                if let localY = proxy.position(forY: value) {
+                    dotY = plot.minY + localY
+                }
+                text = scrubberValueText(value)
             }
-            text = scrubberValueText(value)
         }
         return ScrubberFrame(metric: metric, plotRect: plot, scrubberX: scrubX,
                              dotY: dotY, valueText: text)
