@@ -1,18 +1,98 @@
 name: CI
+
 on: [push, pull_request]
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+
 jobs:
-  test:
-    # macos-15 + Xcode 16: Package.swift is swift-tools-version 6.0, which the
-    # Swift 5.10 toolchain on the macos-14 image cannot parse, and .iOS(.v18)
-    # needs the iOS 18 SDK.
+  core:
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app
-      - name: Swift version
-        run: swift --version
-      - name: Build
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build package
         run: swift build
-      - name: Test
+      - name: Test core
         run: swift test
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Beta, Release]
+    defaults:
+      run:
+        shell: bash
+        working-directory: source
+    env:
+      PROJECT: MotoTelemetryApp/MotoTelemetryApp/MotoTelemetryApp.xcodeproj
+      CONFIGURATION: ${{ matrix.configuration }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Toolchain and project discovery
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -list -project "$PROJECT"
+          xcodebuild -showdestinations -project "$PROJECT" -scheme MotoTelemetryApp
+      - name: Build iOS app from clean checkout
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme MotoTelemetryApp \
+            -configuration "$CONFIGURATION" \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/LoftmeterDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/ios-build.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/ios-build.log"
+      - name: Select available test simulator
+        if: matrix.configuration == 'Debug'
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
+          simulator_id=$(jq -er '
+            .devices["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]
+            | map(select(.isAvailable and .name == "iPhone 16"))
+            | first.udid // error("iPhone 16 / iOS 18.5 simulator unavailable")
+          ' "$RUNNER_TEMP/simulators.json")
+          echo "SIMULATOR_ID=$simulator_id" >> "$GITHUB_ENV"
+      - name: Run app unit tests
+        if: matrix.configuration == 'Debug'
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme MotoTelemetryApp \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -destination-timeout 120 \
+            -only-testing:MotoTelemetryAppTests \
+            -parallel-testing-enabled NO \
+            -derivedDataPath "$RUNNER_TEMP/LoftmeterDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/ios-tests.log"
+      - name: Upload build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ matrix.configuration }}-evidence
+          path: |
+            ${{ runner.temp }}/ios-*.log
+            ${{ runner.temp }}/ios-*.xcresult
+            ${{ runner.temp }}/simulators.json
+          if-no-files-found: warn
+          retention-days: 7
