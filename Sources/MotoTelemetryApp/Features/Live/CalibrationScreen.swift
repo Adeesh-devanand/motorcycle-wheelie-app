@@ -24,6 +24,7 @@ struct CalibrationScreen: View {
     /// Called once calibration reaches `.measured`, carrying the completed estimate
     /// (which holds both the bias and the gravity anchor the swipe consumes).
     let onMeasured: (BiasEstimate) -> Void
+    var onRetry: (() -> Void)? = nil
 
     @State private var isPulsing = false
 
@@ -100,7 +101,9 @@ struct CalibrationScreen: View {
     private var actionButton: some View {
         switch service.phase {
         case .failed, .unavailable:
-            Button("Try again") { service.restart() }
+            Button("Try again") {
+                if let onRetry { onRetry() } else { service.restart() }
+            }
                 .font(AppTypography.bodyText)
                 .foregroundStyle(AppColors.accent)
         default:

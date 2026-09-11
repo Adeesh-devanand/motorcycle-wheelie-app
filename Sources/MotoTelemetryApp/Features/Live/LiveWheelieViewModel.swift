@@ -185,6 +185,10 @@ final class LiveWheelieViewModel {
         // observable properties, here on the main actor, before reading them. This is
         // the single coalescing hop — 100 Hz of sensor writes become one apply per
         // 30 Hz display frame.
+        recorder.updateSettings(angleTarget: preferences.angleTarget,
+            speedTarget: preferences.speedTarget,
+            speedGaugeMaximum: preferences.speedGaugeMaximum,
+            speedEnabled: preferences.speedEnabled)
         recorder.flushDisplay()
 
         calibrationState = calibrationService.state
@@ -205,7 +209,10 @@ final class LiveWheelieViewModel {
         }
 
         // §7.2: freeze live values unless calibrated.
-        guard isCalibrated else { return }
+        guard isCalibrated, recorder.sensorHealthy else {
+            speedAvailable = false
+            return
+        }
 
         currentAngle += alpha * (recorder.livePitch - currentAngle)
 

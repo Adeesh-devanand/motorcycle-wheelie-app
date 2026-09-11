@@ -118,6 +118,8 @@ final class RunRecorder: @unchecked Sendable {
     private var sessionStartDate: Date?
     private var sessionStartMonotonic: TimeInterval?
     private var bikeProfileID: UUID?
+    private var calibrationID: UUID?
+    private var attemptConfiguration: RunConfigurationSnapshot?
     private var angleTarget: MetricRange?
     /// Session speed settings, captured at `startSession` so a saved run records the
     /// configuration it was ridden under rather than a constant.
@@ -126,6 +128,11 @@ final class RunRecorder: @unchecked Sendable {
     /// When false the rider has switched the speedometer off: GNSS is not consulted,
     /// no speed reaches the display, and a saved run stores 0 for every speed field.
     private var speedEnabled: Bool = true
+
+    @MainActor private(set) var sensorHealthy = false
+    @MainActor private var healthTask: Task<Void, Never>?
+    private var lastIMUArrival: TimeInterval?
+    private var acquisitionStartedAt: TimeInterval = 0
 
     private var motionTask: Task<Void, Never>?
     private var speedTask: Task<Void, Never>?
@@ -158,6 +165,8 @@ final class RunRecorder: @unchecked Sendable {
     /// Draining happens on the main actor with no lock held: from `flushDisplay()` on
     /// the display tick, and from `stopSession()`, which needs its own drain because
     /// the view model stops the display link BEFORE calling it.
+    @MainActor private(set) var unsavedRuns: [WheelieRun] = []
+
     private var pendingSavedRuns: [WheelieRun] = []
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "RunRecorder")
@@ -261,6 +270,7 @@ final class RunRecorder: @unchecked Sendable {
 
         processLock.lock()
         defer { processLock.unlock() }
+        if epoch == sessionEpoch, case .imu = sample { lastIMUArrival = monotonicNow() }
         processSample(sample, epoch: epoch)
     }
 
@@ -273,10 +283,13 @@ final class RunRecorder: @unchecked Sendable {
     @MainActor
     func startSensing(bikeProfileID: UUID) {
         guard recordingState == .idle else { return }
+        processLock.lock()
         self.bikeProfileID = bikeProfileID
         self.sessionStartMonotonic = monotonicNow()
+        processLock.unlock()
         startSensorTasks()
         recordingState = .sensing
+        startHealthMonitoring()
         log.info("Sensing started (calibration phase) for bike \(bikeProfileID)")
     }
 
@@ -296,6 +309,15 @@ final class RunRecorder: @unchecked Sendable {
         // legally begin a recording.
         guard recordingState == .idle || recordingState == .sensing else { return }
 
+        // Snapshot calibration before taking the processing lock; the hot path
+        // must never read observable calibration state off the main actor.
+        let estimate = calibrationService.estimate
+        let newPipeline = Pipeline(config: config, alignment: mountAlignment,
+            initialBias: estimate, gravityAnchor: estimate?.measuredGravity,
+            sink: DiagnosticLog.shared)
+        let newRawRecorder = rawRecordingEnabled ? RawSampleRecorder(config: config, bikeProfileID: bikeProfileID) : nil
+        processLock.lock()
+        self.calibrationID = estimate?.id
         self.bikeProfileID = bikeProfileID
         self.angleTarget = angleTarget
         // Recorded so a saved run carries the target the rider was ACTUALLY riding
@@ -309,41 +331,18 @@ final class RunRecorder: @unchecked Sendable {
         self.sessionStartDate = Date()
         self.sessionStartMonotonic = monotonicNow()
         self.collectedSamples = []
-        self.sampleCount = 0
-        // Reset the hot-path mirrors and the staged snapshot. Do NOT bump
-        // `sessionEpoch` here: on the .sensing path the sensor tasks are reused
-        // (their epoch must stay valid), and on the .idle path `startSensorTasks`
-        // below bumps it. The late-sample guard is anchored to task lifetime,
-        // not session start.
-        processLock.lock()
         internalSampleCount = 0
         internalEventActive = false
+        internalCurrentEventDuration = 0
+        eventOnsetTime = nil
         internalRawLogSizeBytes = 0
         pendingDisplay = PendingDisplay()
-        processLock.unlock()
-
-        // Initialize pipeline with the calibration result. In the beta flow the
-        // rider cannot reach this screen until calibration has completed and the
-        // swipe alignment is captured, so both are present.
-        pipeline = Pipeline(
-            config: config,
-            alignment: mountAlignment,
-            initialBias: calibrationService.estimate,
-            gravityAnchor: calibrationService.estimate?.measuredGravity,
-            sink: DiagnosticLog.shared
-        )
-
-        // Raw recorder — full-rate unprocessed trace for desk replay (default ON).
-        if rawRecordingEnabled {
-            let rec = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID)
-            rawRecorder = rec
-            diag.always(time: sessionStartMonotonic ?? ProcessInfo.processInfo.systemUptime,
-                        level: .info, message: "raw recorder started", values: [:])
-        }
-
-        // Initialize downstream stages
+        pipeline = newPipeline
+        rawRecorder = newRawRecorder
         segmenter = EventSegmenter(config: config)
         scorer = RunScorer(config: config)
+        processLock.unlock()
+        sampleCount = 0
 
         // Start the sensor stream only if sensing did not already start it during
         // the calibration phase — otherwise the tasks are already draining.
@@ -375,76 +374,85 @@ final class RunRecorder: @unchecked Sendable {
                     level: .info, message: "session started",
                     values: ["hasInitialBias": calibrationService.estimate == nil ? 0 : 1])
 
-        // Watchdog: if no sample has arrived shortly after starting, the sensor
-        // path is genuinely broken — denied permission, missing hardware, or a
-        // dead stream. Only then may we claim the sensors are unavailable.
-        // Measuring the absence of data beats trusting `isGyroAvailable`, which
-        // reports hardware presence and says nothing about delivery.
-        Task { [weak self] in
-            // Two chances, five seconds total. CoreMotion delivery can be slow to
-            // spin up after a restart, and a single 2.5 s miss was enough to strand
-            // the UI on "Motion sensors unavailable / Check device permissions" —
-            // a screen with no way out. Never contradict evidence either: if an IMU
-            // sample has EVER arrived in this process the sensors demonstrably
-            // exist, so claiming otherwise is a false negative, not a diagnosis.
-            //
-            // this Task is not on the main actor, so it must not read the
-            // `@MainActor` observable state directly. `recordingState` is hopped via a
-            // main-actor read; sample counts come from `internalSampleCount`, the
-            // lock-protected hot-path counter (which is what the sensor tasks bump),
-            // so the watchdog measures the same "emitted" quantity as before without
-            // touching main-actor storage.
-            self?.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
-                              message: "watchdog armed (2×2.5s)", values: [:])
-            func isRunning() async -> Bool {
-                guard let self else { return false }
-                return await MainActor.run { self.recordingState == .running }
-            }
-            func emittedSamples() -> Int {
-                guard let self else { return 0 }
-                self.processLock.lock(); defer { self.processLock.unlock() }
-                return self.internalSampleCount
-            }
-            for _ in 0..<2 {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                guard await isRunning() else { return }
-                if emittedSamples() > 0 { return }
-            }
-            guard let self,
-                  await isRunning(),
-                  emittedSamples() == 0,
-                  !self.calibrationService.hasSeenSample else { return }
+        if healthTask == nil { startHealthMonitoring() }
+    }
 
-            // What kind of silence is this? The watchdog measures EMITTED samples,
-            // and for five seconds it has seen none — but "none emitted" is two
-            // completely different faults. If raw CoreMotion callbacks are arriving,
-            // the hardware is demonstrably alive and our own pairing is dropping
-            // everything (bug 4); a device log shows this path telling the rider to
-            // check device permissions while 1,839 callbacks landed in that same
-            // window. Claiming a permissions problem then is a false diagnosis, and it
-            // sends them to a settings screen that was never the issue.
-            let raw = self.motionService.rawCallbackCount
-            if raw > 0 {
-                self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
-                                 message: "watchdog FIRED — sensors ALIVE but nothing emitted (pairing fault)",
-                                 values: ["rawCallbacks": Double(raw),
-                                          "emitted": Double(emittedSamples())])
-                self.log.error("Motion callbacks arriving (\(raw)) but no paired samples emitted — pairing fault, not a hardware fault")
-                return
+    @MainActor
+    private func startHealthMonitoring() {
+        healthTask?.cancel()
+        processLock.lock()
+        acquisitionStartedAt = monotonicNow()
+        lastIMUArrival = nil
+        processLock.unlock()
+        sensorHealthy = false
+        healthTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 250_000_000) }
+                catch { return }
+                self?.evaluateSensorHealth()
             }
+        }
+    }
 
-            self.diag.always(time: ProcessInfo.processInfo.systemUptime, level: .error,
-                             message: "watchdog FIRED — reporting sensors unavailable",
-                             values: ["sampleCount": 0,
-                                      "rawCallbacks": 0])
-            self.calibrationService.reportSensorsUnavailable(
-                reason: "no IMU samples and no raw motion callbacks 5 s after starting motion updates")
+    /// Clock-driven gate shared by the watchdog and deterministic tests.
+    @MainActor
+    func evaluateSensorHealth() {
+        guard recordingState != .idle else { return }
+        processLock.lock()
+        let last = lastIMUArrival
+        let started = acquisitionStartedAt
+        processLock.unlock()
+        let now = monotonicNow()
+        let fresh = last.map { now - $0 <= 2.5 } ?? false
+        if sensorHealthy != fresh {
+            sensorHealthy = fresh
+            if fresh && recordingState == .running { cueRenderer?.start() }
+            else { cueRenderer?.stop() }
+        }
+        if last == nil && now - started >= 5 {
+            calibrationService.reportSensorsUnavailable(reason: "no IMU delivery after startup")
+        }
+    }
+
+    /// Idle edits apply atomically before the next onset. During arming/active/
+    /// disarming the caller retries on its next display tick after the attempt.
+    @MainActor
+    func updateSettings(angleTarget: MetricRange, speedTarget: MetricRange,
+                        speedGaugeMaximum: Double, speedEnabled: Bool) {
+        guard recordingState == .running else { return }
+        processLock.lock()
+        guard segmenter?.state == .idle else { processLock.unlock(); return }
+        let changedSpeed = self.speedEnabled != speedEnabled
+        if changedSpeed { pipeline?.clearSpeed() }
+        self.angleTarget = angleTarget
+        self.speedTarget = speedEnabled ? speedTarget : MetricRange(lower: 0, upper: 0)
+        self.speedGaugeMaximum = speedGaugeMaximum
+        self.speedEnabled = speedEnabled
+        let epoch = sessionEpoch
+        processLock.unlock()
+        if changedSpeed {
+            if speedEnabled {
+                speedService.start()
+                speedTask = Task { [weak self] in
+                    guard let self else { return }
+                    for await sample in self.speedService.fixes {
+                        self.processLocked(sample, epoch: epoch)
+                    }
+                }
+            } else {
+                speedTask?.cancel()
+                speedTask = nil
+                speedService.stop()
+            }
         }
     }
 
     @MainActor
     func stopSession() {
         guard recordingState != .idle else { return }
+        healthTask?.cancel()
+        healthTask = nil
+        sensorHealthy = false
 
         // Late work on stop: we cancel the consuming Tasks but deliberately do
         // NOT await them here — awaiting would make `stopSession` (and therefore
@@ -513,6 +521,13 @@ final class RunRecorder: @unchecked Sendable {
             }
         }
         internalEventActive = false
+        pipeline = nil
+        segmenter = nil
+        scorer = nil
+        let closingRawRecorder = rawRecorder
+        rawRecorder = nil
+        let retainedSize = internalRawLogSizeBytes
+        pendingDisplay.eventActive = false
         processLock.unlock()
 
         // Write whatever `seg.finish()` just closed. Must be after the unlock: the
@@ -520,16 +535,11 @@ final class RunRecorder: @unchecked Sendable {
         // runs on the main actor.
         drainPendingSaves()
 
-        pipeline = nil
-        segmenter = nil
-        scorer = nil
         recordingState = .idle
         eventActive = false
-        rawRecorder?.finish()
-        let finalSize = rawRecorder?.fileSizeBytes ?? internalRawLogSizeBytes
-        internalRawLogSizeBytes = finalSize
+        closingRawRecorder?.finish()
+        let finalSize = closingRawRecorder?.fileSizeBytes ?? retainedSize
         rawLogSizeBytes = finalSize
-        rawRecorder = nil
         log.info("Recording session stopped. Total samples: \(emitted)")
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "session stopped",
@@ -585,11 +595,18 @@ final class RunRecorder: @unchecked Sendable {
     @MainActor
     private func saveFinished(_ runs: [WheelieRun]) {
         for run in runs {
-            repository.save(run)
+            guard repository.save(run) else {
+                if !unsavedRuns.contains(where: { $0.id == run.id }) { unsavedRuns.append(run) }
+                continue
+            }
+            unsavedRuns.removeAll { $0.id == run.id }
             diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                         message: "run saved", values: ["samples": Double(run.samples.count)])
         }
     }
+
+    @MainActor
+    func retryUnsavedRuns() { saveFinished(unsavedRuns) }
 
     /// Await finite provider streams in integration tests/replay. Providers must
     /// finish first. This observes consumer completion, not producer delivery.
@@ -627,6 +644,12 @@ final class RunRecorder: @unchecked Sendable {
         // from the estimate's gravity vector (see `startSession`). There is no
         // adopt-a-new-estimate-mid-session path to react to, so the seven-re-anchors
         // -in-one-session bug that block guarded against cannot occur.
+
+        if case .gnss = sample, !speedEnabled { return }
+
+        // Begin a fresh quality window while idle; arming and exit confirmation
+        // belong to the prospective attempt and retain all measured flags.
+        if segmenter?.state == .idle { pipe.resetQualityFlags() }
 
         // Run through pipeline
         guard let output = pipe.process(sample) else {
@@ -689,7 +712,7 @@ final class RunRecorder: @unchecked Sendable {
             }
 
             // Update event-active flag on pipeline for GNSS suppression
-            let isActive = seg.state == .active || seg.state == .arming
+            let isActive = seg.state == .active || seg.state == .disarming
             if isActive != internalEventActive {
                 internalEventActive = isActive
                 pipeline?.eventActive = isActive
@@ -739,6 +762,11 @@ final class RunRecorder: @unchecked Sendable {
             diag.always(time: onsetTime, level: .info, message: "event onset",
                         values: ["onset": onsetTime, "speed": speed ?? -1])
             scorer?.beginEvent(onset: onsetTime, entrySpeed: speed)
+            if let angleTarget, let calibrationID {
+                attemptConfiguration = RunConfigurationSnapshot(angleTarget: angleTarget,
+                    speedTarget: speedTarget, speedGaugeMaximum: speedGaugeMaximum,
+                    calibrationID: calibrationID)
+            }
             eventOnsetTime = onsetTime
             internalCurrentEventDuration = 0
             internalEventActive = true
@@ -771,12 +799,12 @@ final class RunRecorder: @unchecked Sendable {
         guard let startDate = sessionStartDate,
               let sessionStart = sessionStartMonotonic,
               let onset = eventOnsetTime,
-              let angleTarget = angleTarget,
+              let savedConfiguration = attemptConfiguration,
               // A bike profile must exist for the event to be valid, but nothing
               // below consumes it: `WheelieRun` has no bike field, so the value is
               // required and then discarded. Kept as a requirement, not a binding.
               bikeProfileID != nil,
-              let calibID = calibrationService.estimate?.id else {
+              calibrationID != nil else {
             log.warning("Cannot finalize event — missing session context")
             return
         }
@@ -796,14 +824,14 @@ final class RunRecorder: @unchecked Sendable {
                                 elapsed: sample.elapsed - onsetElapsed,
                                 angleDegrees: sample.angleDegrees,
                                 blurredAngleDegrees: nil,
-                                speedKPH: sample.speedKPH)
+                                speedKPH: sample.speedKPH, speedValid: sample.speedValid)
             }
 
         // Jitter blur: the recorded-run cleaner. Zero-phase, so it removes vibration
         // wiggle without shifting the curve in time. It does NOT correct drift — see
         // JitterBlur — and cannot fail destructively; a run too short to blur simply
         // keeps raw values and is flagged so it is never shown as if it were cleaned.
-        var flags: QualityFlags = []
+        var flags: QualityFlags = pipeline?.currentFlags ?? .qualityRecordMissing
         let rawAngles = windowed.map(\.angleDegrees)
         switch JitterBlur(config: config).blur(rawAngles) {
         case .success(let blurred):
@@ -824,12 +852,7 @@ final class RunRecorder: @unchecked Sendable {
             startedAt: attemptStart,
             endedAt: attemptEnd,
             samples: windowed,
-            configuration: RunConfigurationSnapshot(
-                angleTarget: angleTarget,
-                speedTarget: speedTarget,
-                speedGaugeMaximum: speedGaugeMaximum,
-                calibrationID: calibID
-            ),
+            configuration: savedConfiguration,
             qualityFlags: flags
         )
 
@@ -866,7 +889,8 @@ final class RunRecorder: @unchecked Sendable {
             // and `averageSpeed` on `WheelieRun` are derived from this field, so this
             // is the single place that makes a run recorded with speed off report 0
             // everywhere it is read.
-            speedKPH: speedEnabled ? (output.speed ?? 0) * 3.6 : 0
+            speedKPH: speedEnabled ? (output.speed ?? 0) * 3.6 : 0,
+            speedValid: speedEnabled && output.speed != nil
         )
     }
 }

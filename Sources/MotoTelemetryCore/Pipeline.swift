@@ -96,6 +96,10 @@ public struct Pipeline {
     private let initialBias: BiasEstimate?
 
     private var lastSpeed: Double?
+    private var lastSpeedTime: TimeInterval?
+    public static let speedFreshnessLimit: TimeInterval = 2.5
+
+    public mutating func clearSpeed() { lastSpeed = nil; lastSpeedTime = nil }
     private var flags: QualityFlags = []
     private var lastSpecificForce = Vector3.zero
 
@@ -161,7 +165,11 @@ public struct Pipeline {
             // of the session and kept `speed != nil`, i.e. kept claiming the speed was
             // available. A fix saying "I have no speed" is positive evidence, not an
             // absence of evidence, so it clears the value.
-            lastSpeed = fix.resolvedSpeed
+            guard fix.fixTime.isFinite, fix.arrivalTime.isFinite else { return nil }
+            if let previous = lastSpeedTime, fix.fixTime < previous { return nil }
+            lastSpeedTime = fix.fixTime
+            let age = fix.arrivalTime - fix.fixTime
+            lastSpeed = age >= 0 && age <= Self.speedFreshnessLimit ? fix.resolvedSpeed : nil
             return nil
         case .baro, .wheelSpeed:
             // Neither is consumed by this estimator, but both remain part of the LOG
@@ -207,7 +215,10 @@ public struct Pipeline {
                                   estimate: initialBias,
                                   now: imu.time,
                                   holdDuration: 0),
-                              speed: lastSpeed,
+                              speed: lastSpeedTime.flatMap { time in
+                                  let age = imu.time - time
+                                  return age >= 0 && age <= Self.speedFreshnessLimit ? lastSpeed : nil
+                              },
                               vibration: vibration.instantaneousRMS,
                               flags: flags)
     }
@@ -262,6 +273,8 @@ public struct Pipeline {
     public var currentFlags: QualityFlags { flags }
     public var biasEstimate: Vector3 { initialBias?.bias ?? .zero }
     public var isAnchored: Bool { estimator.isAnchored }
+
+    public mutating func resetQualityFlags() { flags = [] }
 
     public mutating func insertFlag(_ flag: QualityFlags) { flags.insert(flag) }
 }

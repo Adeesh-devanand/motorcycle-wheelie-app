@@ -33,12 +33,27 @@ struct LiveWheelieView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            if !recorder.unsavedRuns.isEmpty {
+                Button("\(recorder.unsavedRuns.count) unsaved attempt(s) — Retry saving") {
+                    recorder.retryUnsavedRuns()
+                }
+                .foregroundStyle(AppColors.warning)
+                .padding()
+                Text("Keep the app open until saving succeeds.")
+                    .font(.caption)
+            }
+            phaseContent
+        }
+    }
+
+    private var phaseContent: some View {
         Group {
             switch phase {
             case .calibrating:
-                CalibrationScreen(service: calibrationService) { estimate in
+                CalibrationScreen(service: calibrationService, onMeasured: { estimate in
                     phase = .swiping(estimate)
-                }
+                }, onRetry: restart)
                 .onAppear { recorder.startSensing(bikeProfileID: bikeProfileID) }
 
             case .swiping(let estimate):
@@ -79,7 +94,9 @@ struct LiveWheelieView: View {
     /// too: a re-zero without a fresh swipe would keep an alignment measured against
     /// the old reference.
     private func restart() {
+        recorder.stopSession()
         calibrationService.restart()
+        if case .calibrating = phase { recorder.startSensing(bikeProfileID: bikeProfileID) }
         phase = .calibrating
     }
 }

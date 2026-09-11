@@ -94,12 +94,13 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
     }
 
     var maxSpeed: Double {
-        samples.map(\.speedKPH).max() ?? 0
+        samples.filter { $0.speedValid == true }.map(\.speedKPH).max() ?? 0
     }
 
     var averageSpeed: Double {
-        guard !samples.isEmpty else { return 0 }
-        return samples.map(\.speedKPH).reduce(0, +) / Double(samples.count)
+        let valid = samples.filter { $0.speedValid == true }
+        guard !valid.isEmpty else { return 0 }
+        return valid.map(\.speedKPH).reduce(0, +) / Double(valid.count)
     }
 
     // MARK: - In-range intervals (IntervalDetector bridge)
@@ -132,7 +133,7 @@ struct WheelieRun: Identifiable, Codable, Sendable, Equatable {
         let lo = configuration.speedTarget.lower / 3.6   // km/h -> m/s
         let hi = configuration.speedTarget.upper / 3.6
         guard hi > lo else { return [] }
-        let series = samples.map { (time: $0.elapsed, value: $0.speedKPH / 3.6) }
+        let series = samples.map { (time: $0.elapsed, value: $0.speedValid == true ? $0.speedKPH / 3.6 : .nan) }
         // Same nonexistent `RangeInterval(start:end:)` build break as above;
         // here `metric: .speed` distinguishes this from the angle channel so
         // `RangeIntervalTimeline` colours it correctly.

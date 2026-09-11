@@ -18,6 +18,9 @@ struct PastRunsView: View {
                 AppColors.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    if let message = viewModel.repository.lastError {
+                        Text(message).foregroundStyle(AppColors.warning).padding()
+                    }
                     navRow
                     scrollContent
                 }
