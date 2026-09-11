@@ -57,6 +57,8 @@
 		FDC86A23A1030C87A13C8175 /* VerticalTelemetryMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31181713EA4B619C8E957EF /* VerticalTelemetryMeter.swift */; };
 		FDD0869E5B8DF7B723B05CFA /* RunDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A3F54540EEBFF633E593CC /* RunDetailsView.swift */; };
 		FE4D405429E7BD1F63972722 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307660157200E539C85ABCE7 /* SettingsView.swift */; };
+		C020000000000000000000002 /* TelemetryIntegrationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C020000000000000000000001; };
+		C020000000000000000000012 /* TelemetryIntegrationHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C020000000000000000000011; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,6 +133,8 @@
 		D957BCAACA74EE0C875D4C6D /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StatusPill.swift; path = "../../Sources/MotoTelemetryApp/DesignSystem/StatusPill.swift"; sourceTree = SOURCE_ROOT; };
 		D9843BE5D011EB29560B8819 /* CalibrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CalibrationService.swift; path = "../../Sources/MotoTelemetryApp/Services/CalibrationService.swift"; sourceTree = SOURCE_ROOT; };
 		E43523B778E635A1FB725AB6 /* TelemetryChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TelemetryChart.swift; path = "../../Sources/MotoTelemetryApp/Features/RunDetails/TelemetryChart.swift"; sourceTree = SOURCE_ROOT; };
+		C020000000000000000000001 /* TelemetryIntegrationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryIntegrationSupport.swift; sourceTree = "<group>"; };
+		C020000000000000000000011 /* TelemetryIntegrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryIntegrationHarnessTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -245,6 +249,8 @@
 			isa = PBXGroup;
 			children = (
 				9D956C08303F37E10071582A /* MotoTelemetryAppTests.swift */,
+				C020000000000000000000011 /* TelemetryIntegrationHarnessTests.swift */,
+				C020000000000000000000001 /* TelemetryIntegrationSupport.swift */,
 			);
 			path = MotoTelemetryAppTests;
 			sourceTree = "<group>";
@@ -447,6 +453,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				9D956C09303F37E10071582A /* MotoTelemetryAppTests.swift in Sources */,
+				C020000000000000000000012 /* TelemetryIntegrationHarnessTests.swift in Sources */,
+				C020000000000000000000002 /* TelemetryIntegrationSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

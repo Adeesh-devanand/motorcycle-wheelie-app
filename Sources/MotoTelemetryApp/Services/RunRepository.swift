@@ -29,9 +29,25 @@ final class RunRepository: @unchecked Sendable {
 
     // MARK: - Init
 
-    init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.runsDirectory = docs.appendingPathComponent("runs", isDirectory: true)
+    /// Test-only write interceptor. When set, it is invoked in place of the real
+    /// `Data.write(to:)` inside `save`, so a test can force a persistence failure
+    /// without filling the disk. `nil` in production — the `save` path is then
+    /// byte-for-byte identical to before this seam existed. Introduced for the K02
+    /// integration harness; do NOT rely on it from production code.
+    var writeInterceptor: ((Data, URL) throws -> Void)?
+
+    /// Production initializer: runs live under `Documents/runs`, exactly as before.
+    /// The optional `runsDirectory` exists ONLY so the K02 integration harness can
+    /// point the repository at an isolated temporary directory. When `nil` (the
+    /// default, and the only value production ever passes) the path resolution is
+    /// identical to the original hardcoded behaviour.
+    init(runsDirectory: URL? = nil) {
+        if let runsDirectory {
+            self.runsDirectory = runsDirectory
+        } else {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            self.runsDirectory = docs.appendingPathComponent("runs", isDirectory: true)
+        }
         ensureDirectory()
         loadAll()
     }
@@ -65,7 +81,16 @@ final class RunRepository: @unchecked Sendable {
         do {
             let data = try encoder.encode(run)
             let fileURL = url(for: run.id)
-            try data.write(to: fileURL, options: .atomic)
+            if let writeInterceptor {
+                // K02 test seam: the interceptor stands in for the real write so a
+                // harness can inject a failure. It throws to simulate a failed write;
+                // on success it is responsible for the write (or a no-op the test
+                // then verifies). nil in production — the `else` branch is the
+                // original behaviour, unchanged.
+                try writeInterceptor(data, fileURL)
+            } else {
+                try data.write(to: fileURL, options: .atomic)
+            }
             allRuns.append(run)
             allRuns.sort { $0.startedAt > $1.startedAt }
             log.info("Saved run \(run.id): \(run.maxAngle, format: .fixed(precision: 1))° max, \(run.duration, format: .fixed(precision: 1))s")

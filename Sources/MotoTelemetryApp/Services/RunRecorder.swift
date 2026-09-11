@@ -80,6 +80,7 @@ final class RunRecorder: @unchecked Sendable {
     private let calibrationService: CalibrationService
     private let repository: RunRepository
     private let config: Config
+    private let monotonicNow: @Sendable () -> TimeInterval
     private let cueRenderer: CueAudioRenderer?
 
     // MARK: - Pipeline internals
@@ -178,13 +179,15 @@ final class RunRecorder: @unchecked Sendable {
          calibrationService: CalibrationService,
          repository: RunRepository,
          config: Config = Config(),
-         cueRenderer: CueAudioRenderer? = nil) {
+         cueRenderer: CueAudioRenderer? = nil,
+         monotonicNow: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.motionService = motionService
         self.speedService = speedService
         self.calibrationService = calibrationService
         self.repository = repository
         self.config = config
         self.cueRenderer = cueRenderer
+        self.monotonicNow = monotonicNow
     }
 
     // MARK: - Session lifecycle
@@ -271,7 +274,7 @@ final class RunRecorder: @unchecked Sendable {
     func startSensing(bikeProfileID: UUID) {
         guard recordingState == .idle else { return }
         self.bikeProfileID = bikeProfileID
-        self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
+        self.sessionStartMonotonic = monotonicNow()
         startSensorTasks()
         recordingState = .sensing
         log.info("Sensing started (calibration phase) for bike \(bikeProfileID)")
@@ -304,7 +307,7 @@ final class RunRecorder: @unchecked Sendable {
         self.speedGaugeMaximum = speedGaugeMaximum
         self.speedEnabled = speedEnabled
         self.sessionStartDate = Date()
-        self.sessionStartMonotonic = ProcessInfo.processInfo.systemUptime
+        self.sessionStartMonotonic = monotonicNow()
         self.collectedSamples = []
         self.sampleCount = 0
         // Reset the hot-path mirrors and the staged snapshot. Do NOT bump
@@ -586,6 +589,14 @@ final class RunRecorder: @unchecked Sendable {
             diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                         message: "run saved", values: ["samples": Double(run.samples.count)])
         }
+    }
+
+    /// Await finite provider streams in integration tests/replay. Providers must
+    /// finish first. This observes consumer completion, not producer delivery.
+    @MainActor
+    func awaitSensorCompletion() async {
+        await motionTask?.value
+        await speedTask?.value
     }
 
     // MARK: - Sample processing
