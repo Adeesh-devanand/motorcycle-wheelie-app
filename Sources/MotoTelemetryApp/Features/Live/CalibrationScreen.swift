@@ -49,7 +49,10 @@ struct CalibrationScreen: View {
                                        value: isPulsing)
 
                         Text(title)
-                    .font(AppTypography.meterValue)
+                    // ~70% of AppTypography.meterValue (56pt). The full meter size pushed
+                    // the yellow blockingReason line below the screen on the calibration
+                    // screen; a smaller title keeps the whole stack in view.
+                    .font(.system(size: 39, weight: .bold, design: .monospaced))
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.5)
