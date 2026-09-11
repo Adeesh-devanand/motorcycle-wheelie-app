@@ -1,39 +1,70 @@
-# App Privacy — App Store Connect questionnaire answers
+# App Privacy — submission worksheet
 
-Fill the "App Privacy" section in App Store Connect exactly as below.
+_Reviewed: 2026-09-11. This is a conditional worksheet, not a completed submission._
 
-## Does this app collect data?
-**YES** — because it accesses precise location. (On-device-only storage of runs
-is NOT "collection" per Apple, but the location *access* must be declared since
-it is used to produce functionality even though it is not transmitted. Declare
-it conservatively as below; if you are certain location never leaves the device
-AND is not used beyond on-device functionality, Apple still expects it listed
-under the data type with the "App Functionality" purpose.)
+Answer for the **actual distributed app and its enabled services**. A configuration
+name alone is insufficient: inspect the archive's compilation settings, embedded
+configuration, dependencies, and actual network behaviour. Do not copy beta
+answers to a verified local-only Release, or local-only answers to a configured
+uploading build.
 
-## Data types
+## Apple's definition
 
-### Location → Precise Location
-- **Collected:** Yes
-- **Linked to the user's identity:** **No** (no account, no identifier)
-- **Used for tracking:** **No**
-- **Purposes:** **App Functionality** only
-  (NOT Analytics, NOT Product Personalization, NOT Advertising)
+Data processed exclusively on-device does not need a collection declaration.
+Transmission with retained off-device access does. The absence of an account does
+not establish that data is unlinked when an installation identifier groups it.
+Diagnostic purposes still require applicable disclosures. [Apple App Privacy
+Details](https://developer.apple.com/app-store/app-privacy-details/).
 
-### Everything else
-- Contact info: **No**
-- Health & Fitness: **No** (pitch angle / speed are motion telemetry, not Health-kit data)
-- Financial: **No**
-- User Content: **No** (runs stay on device; not uploaded)
-- Identifiers: **No**
-- Usage Data: **No**
-- Diagnostics: **No** (logs are on-device, not transmitted)
+## Build decision
 
-## Tracking
-- **This app does not track.** Do not enable App Tracking Transparency; you make
-  no cross-app/website tracking, so no `NSUserTrackingUsageDescription` is needed.
+| Verified distributed behaviour | Collection answer |
+| --- | --- |
+| Normal Release without BETA, no beta uploader, and no other retained off-device collection by the app or integrated services | **Data Not Collected**, once verified for the submitted archive. Location/motion permission descriptions are still needed. |
+| Debug/Beta with empty default endpoint/token and no other collection | Uploads are disabled in this configuration. Verify the distributed build; do not assume a developer override is absent. |
+| BETA compiled with valid endpoint/token and the current automatic upload path enabled | **Data Collected.** Complete the inventory below and verify actual server use. |
 
-## Sensitive note
-If you are 100% certain the app performs **zero** network transmission of
-location (pure on-device), you *may* answer "Data Not Collected" entirely — but
-the safe, defensible answer for review is the Location/App-Functionality/no-tracking
-combination above. Pick one and keep the privacy policy consistent with it.
+Current checked-in Debug and Beta app configurations define BETA. Their
+BetaUploadDefaults.xcconfig has empty defaults with an optional local override.
+Normal Release does not define BETA in the reviewed project. These facts describe
+source baseline db40cd2af92a57182993a2c32037c048b4f2e887, not certification of a
+previously shipped archive.
+
+## Inventory for the current configured uploader
+
+| Observed information | Questionnaire mapping / action |
+| --- | --- |
+| Raw GNSS latitude and longitude, retained server-side | Declare **Precise Location** where the readings meet Apple's precision definition. Check approximate-location paths for **Coarse Location** too. |
+| Persistent installation UUID used to group uploads | Declare **Device ID**; it functions as an installation-level identifier even without IDFA or an account. |
+| Sensor-processing events, errors, raw traces and configuration used for technical investigation | Declare **Other Diagnostic Data**; inspect timing/rate fields and their use for **Performance Data**. Do not label all uploaded logs “not collected.” |
+| Motion samples, speed, session/device metadata | Inventory fields and actual uses. Include diagnostic classification where applicable; determine whether any use also requires **Other Data Types**, **Usage Data**, or **Fitness**. Lack of HealthKit is not by itself a classification test. |
+
+**Linkage:** treat installation-grouped uploads as linked in this worksheet. No
+pre-upload de-identification that breaks that grouping is implemented. A random
+UUID or lack of a named account is insufficient evidence for “not linked.”
+
+**Purpose:** technical diagnosis and support fit **App Functionality**. Confirm
+whether the team also evaluates rider behaviour or product usage; declare
+**Analytics** if that is an actual use. Do not claim a server-use restriction from
+client code alone.
+
+**Tracking:** no advertising/data-broker tracking path was identified in the
+reviewed code. Confirm actual partner use before answering “No.” The installation
+identifier alone does not establish Apple's advertising-tracking definition.
+
+**Remaining inventory:** verify server/request logs, retained IP information and
+any added dependencies. Do not blanket-answer “No” for every other category
+without this check. Automated beta uploading does not qualify as an individually
+chosen feedback-form submission.
+
+## Before submission
+
+Record archive/build identification, verified endpoint configuration (without
+secrets), a synthetic-data network test, the final field/use inventory, and the
+maintainer's approved questionnaire answers. Publish an accurate policy with a
+real contact. Confirm the applicable privacy-manifest requirements separately;
+the questionnaire is not a substitute for a manifest.
+
+The beta consent, redaction and deletion workflow is outstanding K13 work. This
+worksheet does not assert those controls exist. See [beta data flow and remaining
+decisions](../docs/reviews/beta-data-flow.md).
