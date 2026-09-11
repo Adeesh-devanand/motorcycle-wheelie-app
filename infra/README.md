@@ -111,43 +111,15 @@ The template denies non-TLS S3 access for both the bucket and its objects.
 Existing encryption, object retention, presign expiry and client protocol remain
 unchanged. Updating this template does not itself change the deployed stack.
 
-HTTP API access logs retain only request ID, HTTP status and response latency
-for 14 days. They deliberately omit source IP, installation/session identifiers,
-headers, query strings, URLs, signed URLs and bodies. This does **not** redact
-raw diagnostic objects already uploaded to S3 or solve client consent (K13).
+AWS monitoring (API access logs, CloudWatch alarms, SNS notifications) is deferred
+by the maintainer. The existing Lambda log group is unchanged. No deployment has
+been performed. Transport enforcement remains in the template.
 
-Four CloudWatch alarms use five-minute sums:
-
-| Alarm | Threshold | Purpose |
-|---|---:|---|
-| API `5xx` | 1 | Includes a handled presigner failure returning HTTP 500 |
-| API `4xx` | 20 | Invalid requests, rejected tokens or request throttling |
-| Lambda `Errors` | 1 | Unhandled execution failures |
-| Lambda `Throttles` | 1 | Rejected Lambda invocations |
-
-Missing data is treated as not breaching because an idle beta is normal.
-These alarms do not detect an entirely silent client or measure upload success
-at S3. Start with these thresholds and adjust using actual beta traffic.
-
-`AlarmTopicArn=<existing-SNS-topic-ARN>` optionally routes alarm transitions to
-SNS. **The default is alarm state in CloudWatch only; nobody is notified.**
-Before relying on notifications, configure a same-region topic, its publish
-permissions (and KMS policy if encrypted), confirmed subscriptions and a delivery
-test. No topic, subscription, email recipient or deployment is created by this
-change. Review the CloudFormation change set before deployment; API access-log
-creation also requires the deployer's CloudWatch Logs delivery permissions.
-
-Offline checks (Python with PyYAML available):
+Offline TLS policy checks (including deliberate regression mutations):
 
 ```sh
 python -m unittest discover -s infra/tests -v
 ```
 
-Tests check TLS policy scope, logging allowlist and metric dimensions/actions,
-and deliberately mutate controls to prove regressions are rejected. They do
-not replace CloudFormation validation or an approved deployment/delivery test.
-
-AWS references: [HTTP API metrics](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-metrics.html),
-[HTTP API logging](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html),
-[access log variables](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging-variables.html),
-and [S3 transport security](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html).
+Review a CloudFormation change set before deployment. These tests do not prove
+the state of the deployed stack.
