@@ -798,9 +798,9 @@ private struct MeterFillCursorLayer: View, Animatable {
                         Path(fillRect),
                         with: .linearGradient(
                             Gradient(stops: [
-                                .init(color: Color(hex: 0x0C2036), location: 0),
-                                .init(color: Color(hex: 0x123767), location: 0.55),
-                                .init(color: Color(hex: 0x1D59B2), location: 1)
+                                .init(color: Color(hex: 0x153960), location: 0),
+                                .init(color: Color(hex: 0x1A4E92), location: 0.55),
+                                .init(color: Color(hex: 0x266FDC), location: 1)
                             ]),
                             startPoint: CGPoint(x: trackX, y: size.height),
                             endPoint: CGPoint(x: trackX, y: 0)
