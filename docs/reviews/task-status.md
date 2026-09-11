@@ -90,3 +90,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K10 IN PROGRESS — Codex (sole agent)**: Audio intended-running state, synchronized control-path latch reset, stale render input expiry. Files CueAudioRenderer.swift plus existing app harness tests. K02 native named tests passed and PR7 merged e17fbba.
 
 **K11 IN PROGRESS — Codex (sole agent)**: Linear band crossing incl both endpoints outside, explicit gap barriers; consistent blurred default charts/scrubber and stable interval IDs with speed validity. Files IntervalDetector.swift/Tests, WheelieRun.swift, RunDetailsViewModel.swift, RunDetailsView.swift and existing app harness.
+
+**K11b allowlist expansion IN PROGRESS — Codex (sole agent)**: TelemetryChart.swift also required: this component computes its own peak/scrubber from rawSamples and connects all points. Add explicit segment grouping and consistent displayed samples; do not alter live meters.
