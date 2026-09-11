@@ -194,7 +194,7 @@ struct VerticalTelemetryMeter: View {
         return ZStack {
             // Track, centred in the available width. Carries the target-drag gesture,
             // so it must be the only hit-testable layer here.
-            meterTrackView(height: height, cursorY: cursorY)
+            meterTrackView(height: height)
 
             // Scale labels, drawn across the full width so x/y are exact.
             //
@@ -242,8 +242,7 @@ struct VerticalTelemetryMeter: View {
 
     // MARK: - Meter Track
 
-    private func meterTrackView(height: CGFloat, cursorY: CGFloat) -> some View {
-        let fraction = fillFraction
+    private func meterTrackView(height: CGFloat) -> some View {
         let totalTrackWidth = trackWidth + cursorOverhang * 2
 
         return ZStack(alignment: .bottom) {
@@ -263,27 +262,6 @@ struct VerticalTelemetryMeter: View {
                 targetBandOverlay(band: band, height: height)
             }
 
-            // A bottom-anchored blue column, clipped to the full-height capsule so
-            // the fill grows straight up from the base with the cursor line, never
-            // from the middle. The fill Rectangle is given the FULL track frame with
-            // `alignment: .bottom` and its VISIBLE height is set by a bottom inset,
-            // so its top edge — not its centre — tracks `fraction`.
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color(hex: 0x0C2036), location: 0),
-                            .init(color: Color(hex: 0x123767), location: 0.55),
-                            .init(color: Color(hex: 0x1D59B2), location: 1)
-                        ],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                )
-                .frame(width: trackWidth, height: max(fraction * height, 0), alignment: .bottom)
-                .frame(width: trackWidth, height: height, alignment: .bottom)
-                .clipShape(Capsule().inset(by: 1.5))
-                .animation(.easeOut(duration: 0.05), value: value)
 
             // The rim belongs above both the fill and target band, so it remains
             // legible through the target range and around the bottom of the gauge.
@@ -304,13 +282,34 @@ struct VerticalTelemetryMeter: View {
             tickCanvas(height: height)
                 .frame(width: tickCanvasWidth, height: height)
 
-            // Cursor line + dot + glow. Drawn even with no reading, because the meter now
-            // presents "no reading" AS zero: suppressing the cursor while the readout says
-            // 0 would leave the bar looking dead rather than stopped. `cursorY` comes from
-            // `fillFraction`, which is 0 in that state, so it sits at the bottom of the
-            // scale exactly where a genuine 0 puts it.
-            cursorOverlayView(cursorY: cursorY, height: height)
-                .frame(width: totalTrackWidth, height: height)
+            // Fill column + cursor, drawn together from ONE interpolated fraction, ABOVE
+            // the rim and ticks (where the cursor used to sit alone).
+            //
+            // These are the only two things that move with the reading, and they MUST move
+            // as one — the cursor line sits exactly at the top of the fill. They used to be
+            // a `Rectangle().frame(height:)` (a frame SwiftUI can tween) beside a `Canvas`
+            // cursor (which it cannot), so under animation the fill glided while the cursor
+            // snapped and they visibly separated. Rendering both inside a single
+            // `Animatable` layer whose `animatableData` IS the fraction means SwiftUI feeds
+            // it the same interpolated fraction on every native frame, so the fill top and
+            // the cursor are computed from one number and cannot drift apart. This is also
+            // what upsamples the 30 Hz data to the display's native 60/120 Hz: the view
+            // model tweens `value` with `withAnimation(.linear(1/30))`, and this layer
+            // redraws at each interpolated fraction between two samples.
+            //
+            // Drawn last so the cursor line and dot sit over the rim, exactly as before.
+            // The fill is inset 1.5 pt inside the capsule and the track is narrower than
+            // the tick canvas, so drawing it here does not paint over the rim edge or the
+            // spokes.
+            MeterFillCursorLayer(
+                fraction: fillFraction,
+                trackWidth: trackWidth,
+                cursorThickness: cursorThickness,
+                cursorDotSize: cursorDotSize,
+                cursorBlue: cursorBlue,
+                cursorColor: AppColors.cursor
+            )
+            .frame(width: totalTrackWidth, height: height)
         }
         .frame(width: totalTrackWidth, height: height)
         // Widen the touch target without changing anything visible. The track is
@@ -550,36 +549,6 @@ struct VerticalTelemetryMeter: View {
 
     // MARK: - Cursor Overlay
 
-    private func cursorOverlayView(cursorY: CGFloat, height: CGFloat) -> some View {
-        Canvas { context, size in
-            let y = cursorY
-            guard y >= 0, y <= size.height else { return }
-
-            var linePath = Path()
-            linePath.move(to: CGPoint(x: 0, y: y))
-            linePath.addLine(to: CGPoint(x: size.width, y: y))
-            let dotRect = CGRect(
-                x: size.width / 2 - cursorDotSize / 2,
-                y: y - cursorDotSize / 2,
-                width: cursorDotSize, height: cursorDotSize
-            )
-
-            // Diffuse blue light under a crisp white hairline and marker, rather
-            // than a second hard-edged circle around the marker.
-            context.drawLayer { glow in
-                glow.addFilter(.blur(radius: 4))
-                glow.stroke(linePath, with: .color(cursorBlue.opacity(0.65)), lineWidth: 3)
-                glow.fill(
-                    Circle().path(in: dotRect.insetBy(dx: -3, dy: -3)),
-                    with: .color(cursorBlue.opacity(0.55))
-                )
-            }
-            context.stroke(linePath, with: .color(AppColors.cursor), lineWidth: cursorThickness)
-            context.fill(Circle().path(in: dotRect), with: .color(AppColors.cursor))
-        }
-        .animation(.easeOut(duration: 0.05), value: value)
-    }
-
     // MARK: - Scale Labels
 
     /// Labels are drawn adjacent to the ticks and their y is clamped by half the
@@ -773,6 +742,97 @@ struct VerticalTelemetryMeter: View {
             return "\(reading)\(signal), target \(Int(band.lower)) to \(Int(band.upper))"
         }
         return "\(reading)\(signal)"
+    }
+}
+
+/// Fill column and cursor, drawn from ONE `fraction` and animated as one unit.
+///
+/// This is the piece that makes 30 Hz data look like 60/120 fps and keeps the bar and the
+/// line locked together. `animatableData` is the fraction itself, so when the view model
+/// changes the reading inside `withAnimation(.linear(duration: 1/30))`, SwiftUI calls this
+/// layer once per NATIVE display frame with the fraction interpolated toward its new value.
+/// Every frame the fill top and the cursor are recomputed from that same interpolated
+/// number, so they move continuously and can never separate — which a `Rectangle().frame`
+/// (tweenable) next to a `Canvas` cursor (not tweenable) could not guarantee.
+///
+/// Both are rendered in a single `Canvas` for one more reason: a Canvas draws exactly what
+/// the current `fraction` says, with no implicit frame animation of its own to fight the
+/// explicit one. The fill grows from the bottom (`y = height` at fraction 0) up to
+/// `cursorY`, and the cursor sits at `cursorY` — the same y, by construction.
+private struct MeterFillCursorLayer: View, Animatable {
+    var fraction: Double
+    let trackWidth: CGFloat
+    let cursorThickness: CGFloat
+    let cursorDotSize: CGFloat
+    let cursorBlue: Color
+    let cursorColor: Color
+
+    /// The interpolated quantity. SwiftUI drives this between the old and new fraction
+    /// across the native frames of the `withAnimation` transaction; everything the layer
+    /// draws is a function of it, so fill and cursor advance together frame by frame.
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let clamped = min(max(fraction, 0), 1)
+            let cursorY = size.height * (1 - clamped)
+            let centerX = size.width / 2
+
+            // Fill: a bottom-anchored rounded column from the base up to the cursor line,
+            // clipped to the track capsule inset by 1.5 pt (matching the rim inset) so it
+            // never paints over the rim edge. Its TOP is exactly `cursorY`.
+            let fillHeight = size.height - cursorY
+            if fillHeight > 0 {
+                let trackX = centerX - trackWidth / 2
+                let capsule = Capsule().path(
+                    in: CGRect(x: trackX, y: 0, width: trackWidth, height: size.height)
+                        .insetBy(dx: 1.5, dy: 1.5)
+                )
+                context.drawLayer { fill in
+                    fill.clip(to: capsule)
+                    let fillRect = CGRect(x: trackX, y: cursorY, width: trackWidth, height: fillHeight)
+                    fill.fill(
+                        Path(fillRect),
+                        with: .linearGradient(
+                            Gradient(stops: [
+                                .init(color: Color(hex: 0x0C2036), location: 0),
+                                .init(color: Color(hex: 0x123767), location: 0.55),
+                                .init(color: Color(hex: 0x1D59B2), location: 1)
+                            ]),
+                            startPoint: CGPoint(x: trackX, y: size.height),
+                            endPoint: CGPoint(x: trackX, y: 0)
+                        )
+                    )
+                }
+            }
+
+            guard cursorY >= 0, cursorY <= size.height else { return }
+
+            // Cursor line + dot, sitting at the fill's top edge.
+            var linePath = Path()
+            linePath.move(to: CGPoint(x: 0, y: cursorY))
+            linePath.addLine(to: CGPoint(x: size.width, y: cursorY))
+            let dotRect = CGRect(
+                x: centerX - cursorDotSize / 2,
+                y: cursorY - cursorDotSize / 2,
+                width: cursorDotSize, height: cursorDotSize
+            )
+
+            // Diffuse blue light under a crisp white hairline and marker.
+            context.drawLayer { glow in
+                glow.addFilter(.blur(radius: 4))
+                glow.stroke(linePath, with: .color(cursorBlue.opacity(0.65)), lineWidth: 3)
+                glow.fill(
+                    Circle().path(in: dotRect.insetBy(dx: -3, dy: -3)),
+                    with: .color(cursorBlue.opacity(0.55))
+                )
+            }
+            context.stroke(linePath, with: .color(cursorColor), lineWidth: cursorThickness)
+            context.fill(Circle().path(in: dotRect), with: .color(cursorColor))
+        }
     }
 }
 

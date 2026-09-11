@@ -2,6 +2,7 @@ import Foundation
 import MotoTelemetryCore
 import Observation
 import QuartzCore
+import SwiftUI
 import os
 
 /// View model for the Live Wheelie screen.
@@ -170,21 +171,42 @@ final class LiveWheelieViewModel {
     private func startDisplayDecimation() {
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "display link start (30 Hz)", values: [:])
-        displayLink = DisplayLinkProxy { [weak self] in
-            self?.decimateToDisplay()
+        displayLink = DisplayLinkProxy { [weak self] applyData in
+            self?.decimateToDisplay(applyData: applyData)
         }
         displayLink?.start()
     }
 
-    /// Called at 30 Hz. Pulls the latest estimator output from the recorder and
-    /// applies display-only smoothing — ui-spec §7.3's α ≈ 0.20–0.35. The stored
-    /// run uses estimator output, never these interpolated values.
-    private func decimateToDisplay() {
+    /// Called every NATIVE display frame. `applyData` is true only on frames where the
+    /// 30 Hz data gate has elapsed.
+    ///
+    /// On a data frame we pull the latest estimator output, EMA-smooth it (ui-spec §7.3's
+    /// α ≈ 0.20–0.35), and assign it INSIDE `withAnimation(.linear(duration: dataInterval))`.
+    /// That tells SwiftUI to interpolate every view geometry that depends on
+    /// `currentAngle`/`currentSpeed` — the meter fill height and the cursor position —
+    /// linearly from the old value to the new one over exactly one data interval. The
+    /// intervening native frames (the other one on a 60 Hz phone, three on 120 Hz) then
+    /// render points ALONG that line, so a 0→50 jump sweeps instead of teleporting. The
+    /// fill and cursor read the same property, so they interpolate in lockstep.
+    ///
+    /// On a non-data frame there is nothing new to apply — the tween from the last data
+    /// frame is still in flight and SwiftUI is already redrawing it — so we return early
+    /// and do no sensor/observable work. The stored run still uses estimator output, never
+    /// these interpolated display values.
+    private func decimateToDisplay(applyData: Bool) {
+        guard applyData else { return }
+
         let alpha = 0.3
+        // One data interval. The tween lasts exactly this long, so each 30 Hz sample's
+        // animation ends right as the next begins — continuous motion with no gap and no
+        // overlap. Linear (not eased) for the same reason: eased segments stitched end to
+        // end pulse; a straight line reads as constant-velocity travel.
+        let dataInterval = 1.0 / 30.0
+
         // apply the sensor values the recorder staged off-actor onto its
         // observable properties, here on the main actor, before reading them. This is
         // the single coalescing hop — 100 Hz of sensor writes become one apply per
-        // 30 Hz display frame.
+        // 30 Hz data frame.
         recorder.flushDisplay()
 
         calibrationState = calibrationService.state
@@ -207,7 +229,7 @@ final class LiveWheelieViewModel {
         // §7.2: freeze live values unless calibrated.
         guard isCalibrated else { return }
 
-        currentAngle += alpha * (recorder.livePitch - currentAngle)
+        let nextAngle = currentAngle + alpha * (recorder.livePitch - currentAngle)
 
         // `recorder.liveSpeed` stays 0 until the first GNSS fix, so EMA-ing it
         // unconditionally would smooth toward a fabricated 0. Drive an explicit
@@ -220,8 +242,19 @@ final class LiveWheelieViewModel {
         // than this property, which is a stale reading in that state. `speedAvailable` also
         // still gates `speedInRange`, so a held value cannot light the meter green.
         speedAvailable = recorder.liveSpeedAvailable
-        if speedAvailable {
-            currentSpeed += alpha * (recorder.liveSpeed - currentSpeed)
+        let nextSpeed = speedAvailable
+            ? currentSpeed + alpha * (recorder.liveSpeed - currentSpeed)
+            : currentSpeed
+
+        // Tween the two meter-driving values over one data interval. Only these two are
+        // animated: the numeric readouts, range colours, maxima and duration are stepped
+        // as before, because interpolating an integer "48°" toward "49°" would just make
+        // the digit flicker between the two with no benefit.
+        withAnimation(.linear(duration: dataInterval)) {
+            currentAngle = nextAngle
+            if speedAvailable {
+                currentSpeed = nextSpeed
+            }
         }
 
         let wasActive = eventActive
@@ -267,20 +300,39 @@ enum RangeStatus {
 /// always fires on the main thread, and its handler drives the main-actor view
 /// model. Isolating the proxy lets the compiler prove that the handler call is on the
 /// main actor instead of forcing a hop.
+///
+/// Two clocks, deliberately separated:
+///
+///   • DATA rate — how often a fresh estimator value is applied to the observable
+///     display properties. Held at 30 Hz by `minInterval`: that is the coalescing hop
+///     (100 Hz of sensor writes → one apply per data frame), and pushing it higher only
+///     re-applies unchanged values.
+///
+///   • RENDER rate — how often the screen redraws. This is now the device's NATIVE
+///     refresh (60 or 120 Hz), NOT pinned to 30. The link fires every native frame; on
+///     frames where the 30 Hz data gate has not elapsed it does nothing, so no data work
+///     is duplicated — but SwiftUI still gets a redraw on every native frame, which is
+///     what lets a `withAnimation` tween on `currentAngle`/`currentSpeed` interpolate the
+///     fill and cursor smoothly BETWEEN two 30 Hz samples instead of stepping. The value
+///     stays honest at 30 Hz; only the rendering is upsampled.
 @MainActor
 private final class DisplayLinkProxy {
     private var displayLink: CADisplayLink?
-    private let handler: @MainActor () -> Void
-    private var lastFire: CFTimeInterval = 0
-    private let minInterval: CFTimeInterval = 1.0 / 30.0
+    /// Fires on every native frame; `applyData` says whether the 30 Hz data gate elapsed.
+    private let handler: @MainActor (_ applyData: Bool) -> Void
+    private var lastDataFire: CFTimeInterval = 0
+    /// Data (not render) interval: apply a fresh sensor value at most 30×/s.
+    private let dataInterval: CFTimeInterval = 1.0 / 30.0
 
-    init(handler: @escaping @MainActor () -> Void) {
+    init(handler: @escaping @MainActor (_ applyData: Bool) -> Void) {
         self.handler = handler
     }
 
     func start() {
         displayLink = CADisplayLink(target: self, selector: #selector(tick))
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 30, preferred: 30)
+        // No fixed range: let the link run at the display's native cadence so the tween
+        // has 60/120 frames a second to render across. Was pinned minimum==maximum==30,
+        // which capped the screen at 30 fps on every phone regardless of hardware.
         displayLink?.add(to: .main, forMode: .common)
     }
 
@@ -291,8 +343,8 @@ private final class DisplayLinkProxy {
 
     @objc private func tick(_ link: CADisplayLink) {
         let now = link.timestamp
-        guard now - lastFire >= minInterval else { return }
-        lastFire = now
-        handler()
+        let applyData = (now - lastDataFire) >= dataInterval
+        if applyData { lastDataFire = now }
+        handler(applyData)
     }
 }
