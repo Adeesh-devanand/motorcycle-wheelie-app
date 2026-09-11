@@ -96,3 +96,7 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K13 app controls IN PROGRESS — Codex (sole agent)**: Choose diagnostics OFF by default; always redact coordinates, Wi-Fi-only, files created after latest consent only. Revocation cancels queued transfers and blocks new PUTs; cannot recall bytes already sent. Allowlist uploader, RiderPreferences, SettingsView, WheelieTrackerApp, existing app tests and privacy documents.
 
 **K12 implementation IN PROGRESS — Codex (sole agent)**: Implement analytical reference model with explicit units and model-only validity. Runtime reports calibration-bias component since anchor, never calls it full validated accuracy; do not reinterpret legacy gyroBiasInstability. Gap invalidation and metadata required. Files Calibration.swift, CalibrateOnceEstimator.swift, Pipeline.swift, existing BetaCalibrateOnceTests.swift, uncertainty contract. Physical coverage remains impossible to certify remotely.
+
+**K15a IN PROGRESS — Codex:** RunRecorder.swift and shared harness; bound idle retention and measure count at increasing synthetic durations without dropping event fidelity.
+
+**K16 IN PROGRESS — Codex:** scope selected under delegated product authority: truthful live status, per-run JSON export and quality explanation; LiveWheelieView/ViewModel and RunDetailsView, existing tests. Preserve meter artwork. Other speculative features are not required by this slice.
