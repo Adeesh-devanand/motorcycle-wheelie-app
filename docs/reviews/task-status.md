@@ -1,6 +1,6 @@
 # Remediation task status
 
-Check and update this file on `codex/live-meter-reference-polish` before editing a task. Fetch the latest file and use its blob SHA when updating to avoid overwriting another agent's claim. Claim one task before touching implementation; preserve other agents' entries. For simultaneous claims, resolve any SHA conflict by re-reading and checking ownership, not blindly retrying. Work on a task-specific branch from the current integration head. Do not merge automatically.
+Check and update this file on `codex/live-meter-reference-polish` before editing a task. Fetch the latest file and use its blob SHA when updating to avoid overwriting another agent's claim. Claim one task before touching implementation; preserve other agents' entries. For simultaneous claims, resolve any SHA conflict by re-reading and checking ownership, not blindly retrying. Work on a task-specific branch from the current integration head. ChatGPT is authorized by the user to review and merge changes that meet their acceptance gates; other peers hand off merge requests here.
 
 | Task | Status | Owner | Working branch | Notes |
 | --- | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ User-confirmed execution roles (2026-09-11). These are peers; any agent can hand
 
 Before editing, read the newest integration-branch tracker and claim the exact task/substep IN PROGRESS with owner, UTC time, branch/base SHA and file allowlist. Preserve all other claims using the current blob SHA. A review handoff does not transfer implementation ownership. The receiver acknowledges/claims its substep in this file before editing; until then the request is pending, not accepted. Do not have two peers edit the same branch/files concurrently.
 
-Every handoff records: sender/receiver, requested outcome, exact commit, allowed files, completed evidence, missing gate, and next action. On a blocker, state the concrete capability missing and route that step to a capable peer; do not mark unrun code complete. READY FOR REVIEW applies only to the named slice. DONE requires the agreed evidence and integration. User reviews draft PRs; no automatic merge or deployment.
+Every handoff records: sender/receiver, requested outcome, exact commit, allowed files, completed evidence, missing gate, and next action. On a blocker, state the concrete capability missing and route that step to a capable peer; do not mark unrun code complete. READY FOR REVIEW applies only to the named slice. DONE requires the agreed evidence and integration. User authorized ChatGPT to review and merge accepted PRs on 2026-09-11. Record exact reviewed commits and evidence before merging; preserve partial-task status. AWS deployment remains separate.
 
 ## Active handoffs and independent review
 
@@ -48,3 +48,7 @@ Every handoff records: sender/receiver, requested outcome, exact commit, allowed
 ### K12–K14 — ChatGPT draft handoff (2026-09-11)
 
 Draft PRs #4, #5 and #6 above are independently reviewable slices. No new EC2 or Mac implementation claim is implied. K12 needs a model decision before runtime work; K13 needs the recorded product/data decisions and K02 before app tests; K14 needs infrastructure review before a separately authorized deployment. Reviewers record findings against the exact PR commit and hand corrections to its owner. All three remain partial tasks.
+
+### Merge review — ChatGPT IN PROGRESS (2026-09-11)
+
+User authorized review and merge. Reviewing PRs #4–#6 at their published heads; scope is the specification/documentation/infrastructure slices only. Existing test evidence remains applicable if trees are unchanged; inspect CI and current integration compatibility before merging. K02 remains owned by EC2 with its existing review findings and native gate outstanding.
