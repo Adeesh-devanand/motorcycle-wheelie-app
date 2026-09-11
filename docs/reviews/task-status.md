@@ -8,9 +8,9 @@ Check and update this file on `codex/live-meter-reference-polish` before editing
 | K02 | **IN PROGRESS** | Kiro (EC2 session) | `kiro/k02-integration-harness` | Claimed after confirming K01 merged (`1155704`). Building the minimal app integration harness (controlled clock, scripted motion/GNSS, isolated temp store, injectable write failure) per plan. NOTE: EC2 has no Xcode — code + APPTEST written here, but the build/simulator keep-gate must run on the maintainer's Mac before this moves to READY FOR REVIEW. |
 | K03–K10 | UNBLOCKED — SEQUENTIAL | — | — | K01 integrated. These form a strict chain on `RunRecorder` (K03→K04→K05→K06→K07→K08→K09, plus K10 after K06+K09); each rebased/remeasured on its accepted predecessor. Do not edit simultaneously. K03 opens once K02 is accepted. |
 | K11 | BLOCKED | — | — | Await K02/K05; separate interval and chart PRs. |
-| K12 | UNCLAIMED — DESIGN REVIEW | — | — | Uncertainty contract before implementation. |
-| K13 | UNCLAIMED — DOCS FIRST | — | — | Privacy documentation can be scoped independently; app changes depend on K02 and product decision. |
-| K14 | UNCLAIMED | — | — | Draft infrastructure changes only; no deployment. |
+| K12 | **IN PROGRESS** | Codex / uncertainty agent | `codex/k12-uncertainty-contract` | Claimed 2026-09-11 from `db40cd2`. Design/specification only; no estimator implementation or threshold changes. Separate worktree; root coordinates handoff. |
+| K13 | **IN PROGRESS** | Codex / privacy agent | `codex/k13-beta-privacy-docs` | Claimed 2026-09-11 from `db40cd2`. Documentation phase only: audited beta versus Release data flow; no app changes or invented consent behaviour. |
+| K14 | **IN PROGRESS** | Codex / infrastructure agent | `codex/k14-diagnostics-guardrails` | Claimed 2026-09-11 from `db40cd2`. TLS enforcement and monitoring template/tests only; no AWS deployment, token rotation, or upload protocol change. |
 | K15 | BLOCKED | — | — | Await stable correctness and K09. |
 | K16 | BLOCKED — SCOPE REQUIRED | — | — | Product/visual scope must be specified first. |
 
