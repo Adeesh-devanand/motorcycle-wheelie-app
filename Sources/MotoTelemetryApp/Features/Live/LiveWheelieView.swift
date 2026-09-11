@@ -277,7 +277,8 @@ struct LiveScreen: View {
                         .font(.system(size: 34, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color(hex: viewModel.preferences.angleColorHex))
                 ),
-                sublabel: String(localized: "MAX \(Int(viewModel.attemptMaxAngle))°")
+                sublabel: String(localized: "MAX \(Int(viewModel.attemptMaxAngle))°"),
+                labelColor: Color(hex: viewModel.preferences.angleColorHex)
             )
 
             // WHEELIE TIME card
@@ -329,12 +330,13 @@ struct LiveScreen: View {
         }
     }
 
-    private func metricCard(label: String, valueContent: AnyView, sublabel: String?) -> some View {
+    private func metricCard(label: String, valueContent: AnyView, sublabel: String?,
+                            labelColor: Color = AppColors.accent) -> some View {
         VStack(spacing: AppSpacing.xs) {
             Text(LocalizedStringKey(label))
                 .font(.system(size: 12, weight: .medium))
                 .tracking(0.5)
-                .foregroundStyle(AppColors.accent)
+                .foregroundStyle(labelColor)
 
             valueContent
 
