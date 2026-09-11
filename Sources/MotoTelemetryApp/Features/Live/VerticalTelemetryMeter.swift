@@ -263,25 +263,25 @@ struct VerticalTelemetryMeter: View {
                 targetBandOverlay(band: band, height: height)
             }
 
-            // Clip a bottom-aligned column to the full track. This preserves the
-            // capsule at both ends, even at full scale, and leaves a dark inset
-            // between the blue fill and the silver rim.
-            ZStack(alignment: .bottom) {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color(hex: 0x0C2036), location: 0),
-                                .init(color: Color(hex: 0x123767), location: 0.55),
-                                .init(color: Color(hex: 0x1D59B2), location: 1)
-                            ],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
+            // A bottom-anchored blue column, clipped to the full-height capsule so
+            // the fill grows straight up from the base with the cursor line, never
+            // from the middle. The fill Rectangle is given the FULL track frame with
+            // `alignment: .bottom` and its VISIBLE height is set by a bottom inset,
+            // so its top edge — not its centre — tracks `fraction`.
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(hex: 0x0C2036), location: 0),
+                            .init(color: Color(hex: 0x123767), location: 0.55),
+                            .init(color: Color(hex: 0x1D59B2), location: 1)
+                        ],
+                        startPoint: .bottom,
+                        endPoint: .top
                     )
-                    .frame(height: max(fraction * height, 0))
-            }
-                .frame(width: trackWidth, height: height)
+                )
+                .frame(width: trackWidth, height: max(fraction * height, 0), alignment: .bottom)
+                .frame(width: trackWidth, height: height, alignment: .bottom)
                 .clipShape(Capsule().inset(by: 1.5))
                 .animation(.easeOut(duration: 0.05), value: value)
 
