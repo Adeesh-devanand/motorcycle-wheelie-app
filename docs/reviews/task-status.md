@@ -84,3 +84,5 @@ K14 monitoring removal merged via PR #8 (`b82e165`); TLS retained. K02 native ga
 **K07 IN PROGRESS — Codex (sole agent)**: Keep confirmed attempt active through disarming. Files RunRecorder.swift and shared lifecycle tests. Do not change segmenter thresholds.
 
 **K08 IN PROGRESS — Codex (sole agent)**: Per-attempt quality and verified rankings. Files Pipeline.swift, RunRecorder.swift, RunRepository.swift, PastRunsViewModel.swift; existing core/app test files.
+
+**K09 IN PROGRESS — Codex (sole agent)**: Truthful save/delete outcomes and visible retry queue. Files RunRepository.swift, RunRecorder.swift, LiveWheelieView.swift, existing harness tests; PastRunsView.swift if needed to surface deletion errors. Retain unsaved attempts; retry idempotent.
