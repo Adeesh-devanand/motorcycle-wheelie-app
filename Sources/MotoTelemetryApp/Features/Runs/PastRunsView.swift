@@ -36,7 +36,8 @@ struct PastRunsView: View {
                     filters: $viewModel.filters,
                     onApply: { viewModel.applyFilters() },
                     totalRunCount: viewModel.repository.allRuns.count,
-                    onDeleteAll: { viewModel.deleteAllRuns() }
+                    onDeleteAll: { viewModel.deleteAllRuns() },
+                    angleColor: Color(hex: preferences.angleColorHex)
                 )
             }
             .confirmationDialog(

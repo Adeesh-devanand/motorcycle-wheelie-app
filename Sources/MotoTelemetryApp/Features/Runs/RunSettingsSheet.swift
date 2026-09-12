@@ -31,6 +31,7 @@ struct RunSettingsSheet: View {
     /// what the button deletes.
     let totalRunCount: Int
     let onDeleteAll: () -> Void
+    var angleColor: Color = AppColors.angleMetric
     @Environment(\.dismiss) private var dismiss
 
     /// Draft text for the two numeric filters. Held separately from `filters` so a
@@ -86,8 +87,8 @@ struct RunSettingsSheet: View {
                             .frame(width: 70)
                             .onSubmit { commitDrafts() }
                         Text("°")
-                            .foregroundStyle(AppColors.textSecondary)
                     }
+                    .foregroundStyle(angleColor)
                 }
 
                 Section {

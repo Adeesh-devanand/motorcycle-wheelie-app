@@ -32,9 +32,12 @@ struct SettingsView: View {
                 // under an "mph" heading. A fabricated input is worse than a missing
                 // one, so the app is km/h-only until a real conversion is wired.
                 Toggle("Speedometer", isOn: $preferences.speedEnabled)
+                    .tint(Color(hex: preferences.speedColorHex))
+                    .foregroundStyle(Color(hex: preferences.speedColorHex))
 
                 if preferences.speedEnabled {
                     gaugeMaximumField
+                        .foregroundStyle(Color(hex: preferences.speedColorHex))
                 } else {
                     Text("Speed is off: the live speed meter is hidden, GNSS is not "
                          + "read for a speed, and new runs record 0 for speed. "
@@ -46,14 +49,16 @@ struct SettingsView: View {
 
             Section {
                 colorPicker(title: "Angle color", selection: $preferences.angleColorHex)
+                    .foregroundStyle(Color(hex: preferences.angleColorHex))
                 colorPicker(title: "Speed color", selection: $preferences.speedColorHex)
+                    .foregroundStyle(Color(hex: preferences.speedColorHex))
                 Button("Reset colors") { preferences.resetColors() }
                     .foregroundStyle(AppColors.accent)
             } header: {
                 Text("Appearance")
             } footer: {
-                Text("Angle and speed each use their own color across the live meter, "
-                     + "value, target band, and detail charts. Labels and units stay "
+                Text("Angle and speed each use their own color across live meters, labels, "
+                     + "values, charts, timelines, and run history. Labels and units stay "
                      + "visible, so color is never the only cue. Reset restores teal "
                      + "for angle and blue for speed.")
                     .font(.footnote)
