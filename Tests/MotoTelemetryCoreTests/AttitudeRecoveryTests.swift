@@ -94,6 +94,24 @@ final class AttitudeRecoveryTests: XCTestCase {
         }
     }
 
+    func testNormalSensorNoiseStillAllowsStopRecovery() throws {
+        var p = pipeline()
+        var latest: PipelineOutput?
+        for i in 0...3000 {
+            let t = Double(i) * 0.01
+            if i % 100 == 0 {
+                _ = p.process(.gnss(GNSSFix(fixTime: t, arrivalTime: t, speed: 0, speedAccuracy: 0.1)))
+            }
+            let noise = (i % 2 == 0 ? 1.0 : -1.0)
+            latest = p.process(.imu(IMUSample(time: t,
+                rotationRate: Vector3(noise * 0.3 * radians, (0.1 + noise * 0.5) * radians, 0),
+                specificForce: Conventions.worldGravity + Vector3(noise * 0.01, 0, noise * 0.01))))
+        }
+        XCTAssertGreaterThan(p.stationaryCorrectionCount, 5)
+        XCTAssertLessThan(abs(try XCTUnwrap(latest).pitchDegrees), 0.1)
+        XCTAssertEqual(p.biasEstimate.y / radians, 0.1, accuracy: 0.02)
+    }
+
     func testRecoveryDoesNotFlattenStationarySlopeOrLean() throws {
         var p = pipeline()
         let pose = Quaternion.exp(rotationVector: Vector3(0, -12 * radians, 0))

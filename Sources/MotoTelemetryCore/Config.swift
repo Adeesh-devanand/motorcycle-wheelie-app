@@ -583,7 +583,8 @@ public struct Config: Codable, Sendable, Equatable {
     public var stationaryMaxRate: Double = 0.5 * .pi / 180      // rad/s, debiased
     public var stationaryForceTolerance: Double = 0.015 * 9.80665
     public var stationaryForceChange: Double = 0.0035 * 9.80665 // ~0.2 degree
-    public var stationaryGyroChange: Double = 0.05 * .pi / 180
+    public var stationaryGyroChange: Double = 0.15 * .pi / 180
+    public var stationaryForceStdDev: Double = 0.05             // m/s^2 vector RMS
     public var alignmentScreenNormalMin: Double = 0.2
 
     public init() {}
@@ -611,6 +612,7 @@ public struct Config: Codable, Sendable, Equatable {
         stationaryForceTolerance = try get(.stationaryForceTolerance, d.stationaryForceTolerance)
         stationaryForceChange = try get(.stationaryForceChange, d.stationaryForceChange)
         stationaryGyroChange = try get(.stationaryGyroChange, d.stationaryGyroChange)
+        stationaryForceStdDev = try get(.stationaryForceStdDev, d.stationaryForceStdDev)
         alignmentScreenNormalMin = try get(.alignmentScreenNormalMin, d.alignmentScreenNormalMin)
 
 
