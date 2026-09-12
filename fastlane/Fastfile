@@ -4,15 +4,14 @@
 # it to TestFlight. It is designed to run on a GitHub macOS runner with Xcode 26+ (the
 # App Store SDK floor), which this project's local Intel Mac cannot provide.
 #
-# SIGNING: no fastlane match, no local Ruby needed on the developer's Mac. This lane
-# uses the App Store Connect API KEY to let Apple/Xcode fetch-or-create the distribution
-# certificate and App Store provisioning profile at build time (`cert` + `sigh`), then
-# archives with manual signing using the profile that was just synced. The only secrets
-# required are the three API-key values — nothing to seed locally, nothing in a private
-# signing repo.
-#
-# The API key is scoped and revocable; it is never an Apple ID/password. All secrets are
-# injected by CI as environment variables. See docs/reviews/release-setup.md.
+# Xcode handles automatic signing using an App Store Connect API key file on the
+# ephemeral runner. Both archive and export receive Xcode's authentication flags.
+# fastlane's upload action accepts the API-key hash directly; build_app does not.
+# The three existing API-key secrets remain the only inputs.
+
+require "base64"
+require "shellwords"
+require "tempfile"
 
 default_platform(:ios)
 
@@ -47,33 +46,36 @@ platform :ios do
       build_number: Time.now.utc.strftime("%Y%m%d%H%M")
     )
 
-    # Archive + export with XCODE AUTOMATIC signing. `-allowProvisioningUpdates` lets
-    # xcodebuild create-or-download the distribution certificate AND the App Store
-    # provisioning profile itself, authenticating with the App Store Connect API key —
-    # and it installs the identity into the keychain as part of the same step.
-    #
-    # This replaced a `cert` + `sigh` pre-fetch, which failed on CI with "Could not find
-    # the newly generated certificate installed": `cert` can register a certificate at
-    # Apple but cannot reconstruct its PRIVATE KEY into a fresh CI keychain, so there was
-    # no usable signing identity. Automatic signing sidesteps that — it never needs a
-    # pre-seeded private key. (This is the one job match would otherwise own; we trade a
-    # little reproducibility for zero local setup.)
-    build_app(
-      project: XCODEPROJ,
-      scheme: SCHEME,
-      configuration: "Release",
-      export_method: "app-store",
-      output_directory: ENV["FL_OUTPUT_DIR"] || "build",
-      output_name: "Loftmeter.ipa",
-      xcargs: "-allowProvisioningUpdates",
-      # The API key is passed so xcodebuild can authenticate to Apple during automatic
-      # provisioning (fastlane writes it to the AuthKey path xcodebuild expects).
-      api_key: api_key,
-      export_options: {
-        signingStyle: "automatic",
-        teamID: TEAM_ID
-      }
-    )
+    # build_app/gym has no api_key option. Materialize the key in a private temporary
+    # file, then give BOTH xcodebuild phases the supported authentication arguments.
+    # Tempfile.create removes the key even if archive or export raises an exception.
+    Tempfile.create(["loftmeter-asc-", ".p8"]) do |key_file|
+      key_file.chmod(0o600)
+      key_file.write(Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT_B64").gsub(/\s+/, "")))
+      key_file.flush
+
+      signing_args = Shellwords.join([
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath", key_file.path,
+        "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"),
+        "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID")
+      ])
+
+      build_app(
+        project: XCODEPROJ,
+        scheme: SCHEME,
+        configuration: "Release",
+        export_method: "app-store",
+        output_directory: ENV["FL_OUTPUT_DIR"] || "build",
+        output_name: "Loftmeter.ipa",
+        xcargs: signing_args,
+        export_xcargs: signing_args,
+        export_options: {
+          signingStyle: "automatic",
+          teamID: TEAM_ID
+        }
+      )
+    end
 
     # Upload to TestFlight. Internal testers get it immediately; promote to external /
     # App Store from App Store Connect.
