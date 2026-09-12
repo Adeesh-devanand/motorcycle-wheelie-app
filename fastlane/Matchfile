@@ -1,0 +1,16 @@
+# fastlane match configuration.
+#
+# match stores your signing certificate + provisioning profile in a SEPARATE private
+# git repo (never this one) encrypted with a passphrase, and installs them on any
+# machine reproducibly. This is why CI needs no .p12 juggling: the release lane runs
+# `match(readonly: true)` to fetch and install them into a temporary keychain.
+#
+# You set MATCH_GIT_URL / MATCH_PASSWORD as CI secrets (see release-setup.md); they are
+# intentionally NOT hardcoded here so the private storage repo URL and passphrase stay
+# out of this public-ish repo.
+
+git_url(ENV["MATCH_GIT_URL"]) # private repo holding the encrypted signing assets
+storage_mode("git")
+type("appstore")              # distribution cert + App Store provisioning profile
+app_identifier(["com.adeesh.MotoTelemetryApp"])
+readonly(true)                # CI only READS assets; you create them once locally

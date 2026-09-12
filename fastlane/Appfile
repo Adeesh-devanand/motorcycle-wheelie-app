@@ -1,0 +1,6 @@
+# App identity for fastlane. The App Store Connect / Apple ID login is NOT stored
+# here — CI authenticates with an App Store Connect API key (see the Fastfile and
+# docs/reviews/release-setup.md), so no personal Apple credentials live in the repo.
+
+app_identifier("com.adeesh.MotoTelemetryApp")
+team_id("9KZ4CCANYU") # Apple Developer team (DEVELOPMENT_TEAM in the Xcode project)

@@ -1,0 +1,75 @@
+# Fastfile — release automation for Loftmeter (MotoTelemetryApp).
+#
+# The `beta` lane builds a signed Release archive with the current Xcode/SDK and uploads
+# it to TestFlight. It is designed to run on a GitHub macOS runner with Xcode 26+ (the
+# App Store SDK floor), which this project's local Intel Mac cannot provide.
+#
+# Authentication uses an App Store Connect API KEY (.p8 + key id + issuer id), never an
+# Apple ID/password — it is scoped and revocable. Signing assets come from `match`.
+# All secrets are injected by CI as environment variables; nothing sensitive is in-repo.
+# See docs/reviews/release-setup.md for the exact secrets and how to generate them.
+
+default_platform(:ios)
+
+XCODEPROJ = "MotoTelemetryApp/MotoTelemetryApp/MotoTelemetryApp.xcodeproj"
+SCHEME    = "MotoTelemetryApp"
+
+platform :ios do
+  # Build an App Store Connect API token from the three key secrets. Returns the token
+  # hash fastlane actions accept via `api_key:`.
+  def asc_api_key
+    app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      # The .p8 contents are passed base64-encoded in a secret so the multi-line key
+      # survives a single env var; fastlane decodes it when is_key_content_base64 is set.
+      key_content: ENV.fetch("ASC_KEY_CONTENT_B64"),
+      is_key_content_base64: true,
+      in_house: false
+    )
+  end
+
+  desc "Build a signed Release archive and upload it to TestFlight"
+  lane :beta do
+    api_key = asc_api_key
+
+    # Fetch the distribution cert + App Store provisioning profile into a temporary
+    # CI keychain. readonly: true — CI never mints new signing assets.
+    setup_ci # creates an ephemeral keychain on CI so match has somewhere to install
+    match(
+      type: "appstore",
+      api_key: api_key,
+      readonly: true
+    )
+
+    # Auto-increment the TestFlight build number from what App Store Connect already has,
+    # so re-runs don't collide on a duplicate build number.
+    latest = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.adeesh.MotoTelemetryApp",
+      initial_build_number: 0
+    )
+    increment_build_number(
+      xcodeproj: XCODEPROJ,
+      build_number: (latest + 1).to_s
+    )
+
+    # Archive + export the .ipa with the current toolchain's SDK.
+    build_app(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: ENV["FL_OUTPUT_DIR"] || "build",
+      output_name: "Loftmeter.ipa"
+    )
+
+    # Upload to TestFlight. Not submitted for external review here — internal testers
+    # get it immediately; promote to external / App Store from App Store Connect.
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: "com.adeesh.MotoTelemetryApp",
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

@@ -1,0 +1,83 @@
+name: Release (TestFlight)
+
+# Manual only. Building for the App Store needs the iOS 26 SDK (Xcode 26+), which the
+# project's local Mac cannot run — this job is the supported path to a submittable build.
+# It no-ops safely until the required secrets are configured (see release-setup.md).
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        default: "beta"
+        type: choice
+        options: [beta]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # App Store Connect API key (scoped, revocable — NOT an Apple ID).
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_CONTENT_B64: ${{ secrets.ASC_KEY_CONTENT_B64 }}
+      # match signing storage.
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      # Personal-access token so match can clone the PRIVATE signing repo over HTTPS.
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      FL_OUTPUT_DIR: ${{ github.workspace }}/build
+    steps:
+      - name: Guard — required secrets present
+        run: |
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT_B64 MATCH_GIT_URL MATCH_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Missing secret $v"; missing=1; fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::Release secrets are not configured. See docs/reviews/release-setup.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26 (App Store SDK floor)
+        run: |
+          # Pin the newest Xcode 26.x present on the runner image. Fails loudly if the
+          # image has no Xcode 26 yet, rather than silently building with an older SDK.
+          x26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$x26" ]; then
+            echo "::error::No Xcode 26 on this runner image; App Store upload requires the iOS 26 SDK."
+            ls -d /Applications/Xcode_*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "$x26/Contents/Developer"
+          xcodebuild -version
+
+      - name: Ruby + fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Run fastlane ${{ inputs.lane }}
+        run: bundle exec fastlane ${{ inputs.lane }}
+
+      - name: Upload IPA + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            build/*.ipa
+            ~/Library/Logs/gym/*.log
+          if-no-files-found: warn
+          retention-days: 7

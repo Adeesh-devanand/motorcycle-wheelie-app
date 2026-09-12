@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [codex/live-meter-reference-polish]
+    branches: [beta/main]
     paths-ignore: ['docs/**', 'store/**', 'infra/**', '**/*.md']
   pull_request:
     paths-ignore: ['docs/**', 'store/**', 'infra/**', '**/*.md']
