@@ -38,15 +38,25 @@ platform :ios do
   lane :beta do
     api_key = asc_api_key
 
-    # Bump the TestFlight build number so re-runs don't collide.
-    latest = latest_testflight_build_number(
-      api_key: api_key,
-      app_identifier: APP_ID,
-      initial_build_number: 0
-    )
+    # Bump the TestFlight build number so re-runs don't collide. On a brand-new app
+    # (no builds, or the App record just created) the lookup can raise; fall back to a
+    # timestamp-based build number so the first upload still proceeds. The App record
+    # itself must exist in App Store Connect — TestFlight will reject a build otherwise.
+    next_build =
+      begin
+        latest = latest_testflight_build_number(
+          api_key: api_key,
+          app_identifier: APP_ID,
+          initial_build_number: 0
+        )
+        (latest + 1).to_s
+      rescue => e
+        UI.important("latest_testflight_build_number failed (#{e.message}); using a timestamp build number.")
+        Time.now.strftime("%Y%m%d%H%M")
+      end
     increment_build_number(
       xcodeproj: XCODEPROJ,
-      build_number: (latest + 1).to_s
+      build_number: next_build
     )
 
     # Archive + export with XCODE AUTOMATIC signing. `-allowProvisioningUpdates` lets
