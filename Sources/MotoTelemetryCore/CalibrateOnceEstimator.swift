@@ -1,45 +1,13 @@
 import Foundation
 
-/// The beta's live estimator: raw gyro integrated from a once-measured alignment
-/// and bias, with the accelerometer never touching the result.
-///
-/// Deliberately much less than `AttitudeESKF`. There is no gravity update, no
-/// covariance, no delayed-state buffer, no grade baseline, and no bias
-/// re-estimation. What remains is the propagate step and one subtraction:
-///
-///     rate  = rawGyro - b
-///     Q     = Q * exp(rate * dt)
-///     pitch = asin(rotate(forwardInBody).z)
-///
-/// ## Why the accelerometer is excluded, not merely down-weighted
-/// An accelerometer measures specific force — gravity PLUS linear acceleration —
-/// and cannot decompose them. A sustained wheelie needs thrust of roughly
-/// `g*tan(theta)`, so the accelerometer's error is *correlated with the very signal
-/// being measured*: at 0.5 g of forward acceleration it reports 26.6 deg of pitch
-/// that is not there. Weighting it low does not help, because variance inflation
-/// models UNCORRELATED error — the filter treats repeated samples as independent
-/// evidence and still converges on the wrong answer. That is why the ESKF SKIPS
-/// rather than down-weights, and why this mode does not consume the accelerometer
-/// at all outside calibration.
-///
-/// Apple's fused fields are excluded for the same reason at one remove:
-/// `CMDeviceMotion.rotationRate` is debiased using the accelerometer, and
-/// `attitude`/`gravity` are derived from it, so all three re-import the confound
-/// invisibly. Raw gyro carries no accelerometer correction of any kind.
-///
-/// ## What this costs, stated plainly
-/// Bias is measured once and held constant, so thermal walk accumulates
-/// uncorrected: self-heating moves bias ~0.1 deg/s over 30 minutes, and 0.5 deg/s
-/// of stale bias is about 5 deg of error over a 10 s hold. Nothing here corrects
-/// that — `BiasEstimate.projectedPitchSigma(age:holdDuration:config:)` is what
-/// tells the rider how much to distrust the number, and it must be surfaced.
-/// `JitterBlur` does not help either: it removes jitter, not drift.
+/// Raw-gyro attitude propagation between calibrated or confirmed-stationary anchors.
+/// Dynamic acceleration never corrects attitude. The pipeline may refresh bias
+/// and gravity only after independent stop evidence and a stable sensor window.
+/// Drift remains unobservable during sustained motion or without reliable GNSS.
 public struct CalibrateOnceEstimator {
     private let config: Config
     private let alignment: MountAlignment
-    /// Measured once at calibration and never updated. That is the whole point of
-    /// the mode's name, and the whole of its accuracy cost.
-    private let bias: Vector3
+    public private(set) var bias: Vector3
 
     public private(set) var attitude: Quaternion
     /// Whether gravity has fixed the world frame. Before this, integrated attitude
@@ -97,6 +65,19 @@ public struct CalibrateOnceEstimator {
         lastTime = nil
         // The rate that applied before the re-anchor describes the old frame and
         // must not survive into the new one.
+        pitchRate = 0
+        refreshReadings()
+    }
+
+    /// Stop-only refresh; preserve the mount axes and current heading. A bike
+    /// stopped on a slope or leaning keeps its physical pitch/roll, not a fake zero.
+    public mutating func correctStationary(bias measuredBias: Vector3,
+                                           specificForce: Vector3) {
+        guard specificForce.magnitude > 1e-6 else { return }
+        bias = measuredBias
+        let correction = Quaternion.rotation(from: attitude.rotate(specificForce),
+                                             to: Conventions.worldGravity)
+        attitude = (correction * attitude).normalized
         pitchRate = 0
         refreshReadings()
     }

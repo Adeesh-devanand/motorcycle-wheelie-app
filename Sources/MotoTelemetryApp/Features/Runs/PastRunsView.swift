@@ -3,12 +3,14 @@ import SwiftUI
 /// §8 — Past Runs list. Custom nav, sort chips, column headers, filtered history.
 struct PastRunsView: View {
     @State private var viewModel: PastRunsViewModel
+    private let preferences: RiderPreferences
     @State private var showingSettings = false
     @State private var runPendingDelete: WheelieRun?
     @State private var showingDeleteRunConfirm = false
     @Environment(\.dismiss) private var dismiss
 
-    init(repository: RunRepository) {
+    init(repository: RunRepository, preferences: RiderPreferences? = nil) {
+        self.preferences = preferences ?? RiderPreferences()
         _viewModel = State(wrappedValue: PastRunsViewModel(repository: repository))
     }
 
@@ -27,7 +29,7 @@ struct PastRunsView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(for: UUID.self) { runID in
-                RunDetailsView(runID: runID, repository: viewModel.repository)
+                RunDetailsView(runID: runID, repository: viewModel.repository, preferences: preferences)
             }
             .sheet(isPresented: $showingSettings) {
                 RunSettingsSheet(
@@ -225,7 +227,7 @@ struct PastRunsView: View {
     // MARK: - Caption
 
     private var captionLabel: some View {
-        Text("Color ranked to your personal range")
+        Text("Bars scaled to your personal range")
             .font(.system(size: 13, weight: .regular))
             .foregroundStyle(AppColors.textTertiary)
     }
@@ -241,8 +243,10 @@ struct PastRunsView: View {
                 Text("TIME")
                     .frame(maxWidth: .infinity)
                 Text("ANGLE")
+                    .foregroundStyle(Color(hex: preferences.angleColorHex))
                     .frame(maxWidth: .infinity)
                 Text("SPEED")
+                    .foregroundStyle(Color(hex: preferences.speedColorHex))
                     .frame(maxWidth: .infinity)
             }
 
@@ -273,6 +277,8 @@ struct PastRunsView: View {
                     RunHistoryRow(
                         run: run,
                         colorScale: viewModel.colorScale,
+                        angleColor: Color(hex: preferences.angleColorHex),
+                        speedColor: Color(hex: preferences.speedColorHex),
                         fieldAnchors: viewModel.fieldAnchors,
                         isLatest: index == 0 && viewModel.sortKey == .recency && viewModel.sortDescending,
                         isLongest: run.qualityFlags.isTrustworthy && isSuperlative(run.duration, max: viewModel.fieldAnchors.durationMax),

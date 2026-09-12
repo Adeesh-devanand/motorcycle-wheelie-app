@@ -10,7 +10,7 @@ final class BetaCalibrateOnceTests: XCTestCase {
 
     func testCurrentVersionAndTheChangedDefaults() {
         let config = Config()
-        XCTAssertEqual(config.version, 8)
+        XCTAssertEqual(config.version, 9)
         XCTAssertEqual(config.eventMinDuration, 1.0, accuracy: 1e-12)
         XCTAssertEqual(config.biasCalibrationDuration, 2.0, accuracy: 1e-12)
         // v7's two additions, both previously hardcoded literals.
@@ -65,7 +65,7 @@ final class BetaCalibrateOnceTests: XCTestCase {
 
         // Stated explicitly, so the round trip is proven to carry non-default
         // values rather than defaults that happen to agree on both sides.
-        XCTAssertEqual(decoded.version, 8)
+        XCTAssertEqual(decoded.version, 9)
         XCTAssertEqual(decoded.calibrationVibrationLimit, 0.42, accuracy: 1e-12)
         XCTAssertEqual(decoded.alignmentConfidenceMin, 0.5, accuracy: 1e-12)
         XCTAssertEqual(decoded.blurWindowSamples, 11)

@@ -318,13 +318,14 @@ struct LiveScreen: View {
                             Text(viewModel.speedAvailable
                                  ? "\(Int(viewModel.currentSpeed))" : "0")
                                 .font(.system(size: 34, weight: .bold, design: .monospaced))
-                                .foregroundStyle(AppColors.textPrimary)
+                                .foregroundStyle(Color(hex: viewModel.preferences.speedColorHex))
                             Text("km/h")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(AppColors.accentBright)
+                                .foregroundStyle(Color(hex: viewModel.preferences.speedColorHex))
                         }
                     ),
-                    sublabel: String(localized: "MAX \(Int(viewModel.attemptMaxSpeed))")
+                    sublabel: String(localized: "MAX \(Int(viewModel.attemptMaxSpeed))"),
+                    labelColor: Color(hex: viewModel.preferences.speedColorHex)
                 )
             }
         }
@@ -343,7 +344,7 @@ struct LiveScreen: View {
             if let sublabel {
                 Text(sublabel)
                     .font(.system(size: 13))
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(labelColor)
             } else {
                 Text(" ")
                     .font(.system(size: 13))

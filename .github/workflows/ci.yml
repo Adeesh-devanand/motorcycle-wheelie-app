@@ -105,3 +105,10 @@ jobs:
             ${{ runner.temp }}/simulators.json
           if-no-files-found: warn
           retention-days: 7
+
+  beta-testflight:
+    name: Release tested Beta to TestFlight
+    needs: [core, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/beta/main'
+    uses: ./.github/workflows/release-beta.yml
+    secrets: inherit

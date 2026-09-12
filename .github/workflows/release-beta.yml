@@ -1,11 +1,16 @@
 name: Release Beta (TestFlight)
 
-# Manual only. Builds the BETA configuration (bundle id com.adeesh.MotoTelemetryApp.beta,
+# Called after CI passes on beta/main, or started manually. Builds the BETA configuration (bundle id com.adeesh.MotoTelemetryApp.beta,
 # `#if BETA` on, so the diagnostic uploader is compiled in) and ships it to the DEDICATED
 # ".beta" App Store Connect app and its TestFlight. Separate from the public Release
 # (TestFlight) workflow, which stays clean. Needs Xcode 26 (iOS 26 SDK floor). No-ops
 # until the required secrets exist (see release-setup.md).
 on:
+  workflow_call:
+    inputs:
+      lane:
+        type: string
+        default: beta_testflight
   workflow_dispatch:
     inputs:
       lane:
@@ -66,8 +71,8 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
-      - name: Run fastlane ${{ inputs.lane }}
-        run: bundle exec fastlane ${{ inputs.lane }}
+      - name: Upload tested Beta build
+        run: bundle exec fastlane beta_testflight
 
       - name: Upload IPA + logs
         if: always()

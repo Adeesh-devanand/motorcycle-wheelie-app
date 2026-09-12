@@ -33,20 +33,16 @@ struct RunDetailsView: View {
     private let isLongestRun: Bool
     private let exportURL: URL?
 
-    /// Rider-selected channel colours, read once at init from persisted preferences
-    /// (UserDefaults-backed, cheap). Applied to each chart's trace, target band and
-    /// title so Run Details matches the live meters.
-    private let angleColor: Color
-    private let speedColor: Color
+    private let preferences: RiderPreferences
+    private var angleColor: Color { Color(hex: preferences.angleColorHex) }
+    private var speedColor: Color { Color(hex: preferences.speedColorHex) }
 
     /// Whether the angle-smoothing explanation popover is showing (change #4).
     @State private var showSmoothingInfo = false
 
-    init(runID: UUID, repository: RunRepository) {
+    init(runID: UUID, repository: RunRepository, preferences: RiderPreferences? = nil) {
         self.exportURL = repository.exportURL(for: runID)
-        let prefs = RiderPreferences()
-        self.angleColor = Color(hex: prefs.angleColorHex)
-        self.speedColor = Color(hex: prefs.speedColorHex)
+        self.preferences = preferences ?? RiderPreferences()
         let allRuns = repository.allRuns
         let verifiedRuns = allRuns.filter { $0.qualityFlags.isTrustworthy }
         let run = allRuns.first { $0.id == runID }
@@ -177,8 +173,8 @@ struct RunDetailsView: View {
                                  value: String(format: "%.0f", viewModel.maxAngle),
                                  unit: "°",
                                  valueSize: 26,
-                                 color: AppColors.angleMetric,
-                                 labelColor: AppColors.angleMetric)
+                                 color: angleColor,
+                                 labelColor: angleColor)
                     verticalDivider(height: 34)
                     metricColumn(label: "MAX SPEED",
                                  value: String(format: "%.0f", viewModel.maxSpeed),
@@ -186,8 +182,8 @@ struct RunDetailsView: View {
                                  valueSize: 26,
                                  // Was the angle channel's teal, so the speed hero was
                                  // lying about which channel it belonged to.
-                                 color: AppColors.speedMetric,
-                                 labelColor: AppColors.accent)
+                                 color: speedColor,
+                                 labelColor: speedColor)
                 }
 
                 Rectangle()
@@ -199,19 +195,19 @@ struct RunDetailsView: View {
                                  value: String(format: "%.1f", viewModel.totalAngleInRange),
                                  unit: "s",
                                  valueSize: 17,
-                                 color: AppColors.angleMetric)
+                                 color: angleColor)
                     verticalDivider(height: 24)
                     metricColumn(label: "SPEED IN RANGE",
                                  value: String(format: "%.1f", viewModel.totalSpeedInRange),
                                  unit: "s",
                                  valueSize: 17,
-                                 color: AppColors.speedMetric)
+                                 color: speedColor)
                     verticalDivider(height: 24)
                     metricColumn(label: "AVG SPEED",
                                  value: String(format: "%.0f", viewModel.averageSpeed),
                                  unit: "km/h",
                                  valueSize: 17,
-                                 color: AppColors.speedMetric)
+                                 color: speedColor)
                 }
             }
         }
@@ -230,12 +226,12 @@ struct RunDetailsView: View {
                               unit: String?,
                               valueSize: CGFloat,
                               color: Color,
-                              labelColor: Color = AppColors.textSecondary) -> some View {
+                              labelColor: Color? = nil) -> some View {
         VStack(spacing: 1) {
             Text(LocalizedStringKey(label))
                 .font(.system(size: 10, weight: .medium))
                 .tracking(0.4)
-                .foregroundStyle(labelColor)
+                .foregroundStyle(labelColor ?? color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
@@ -359,7 +355,7 @@ struct RunDetailsView: View {
             // reading sits at the very top of the axis, which is exactly when "above"
             // has nowhere to go.
             let y = above < plotTop + 10 ? min(dotY + offset, plotBottom - 10) : above
-            let color = frame.metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
+            let color = frame.metric == .angle ? angleColor : speedColor
 
             Text(text)
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -487,7 +483,9 @@ struct RunDetailsView: View {
             duration: viewModel.duration,
             selectedTime: $viewModel.selectedTime,
             totalAngleInRange: viewModel.totalAngleInRange,
-            totalSpeedInRange: viewModel.totalSpeedInRange
+            totalSpeedInRange: viewModel.totalSpeedInRange,
+            angleColor: angleColor,
+            speedColor: speedColor
         )
     }
 }

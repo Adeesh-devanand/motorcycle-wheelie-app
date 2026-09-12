@@ -186,12 +186,12 @@ struct TelemetryChart: View {
                         x: .value("Time", maxT),
                         y: .value("Value", maxValue)
                     )
-                    .foregroundStyle(AppColors.success)
+                    .foregroundStyle(traceColor)
                     .symbolSize(64)
                     .annotation(position: .top, spacing: 4) {
                         Text(maxAnnotationText)
                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(AppColors.success)
+                            .foregroundStyle(traceColor)
                     }
                 }
 
@@ -341,21 +341,21 @@ struct TelemetryChart: View {
         if metric == .angle {
             Text("\(Int(v))°")
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(AppColors.accent)
+                .foregroundStyle(traceColor)
         } else {
             if v == 100 {
                 VStack(spacing: 0) {
                     Text("\(Int(v))")
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(AppColors.accent)
+                        .foregroundStyle(traceColor)
                     Text("km/h")
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(AppColors.accent)
+                        .foregroundStyle(traceColor)
                 }
             } else {
                 Text("\(Int(v))")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(traceColor)
             }
         }
     }

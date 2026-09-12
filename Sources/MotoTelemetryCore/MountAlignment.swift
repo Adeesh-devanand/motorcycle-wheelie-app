@@ -131,51 +131,13 @@ public struct MountAlignment: Codable, Sendable, Equatable {
 
     // MARK: - Swipe-derived heading (beta)
 
-    /// Derives a full alignment from measured gravity PLUS one swipe along the
-    /// chassis — the beta's one-gesture capture.
-    ///
-    /// Gravity fixes two axes and leaves exactly one degree of freedom: rotation
-    /// about `up`. The swipe supplies it, so the pair is exactly determined — three
-    /// DOF, two measurements, no redundancy. Unlike `fromMeasuredGravity` this does
-    /// not ASSUME which device axis is lateral, and unlike `AlignmentSolver` it does
-    /// not need the bike to move.
-    ///
-    ///   x'      = (cos psi, sin psi, 0)      swipe direction, device frame
-    ///   p       = x' - (x' . gHat) gHat      strip the vertical part
-    ///   forward = p / |p|
-    ///   up      = -gHat
-    ///   left    = up x forward
-    ///
-    /// `|p|` falls out as a free CLASSIFIER — it is the norm of a vector the solve
-    /// already had to compute, and it equals the sine of the angle between the swipe
-    /// and gravity. It is not a quality score to be thresholded; it tells you which
-    /// of two geometries you are in, and both are expected:
-    ///
-    /// - **`|p|` near 1 — flat-ish mount.** Gravity is along the screen normal, so
-    ///   the swipe has no vertical component to strip, the projection is a no-op, and
-    ///   the drawn line IS the chassis direction. Use it.
-    /// - **`|p|` near 0 — vertical mount.** The swipe ran along gravity, which is what
-    ///   a rider on a bar-mounted phone naturally draws when asked for "forward"
-    ///   (bottom-to-top). The screen plane cannot contain the chassis axis at all
-    ///   there, because forward points out THROUGH the screen — so the answer is the
-    ///   screen normal, and `|p| = 0` is precisely the signal that says so.
-    ///
-    /// The one thing that does NOT work itself out is the arithmetic: `p / |p|` at
-    /// `|p| = 0` is `0/0`, and the resulting NaN would propagate through
-    /// `up × forward` into every pitch reading for the rest of the session. Hence the
-    /// explicit branch below — it exists to route, not to refuse.
-    ///
-    /// What neither branch can do is tell a tank-flank mount from a bar mount when
-    /// the rider swipes SIDEWAYS: both give `|p| = 1`, and on the bars that answer is
-    /// the lateral axis, 90 degrees wrong. That is left to the capture screen, which
-    /// draws the resolved bike orientation along the line the rider just drew, so a
-    /// wrong answer is visible rather than silent and the fix is to swipe again.
-    ///
-    /// - Parameter screenYaw: the swipe's direction in the device's XY plane,
-    ///   `atan2(dy, dx)` with **dy measured upward**. UIKit and SwiftUI drag
-    ///   translations grow DOWNWARD, so a caller with raw gesture deltas should use
-    ///   `fromSwipe(specificForce:screenDX:screenDY:...)` below and let it do the
-    ///   flip, rather than negating by hand at the call site.
+    /// Resolve the bike's horizontal forward axis from its screen projection.
+    /// A drawn line supplies X:Y; measured gravity supplies the missing Z through
+    /// forward.dot(gravity) == 0. Orthogonally projecting the swipe off gravity
+    /// instead changes X:Y on oblique mounts and leaks side lean into wheelie angle.
+    /// Near-vertical screens cannot observe Z reliably and use the rider-facing
+    /// screen-normal assumption. A sideways or inaccurate swipe remains ambiguous.
+    /// `screenYaw` uses device Y-up; `fromSwipe` converts touch coordinates.
     public static func fromMeasuredGravity(
         specificForce: Vector3,
         screenYaw: Double,
@@ -188,14 +150,19 @@ public struct MountAlignment: Codable, Sendable, Equatable {
         let p = swipe - gHat * swipe.dot(gHat)
         let confidence = p.magnitude
 
-        guard confidence >= config.alignmentConfidenceMin else {
-            // Vertical mount: the swipe was along gravity, so heading comes from the
-            // screen normal instead. Not an error — the expected second branch.
+        // A swipe is the SCREEN PROJECTION of forward. Subtracting gravity
+        // from (sx, sy, 0) changes that projection on an oblique mount and
+        // mixes roll into pitch. Recover the missing Z component instead,
+        // enforcing forward.dot(gravity) == 0 while preserving swipe X:Y.
+        // Near vertical, Z is unobservable; retain the disclosed normal fallback.
+        let forward: Vector3
+        if abs(gHat.z) >= config.alignmentScreenNormalMin {
+            forward = Vector3(swipe.x, swipe.y,
+                              -(swipe.x * gHat.x + swipe.y * gHat.y) / gHat.z).normalized
+        } else {
             return fromScreenNormal(specificForce: specificForce,
                                     bikeProfileID: bikeProfileID)
         }
-
-        let forward = p / confidence
         let up = gHat * -1
         let left = up.cross(forward)
 

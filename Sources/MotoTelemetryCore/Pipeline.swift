@@ -12,7 +12,7 @@ public struct PipelineOutput: Codable, Sendable, Equatable {
     public var pitch: Double
     public var pitchRate: Double
     public var roll: Double
-    /// The constant bias subtracted from every rotation rate, rad/s.
+    /// Current gyro bias subtracted from every rotation rate, rad/s.
     public var gyroBias: Vector3
     /// Open-loop 1-sigma on pitch, radians, projected from the AGE of the bias
     /// estimate — not a filter covariance, because there is no filter. See
@@ -59,35 +59,10 @@ public struct PipelineOutput: Codable, Sendable, Equatable {
 /// hope for. Feed it the same samples with the same Config and it produces
 /// byte-identical output.
 ///
-/// ## What this is, after the beta simplification
-/// Raw gyro, debiased by a constant measured once at calibration, integrated as a
-/// quaternion, read as an axis elevation:
-///
-///     rate  = rawGyro - b
-///     Q     = Q * exp(rate * dt)
-///     pitch = asin(rotate(forwardInBody).z)
-///
-/// That is the whole live estimator. The accelerometer is not consumed here at all —
-/// it is a calibration instrument, read only while a calibration session is active
-/// (see `BiasEstimator`), and never recorded.
-///
-/// ## What was removed, and why it is not coming back by accident
-/// The gated ESKF, the RTS smoother, the delayed-state buffer for retroactive GNSS
-/// correction, and the grade baseline are all DELETED on this branch, not disabled
-/// behind a flag. They were correct and tested and they never ran in the product,
-/// which is this project's signature failure mode — eight complete-but-unwired
-/// subsystems, and documentation describing a smoother that had no caller. A second
-/// estimator kept "just in case" is that pattern with a nicer name. Git holds them:
-/// they remain on `main` and `staging/core-pipeline`.
-///
-/// Three consequences follow directly, and each is visible rather than silent:
-///   - **No grade correction.** `GradeBaseline` estimated road grade from gate-open
-///     pitch; with no gate there is no estimate, so riding uphill reads as nose-up.
-///   - **No drift correction.** Bias is measured once, so thermal walk accumulates
-///     (~0.1 deg/s over 30 min; ~5 deg over a 10 s hold at 0.5 deg/s). `pitchSigma`
-///     grows with bias age so the UI can say how much to distrust the number, and
-///     `JitterBlur` does NOT help — it removes jitter, not drift.
-///   - **No GNSS/IMU fusion.** Speed is an independent ~1 Hz display channel.
+/// Integrates raw gyro during motion. After a fresh, accurate GNSS stop and
+/// a continuous stable IMU window, refreshes gyro bias and gravity. Corrections
+/// are forbidden during events, turns, acceleration, stale fixes and data gaps.
+/// There is no road-grade correction or continuously fused attitude estimate.
 public struct Pipeline {
     private let config: Config
     /// Bike axes in device axes, from the swipe calibration.
@@ -95,24 +70,26 @@ public struct Pipeline {
 
     private var estimator: CalibrateOnceEstimator
     private var vibration: HighFrequencyIndicator
-    /// Held to project the open-loop sigma, which needs the estimate's AGE.
-    private let initialBias: BiasEstimate?
-
+    private var biasMeanSigma: Double?
     private var uncertaintyAnchorTime: TimeInterval?
     private var uncertaintyInvalid = false
     private var previousIntegrationTime: TimeInterval?
 
+    private var stationaryFix: GNSSFix?
+    private var stationaryWindow = StationaryWindow()
+    public private(set) var stationaryCorrectionCount = 0
     private var lastSpeed: Double?
     private var lastSpeedTime: TimeInterval?
     public static let speedFreshnessLimit: TimeInterval = 2.5
 
-    public mutating func clearSpeed() { lastSpeed = nil; lastSpeedTime = nil }
+    public mutating func clearSpeed() {
+        lastSpeed = nil; lastSpeedTime = nil; stationaryFix = nil
+        stationaryWindow.reset()
+    }
     private var flags: QualityFlags = []
     private var lastSpecificForce = Vector3.zero
 
-    /// Set by the host when an event is in progress. Retained because the segmenter
-    /// is downstream and the recorder wants to know, even though nothing in this
-    /// pipeline is suppressed by it any more.
+    /// Set by the host to suppress stationary recovery during an event.
     public var eventActive = false
 
     // MARK: - Diagnostics state
@@ -129,7 +106,7 @@ public struct Pipeline {
                 sink: DiagnosticSink? = nil) {
         self.config = config
         self.alignment = alignment
-        self.initialBias = initialBias
+        self.biasMeanSigma = initialBias?.worstSigma
         self.estimator = CalibrateOnceEstimator(config: config,
                                                 alignment: alignment,
                                                 bias: initialBias?.bias ?? .zero,
@@ -144,6 +121,7 @@ public struct Pipeline {
     /// so waiting would be waiting for evidence already gathered.
     public mutating func requestReanchor() {
         guard lastSpecificForce.magnitude > 1e-6 else { return }
+        stationaryWindow.reset()
         estimator.anchor(with: lastSpecificForce)
         uncertaintyAnchorTime = nil
         previousIntegrationTime = nil
@@ -153,6 +131,7 @@ public struct Pipeline {
     /// Establishes the world frame from a calibration's measured gravity vector.
     public mutating func anchor(with specificForce: Vector3) {
         lastSpecificForce = specificForce
+        stationaryWindow.reset()
         estimator.anchor(with: specificForce)
         uncertaintyAnchorTime = nil
         previousIntegrationTime = nil
@@ -180,6 +159,7 @@ public struct Pipeline {
             // absence of evidence, so it clears the value.
             guard fix.fixTime.isFinite, fix.arrivalTime.isFinite else { return nil }
             if let previous = lastSpeedTime, fix.fixTime < previous { return nil }
+            stationaryFix = fix
             lastSpeedTime = fix.fixTime
             let age = fix.arrivalTime - fix.fixTime
             lastSpeed = age >= 0 && age <= Self.speedFreshnessLimit ? fix.resolvedSpeed : nil
@@ -209,6 +189,16 @@ public struct Pipeline {
         }
         previousIntegrationTime = imu.time
         estimator.integrate(imu)
+        if estimator.isAnchored,
+           let correction = stationaryWindow.process(imu, fix: stationaryFix,
+               bias: estimator.bias, eventActive: eventActive, config: config) {
+            estimator.correctStationary(bias: correction.bias, specificForce: correction.gravity)
+            stationaryCorrectionCount += 1
+            biasMeanSigma = max(biasMeanSigma ?? 0, correction.meanSigma)
+            uncertaintyAnchorTime = imu.time
+            diag.always(time: imu.time, level: .info, message: "stationary drift correction",
+                        values: ["count": Double(stationaryCorrectionCount)])
+        }
 
         // Publish NOTHING until gravity has tied the world frame down. Before that,
         // integrated attitude is relative to the initial DEVICE frame, which for a
@@ -227,8 +217,8 @@ public struct Pipeline {
         let elapsed = max(0, imu.time - (uncertaintyAnchorTime ?? imu.time))
         // Only the calibration mean's sampling uncertainty is evidenced by the
         // existing data. Do not silently assign units to the legacy walk constant.
-        let variance = initialBias.flatMap {
-            PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: $0.worstSigma,
+        let variance = biasMeanSigma.flatMap {
+            PitchUncertaintyModel.variance(initialVariance: 0, biasSigma: $0,
                 rateNoisePSD: 0, biasWalkPSD: 0, calibrationAgeAtAnchor: 0, elapsed: elapsed)
         }
         let sigma = variance?.squareRoot() ?? config.liveSigmaLimit
@@ -240,7 +230,7 @@ public struct Pipeline {
                               pitch: pitch,
                               pitchRate: estimator.pitchRate,
                               roll: estimator.roll,
-                              gyroBias: initialBias?.bias ?? .zero,
+                              gyroBias: estimator.bias,
                               pitchSigma: sigma,
                               speed: lastSpeedTime.flatMap { time in
                                   let age = imu.time - time
@@ -248,7 +238,9 @@ public struct Pipeline {
                               },
                               vibration: vibration.instantaneousRMS,
                               flags: flags)
-        result.pitchSigmaModel = "calibration-mean-only-v1; excludes anchor, mount, rate noise and thermal drift"
+        result.pitchSigmaModel = stationaryCorrectionCount == 0
+            ? "calibration-mean-only-v1; excludes anchor, mount, rate noise and thermal drift"
+            : "stationary-mean-only-v1; assumes true rest; excludes anchor, mount, rate noise and thermal drift"
         result.pitchSigmaValid = valid
         return result
     }
@@ -301,7 +293,7 @@ public struct Pipeline {
 
     // MARK: - Introspection
     public var currentFlags: QualityFlags { flags }
-    public var biasEstimate: Vector3 { initialBias?.bias ?? .zero }
+    public var biasEstimate: Vector3 { estimator.bias }
     public var isAnchored: Bool { estimator.isAnchored }
 
     public mutating func resetQualityFlags() { flags = [] }

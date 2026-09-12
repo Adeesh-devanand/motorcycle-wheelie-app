@@ -172,7 +172,7 @@ struct VerticalTelemetryMeter: View {
             Text(LocalizedStringKey(label))
                 .font(.system(size: 15, weight: .medium))
                 .tracking(1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(accentColor)
 
             GeometryReader { geo in
                 meterLayout(height: geo.size.height, totalWidth: geo.size.width)
@@ -586,7 +586,7 @@ struct VerticalTelemetryMeter: View {
                 let resolved = context.resolve(
                     Text(text)
                         .font(.system(size: 13))
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(accentColor)
                 )
                 let textSize = resolved.measure(in: size)
 

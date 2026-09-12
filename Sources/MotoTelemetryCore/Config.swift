@@ -123,7 +123,7 @@ import Foundation
 /// gone — do not read those two as live tuning.
 
 public struct Config: Codable, Sendable, Equatable {
-    public var version: Int = 8
+    public var version: Int = 9
 
     // MARK: - Validity gate
     // Opens only when we can PROVE quasi-static, because the accelerometer cannot
@@ -574,6 +574,18 @@ public struct Config: Codable, Sendable, Equatable {
     public var accelFullScale: Double = 16.0 * 9.80665         // m/s^2
 
 
+    // MARK: - Stationary drift recovery (v9)
+    // Conservative stop-only updates. GNSS uses raw speed AND its error bound,
+    // never the display's noise-floor-clamped zero. Unknown speed disables recovery.
+    public var stationaryDwell: TimeInterval = 3.0
+    public var stationaryMaxSpeed: Double = 0.3                // m/s
+    public var stationaryMaxSpeedAccuracy: Double = 0.5        // m/s
+    public var stationaryMaxRate: Double = 0.5 * .pi / 180      // rad/s, debiased
+    public var stationaryForceTolerance: Double = 0.015 * 9.80665
+    public var stationaryForceChange: Double = 0.0035 * 9.80665 // ~0.2 degree
+    public var stationaryGyroChange: Double = 0.05 * .pi / 180
+    public var alignmentScreenNormalMin: Double = 0.2
+
     public init() {}
 
     /// Tolerant decoding, required by the versioning contract above.
@@ -592,6 +604,15 @@ public struct Config: Codable, Sendable, Equatable {
         }
 
         version = try get(.version, d.version)
+        stationaryDwell = try get(.stationaryDwell, d.stationaryDwell)
+        stationaryMaxSpeed = try get(.stationaryMaxSpeed, d.stationaryMaxSpeed)
+        stationaryMaxSpeedAccuracy = try get(.stationaryMaxSpeedAccuracy, d.stationaryMaxSpeedAccuracy)
+        stationaryMaxRate = try get(.stationaryMaxRate, d.stationaryMaxRate)
+        stationaryForceTolerance = try get(.stationaryForceTolerance, d.stationaryForceTolerance)
+        stationaryForceChange = try get(.stationaryForceChange, d.stationaryForceChange)
+        stationaryGyroChange = try get(.stationaryGyroChange, d.stationaryGyroChange)
+        alignmentScreenNormalMin = try get(.alignmentScreenNormalMin, d.alignmentScreenNormalMin)
+
 
         gateSpecificForceLow  = try get(.gateSpecificForceLow, d.gateSpecificForceLow)
         gateSpecificForceHigh = try get(.gateSpecificForceHigh, d.gateSpecificForceHigh)

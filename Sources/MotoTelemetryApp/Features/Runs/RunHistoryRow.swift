@@ -5,6 +5,8 @@ import SwiftUI
 struct RunHistoryRow: View {
     let run: WheelieRun
     let colorScale: RelativeMetricColorScale
+    var angleColor: Color = AppColors.angleMetric
+    var speedColor: Color = AppColors.speedMetric
     let fieldAnchors: PastRunsViewModel.FieldAnchors
     var isLatest: Bool = false
     var isLongest: Bool = false
@@ -203,22 +205,6 @@ struct RunHistoryRow: View {
             value: run.duration,
             min: fieldAnchors.durationMin,
             max: fieldAnchors.durationMax
-        )
-    }
-
-    private var angleColor: Color {
-        colorFromScale(
-            value: run.maxAngle,
-            min: fieldAnchors.angleMin,
-            max: fieldAnchors.angleMax
-        )
-    }
-
-    private var speedColor: Color {
-        colorFromScale(
-            value: run.maxSpeed,
-            min: fieldAnchors.speedMin,
-            max: fieldAnchors.speedMax
         )
     }
 

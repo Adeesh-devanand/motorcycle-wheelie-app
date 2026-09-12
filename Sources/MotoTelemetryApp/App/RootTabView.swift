@@ -73,7 +73,7 @@ struct RootTabView: View {
                 }
             }
 
-            PastRunsView(repository: services.repository)
+            PastRunsView(repository: services.repository, preferences: services.preferences)
                 .tag(1)
                 .tabItem {
                     Label("Runs", systemImage: "list.bullet")

@@ -11,6 +11,9 @@ struct RangeIntervalTimeline: View {
     let totalAngleInRange: TimeInterval
     let totalSpeedInRange: TimeInterval
 
+    var angleColor: Color = AppColors.angleMetric
+    var speedColor: Color = AppColors.speedMetric
+
     @State private var selectedInterval: SelectedInterval?
     @State private var showOverlapChooser = false
     @State private var overlapAngleHit: RangeInterval?
@@ -63,7 +66,7 @@ struct RangeIntervalTimeline: View {
                             let rect = segmentRect(for: interval, in: size)
                             let path = RoundedRectangle(cornerRadius: segmentRadius)
                                 .path(in: rect)
-                            context.fill(path, with: .color(AppColors.speedMetric.opacity(0.65)))
+                            context.fill(path, with: .color(speedColor.opacity(0.65)))
 
                             // Endpoint markers
                             let leftCircle = CGRect(
@@ -74,8 +77,8 @@ struct RangeIntervalTimeline: View {
                                 x: rect.maxX - 3, y: size.height / 2 - 3,
                                 width: 6, height: 6
                             )
-                            context.fill(Circle().path(in: leftCircle), with: .color(AppColors.speedMetric))
-                            context.fill(Circle().path(in: rightCircle), with: .color(AppColors.speedMetric))
+                            context.fill(Circle().path(in: leftCircle), with: .color(speedColor))
+                            context.fill(Circle().path(in: rightCircle), with: .color(speedColor))
                         }
 
                         // Angle intervals
@@ -83,7 +86,7 @@ struct RangeIntervalTimeline: View {
                             let rect = segmentRect(for: interval, in: size)
                             let path = RoundedRectangle(cornerRadius: segmentRadius)
                                 .path(in: rect)
-                            context.fill(path, with: .color(AppColors.angleMetric.opacity(0.65)))
+                            context.fill(path, with: .color(angleColor.opacity(0.65)))
 
                             // Endpoint markers
                             let leftCircle = CGRect(
@@ -94,8 +97,8 @@ struct RangeIntervalTimeline: View {
                                 x: rect.maxX - 3, y: size.height / 2 - 3,
                                 width: 6, height: 6
                             )
-                            context.fill(Circle().path(in: leftCircle), with: .color(AppColors.angleMetric))
-                            context.fill(Circle().path(in: rightCircle), with: .color(AppColors.angleMetric))
+                            context.fill(Circle().path(in: leftCircle), with: .color(angleColor))
+                            context.fill(Circle().path(in: rightCircle), with: .color(angleColor))
                         }
 
                         // Selected segment highlight
@@ -295,10 +298,10 @@ struct RangeIntervalTimeline: View {
                 showOverlapChooser = false
             } label: {
                 HStack(spacing: AppSpacing.xs) {
-                    Circle().fill(AppColors.angleMetric).frame(width: 6, height: 6)
+                    Circle().fill(angleColor).frame(width: 6, height: 6)
                     Text("ANGLE")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AppColors.angleMetric)
+                        .foregroundStyle(angleColor)
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.vertical, AppSpacing.xs)
@@ -313,10 +316,10 @@ struct RangeIntervalTimeline: View {
                 showOverlapChooser = false
             } label: {
                 HStack(spacing: AppSpacing.xs) {
-                    Circle().fill(AppColors.speedMetric).frame(width: 6, height: 6)
+                    Circle().fill(speedColor).frame(width: 6, height: 6)
                     Text("SPEED")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AppColors.speedMetric)
+                        .foregroundStyle(speedColor)
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.vertical, AppSpacing.xs)
@@ -334,7 +337,7 @@ struct RangeIntervalTimeline: View {
     /// ~86 pt tall and appeared only on tap, which is exactly the growth a page with
     /// no scroll view cannot absorb.
     private func compactCallout(_ sel: SelectedInterval) -> some View {
-        let metricColor = sel.interval.metric == .angle ? AppColors.angleMetric : AppColors.speedMetric
+        let metricColor = sel.interval.metric == .angle ? angleColor : speedColor
         let metricName = sel.interval.metric == .angle ? "ANGLE" : "SPEED"
 
         return HStack(spacing: AppSpacing.xs) {

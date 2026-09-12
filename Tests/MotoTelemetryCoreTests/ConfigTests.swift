@@ -52,7 +52,7 @@ final class ConfigTests: XCTestCase {
         // v7 -> v8: calibration tolerates more real-world noise, bought from
         // duration (`gateCloseConfirm`, `biasGateGracePeriod`) and NOT from
         // amplitude. See the type doc for why the rotation ceiling was reverted.
-        XCTAssertEqual(Config().version, 8)
+        XCTAssertEqual(Config().version, 9)
     }
 
     /// The v8 loosening, stated as the property that makes it safe: what moved is how
