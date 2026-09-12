@@ -4,49 +4,64 @@
 # it to TestFlight. It is designed to run on a GitHub macOS runner with Xcode 26+ (the
 # App Store SDK floor), which this project's local Intel Mac cannot provide.
 #
-# Authentication uses an App Store Connect API KEY (.p8 + key id + issuer id), never an
-# Apple ID/password — it is scoped and revocable. Signing assets come from `match`.
-# All secrets are injected by CI as environment variables; nothing sensitive is in-repo.
-# See docs/reviews/release-setup.md for the exact secrets and how to generate them.
+# SIGNING: no fastlane match, no local Ruby needed on the developer's Mac. This lane
+# uses the App Store Connect API KEY to let Apple/Xcode fetch-or-create the distribution
+# certificate and App Store provisioning profile at build time (`cert` + `sigh`), then
+# archives with manual signing using the profile that was just synced. The only secrets
+# required are the three API-key values — nothing to seed locally, nothing in a private
+# signing repo.
+#
+# The API key is scoped and revocable; it is never an Apple ID/password. All secrets are
+# injected by CI as environment variables. See docs/reviews/release-setup.md.
 
 default_platform(:ios)
 
-XCODEPROJ = "MotoTelemetryApp/MotoTelemetryApp/MotoTelemetryApp.xcodeproj"
-SCHEME    = "MotoTelemetryApp"
+XCODEPROJ  = "MotoTelemetryApp/MotoTelemetryApp/MotoTelemetryApp.xcodeproj"
+SCHEME     = "MotoTelemetryApp"
+APP_ID     = "com.adeesh.MotoTelemetryApp"
+TEAM_ID    = "9KZ4CCANYU"
 
 platform :ios do
-  # Build an App Store Connect API token from the three key secrets. Returns the token
-  # hash fastlane actions accept via `api_key:`.
+  # Build an App Store Connect API token from the three key secrets.
   def asc_api_key
     app_store_connect_api_key(
       key_id: ENV.fetch("ASC_KEY_ID"),
       issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-      # The .p8 contents are passed base64-encoded in a secret so the multi-line key
-      # survives a single env var; fastlane decodes it when is_key_content_base64 is set.
+      # The .p8 is passed base64-encoded so the multi-line key survives one env var.
       key_content: ENV.fetch("ASC_KEY_CONTENT_B64"),
       is_key_content_base64: true,
       in_house: false
     )
   end
 
-  desc "Build a signed Release archive and upload it to TestFlight"
+  desc "Build a signed Release archive and upload it to TestFlight (API-key signing, no match)"
   lane :beta do
     api_key = asc_api_key
 
-    # Fetch the distribution cert + App Store provisioning profile into a temporary
-    # CI keychain. readonly: true — CI never mints new signing assets.
-    setup_ci # creates an ephemeral keychain on CI so match has somewhere to install
-    match(
-      type: "appstore",
+    setup_ci # ephemeral CI keychain for the fetched certificate
+
+    # Fetch-or-create the Distribution certificate into the CI keychain, using the API
+    # key (no Apple ID login). Reuses an existing cert when there is a valid one.
+    cert(
       api_key: api_key,
-      readonly: true
+      team_id: TEAM_ID
     )
 
-    # Auto-increment the TestFlight build number from what App Store Connect already has,
-    # so re-runs don't collide on a duplicate build number.
+    # Fetch-or-create the App Store provisioning profile for this bundle id. Returns the
+    # installed profile so gym can sign with it by name.
+    sigh(
+      api_key: api_key,
+      app_identifier: APP_ID,
+      team_id: TEAM_ID,
+      # App Store distribution profile.
+      platform: "ios"
+    )
+    profile_name = lane_context[SharedValues::SIGH_NAME]
+
+    # Bump the TestFlight build number so re-runs don't collide.
     latest = latest_testflight_build_number(
       api_key: api_key,
-      app_identifier: "com.adeesh.MotoTelemetryApp",
+      app_identifier: APP_ID,
       initial_build_number: 0
     )
     increment_build_number(
@@ -54,21 +69,27 @@ platform :ios do
       build_number: (latest + 1).to_s
     )
 
-    # Archive + export the .ipa with the current toolchain's SDK.
+    # Archive + export with MANUAL signing using the just-synced cert + profile, so the
+    # signing identity is deterministic rather than left to Xcode's automatic selection.
     build_app(
       project: XCODEPROJ,
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
       output_directory: ENV["FL_OUTPUT_DIR"] || "build",
-      output_name: "Loftmeter.ipa"
+      output_name: "Loftmeter.ipa",
+      export_options: {
+        signingStyle: "manual",
+        teamID: TEAM_ID,
+        provisioningProfiles: { APP_ID => profile_name }
+      }
     )
 
-    # Upload to TestFlight. Not submitted for external review here — internal testers
-    # get it immediately; promote to external / App Store from App Store Connect.
+    # Upload to TestFlight. Internal testers get it immediately; promote to external /
+    # App Store from App Store Connect.
     upload_to_testflight(
       api_key: api_key,
-      app_identifier: "com.adeesh.MotoTelemetryApp",
+      app_identifier: APP_ID,
       skip_waiting_for_build_processing: true
     )
   end

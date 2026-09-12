@@ -4,58 +4,50 @@ This project's local Mac (Xcode 15.2 / iOS 17.2 SDK) **cannot** build an App-Sto
 binary: Apple requires the **iOS 26 SDK (Xcode 26+)**. The `Release (TestFlight)` GitHub
 Actions workflow builds on a macOS runner with Xcode 26 and uploads with fastlane.
 
-Authentication uses an **App Store Connect API key** (scoped, revocable) and **fastlane
-match** (signing assets in a private git repo) — no Apple ID/password and no `.p12`
-juggling. Nothing sensitive lives in this repo; everything is a GitHub **Actions secret**.
+Signing uses the **App Store Connect API key only** — fastlane syncs (fetches or creates)
+the distribution certificate and App Store provisioning profile at build time with that
+key. **No `match`, no private signing repo, and no Ruby on your Mac.** Everything happens
+on the runner, which has Ruby + fastlane preinstalled.
 
 The workflow is **manual** (Actions → *Release (TestFlight)* → *Run workflow*) and refuses
-to run until the secrets below exist.
+to run until the three secrets below exist.
 
-## One-time: things only you can create (need your Apple login)
+## One-time: create the App Store Connect API key (needs your Apple login)
 
-### 1. App Store Connect API key
-App Store Connect → **Users and Access → Integrations → App Store Connect API** →
-**+**. Role **App Manager** (or Admin). Download the `.p8` **once** (Apple never shows it
-again). Note the **Key ID** and the **Issuer ID** (shown above the key list).
+App Store Connect → **Users and Access → Integrations → App Store Connect API** → **+**.
+Role **App Manager** (or Admin). Download the `.p8` **once** (Apple never shows it again).
+Note the **Key ID** (in the filename `AuthKey_<KEYID>.p8`) and the **Issuer ID** (shown
+above the key list).
 
 Base64-encode the `.p8` for the secret:
 ```bash
-base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy   # now paste into ASC_KEY_CONTENT_B64
+base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy   # paste into ASC_KEY_CONTENT_B64
 ```
 
-### 2. fastlane match (signing certificate + provisioning profile)
-`match` stores your Apple **Distribution** cert + App Store provisioning profile in a
-**separate private git repo**, encrypted. Create an empty private repo (e.g.
-`Adeesh-devanand/loftmeter-signing`), then from a Mac (any Xcode — signing generation
-does not need Xcode 26):
-```bash
-gem install fastlane
-cd motorcycle-wheelie-app
-# Generates the cert + profile and pushes them encrypted to the signing repo.
-bundle exec fastlane match appstore --git_url https://github.com/<you>/loftmeter-signing.git
-```
-It prompts for a **passphrase** — remember it, it becomes `MATCH_PASSWORD`. This step
-authenticates to Apple with the API key too; export it first:
-```bash
-export ASC_KEY_ID=... ASC_ISSUER_ID=... 
-# (or run `match` interactively and sign in once to seed the assets)
-```
-
-## GitHub Actions secrets to add
+## GitHub Actions secrets to add (only three)
 Repo → **Settings → Secrets and variables → Actions → New repository secret**:
 
 | Secret | What it is |
 | --- | --- |
-| `ASC_KEY_ID` | API Key ID from step 1 |
-| `ASC_ISSUER_ID` | Issuer ID from step 1 |
+| `ASC_KEY_ID` | API Key ID (e.g. from `AuthKey_CU5V32396K.p8` → `CU5V32396K`) |
+| `ASC_ISSUER_ID` | Issuer ID from App Store Connect (Integrations page) |
 | `ASC_KEY_CONTENT_B64` | base64 of the `.p8` file |
-| `MATCH_GIT_URL` | HTTPS URL of the private signing repo |
-| `MATCH_PASSWORD` | the match passphrase |
-| `MATCH_GIT_BASIC_AUTHORIZATION` | base64 of `<gh-username>:<PAT>` so CI can clone the private signing repo — `printf '%s' 'user:ghp_xxx' \| base64` |
+
+Or from your own terminal (no Ruby needed):
+```bash
+gh secret set ASC_KEY_ID --body 'CU5V32396K'
+gh secret set ASC_ISSUER_ID --body '<issuer-id>'
+gh secret set ASC_KEY_CONTENT_B64 < ~/Downloads/AuthKey_CU5V32396K.p8.b64
+```
+
+Then delete the plaintext key so it isn't left on disk:
+```bash
+rm ~/Downloads/AuthKey_*.p8 ~/Downloads/AuthKey_*.p8.b64
+```
 
 ## Run it
-Actions → **Release (TestFlight)** → **Run workflow** → lane `beta`. It fetches signing
-via match, bumps the build number, archives Release with Xcode 26, and uploads to
+Actions → **Release (TestFlight)** → **Run workflow** → lane `beta`. It syncs signing via
+the API key, bumps the build number, archives Release with Xcode 26, and uploads to
 TestFlight (internal testers get it immediately; promote to external / App Store from
 App Store Connect).
 
@@ -64,5 +56,7 @@ App Store Connect).
   multitasking orientation validation error.
 - The regular **CI** workflow still builds/tests on Xcode 16.4 for fast feedback; only
   this release job needs Xcode 26, because only uploads hit the SDK floor.
-- Revoke access anytime: delete the API key in App Store Connect and/or rotate the PAT —
-  no credential of yours is embedded in the build.
+- The API key must have permission to manage certificates/profiles (App Manager or Admin)
+  so the `cert`/`sigh` sync can fetch-or-create them.
+- Revoke access anytime by deleting the API key in App Store Connect — no credential of
+  yours is embedded in the build.

@@ -25,21 +25,17 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
-      # App Store Connect API key (scoped, revocable — NOT an Apple ID).
+      # App Store Connect API key (scoped, revocable — NOT an Apple ID). These three are
+      # the ONLY secrets required; signing certs/profiles are synced via this key.
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_CONTENT_B64: ${{ secrets.ASC_KEY_CONTENT_B64 }}
-      # match signing storage.
-      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-      # Personal-access token so match can clone the PRIVATE signing repo over HTTPS.
-      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
       FL_OUTPUT_DIR: ${{ github.workspace }}/build
     steps:
       - name: Guard — required secrets present
         run: |
           missing=0
-          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT_B64 MATCH_GIT_URL MATCH_PASSWORD; do
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT_B64; do
             if [ -z "${!v}" ]; then echo "::error::Missing secret $v"; missing=1; fi
           done
           if [ "$missing" = "1" ]; then
