@@ -1,0 +1,81 @@
+name: Release Beta (TestFlight)
+
+# Manual only. Builds the BETA configuration (bundle id com.adeesh.MotoTelemetryApp.beta,
+# `#if BETA` on, so the diagnostic uploader is compiled in) and ships it to the DEDICATED
+# ".beta" App Store Connect app and its TestFlight. Separate from the public Release
+# (TestFlight) workflow, which stays clean. Needs Xcode 26 (iOS 26 SDK floor). No-ops
+# until the required secrets exist (see release-setup.md).
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        default: "beta_testflight"
+        type: choice
+        options: [beta_testflight]
+
+concurrency:
+  group: release-beta-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight-beta:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_CONTENT_B64: ${{ secrets.ASC_KEY_CONTENT_B64 }}
+      # Beta diagnostic-upload endpoint + abuse-gate token, injected as build settings
+      # because BetaUpload.xcconfig is gitignored and absent on CI.
+      BETA_UPLOAD_API_BASE: ${{ secrets.BETA_UPLOAD_API_BASE }}
+      BETA_UPLOAD_TOKEN: ${{ secrets.BETA_UPLOAD_TOKEN }}
+      FL_OUTPUT_DIR: ${{ github.workspace }}/build
+    steps:
+      - name: Guard — required secrets present
+        run: |
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT_B64 BETA_UPLOAD_API_BASE BETA_UPLOAD_TOKEN; do
+            if [ -z "${!v}" ]; then echo "::error::Missing secret $v"; missing=1; fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::Beta release secrets are not configured. See docs/reviews/release-setup.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26 (App Store SDK floor)
+        run: |
+          x26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$x26" ]; then
+            echo "::error::No Xcode 26 on this runner image; App Store upload requires the iOS 26 SDK."
+            ls -d /Applications/Xcode_*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "$x26/Contents/Developer"
+          xcodebuild -version
+
+      - name: Ruby + fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Run fastlane ${{ inputs.lane }}
+        run: bundle exec fastlane ${{ inputs.lane }}
+
+      - name: Upload IPA + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-beta-artifacts
+          path: |
+            build/*.ipa
+            ~/Library/Logs/gym/*.log
+          if-no-files-found: warn
+          retention-days: 7

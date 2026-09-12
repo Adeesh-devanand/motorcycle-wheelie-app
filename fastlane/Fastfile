@@ -86,4 +86,65 @@ platform :ios do
       skip_waiting_for_build_processing: true
     )
   end
+
+  # ---------------------------------------------------------------------------------
+  # Dedicated BETA app lane. Separate from `beta` above (which is the clean App Store
+  # track). This builds the Beta CONFIGURATION — bundle id com.adeesh.MotoTelemetryApp.beta,
+  # `#if BETA` on, so the diagnostic uploader is compiled in — and ships it to the SECOND
+  # App Store Connect app record (the ".beta" app) and its own TestFlight. Testers on this
+  # app send ride diagnostics to S3; the public app record stays untouched.
+  # ---------------------------------------------------------------------------------
+  BETA_APP_ID = "com.adeesh.MotoTelemetryApp.beta"
+
+  desc "Build the BETA configuration and upload it to the dedicated .beta app's TestFlight"
+  lane :beta_testflight do
+    api_key = asc_api_key
+
+    increment_build_number(
+      xcodeproj: XCODEPROJ,
+      build_number: Time.now.utc.strftime("%Y%m%d%H%M")
+    )
+
+    Tempfile.create(["loftmeter-asc-", ".p8"]) do |key_file|
+      key_file.chmod(0o600)
+      key_file.write(Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT_B64").gsub(/\s+/, "")))
+      key_file.flush
+
+      # The Beta config already carries the .beta bundle id and `#if BETA`. Inject the
+      # diagnostic-upload endpoint + token as build settings, because BetaUpload.xcconfig
+      # is gitignored and absent on CI — without them the uploader self-disables.
+      overrides = [
+        "BetaUploadAPIBase=#{ENV.fetch('BETA_UPLOAD_API_BASE')}",
+        "BetaUploadToken=#{ENV.fetch('BETA_UPLOAD_TOKEN')}"
+      ]
+
+      signing_args = Shellwords.join([
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath", key_file.path,
+        "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"),
+        "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID"),
+        *overrides
+      ])
+
+      build_app(
+        project: XCODEPROJ,
+        scheme: SCHEME,
+        configuration: "Beta",
+        export_method: "app-store",
+        output_directory: ENV["FL_OUTPUT_DIR"] || "build",
+        output_name: "LoftmeterBeta.ipa",
+        xcargs: signing_args,
+        export_options: {
+          signingStyle: "automatic",
+          teamID: TEAM_ID
+        }
+      )
+    end
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: BETA_APP_ID,
+      skip_waiting_for_build_processing: true
+    )
+  end
 end

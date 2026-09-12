@@ -60,3 +60,26 @@ App Store Connect).
   so the `cert`/`sigh` sync can fetch-or-create them.
 - Revoke access anytime by deleting the API key in App Store Connect — no credential of
   yours is embedded in the build.
+
+## Dedicated Beta app (diagnostic testing) — `Release Beta (TestFlight)`
+
+The public `Release (TestFlight)` workflow ships the clean Release build (no diagnostic
+uploader — `#if BETA` compiles it out). To collect ride diagnostics from testers, a
+SEPARATE workflow, `Release Beta (TestFlight)`, builds the **Beta configuration** (bundle
+id `com.adeesh.MotoTelemetryApp.beta`, uploader on) and ships it to a **dedicated second
+App Store Connect app**.
+
+One-time:
+1. **Create the second app record** — App Store Connect → Apps → `+` → New App: iOS,
+   name e.g. "Loftmeter Beta", bundle id **`com.adeesh.MotoTelemetryApp.beta`**, any SKU
+   (e.g. `loftmeter-beta-ios`). Must be in the same team as the API key (`9KZ4CCANYU`).
+2. **Add two more secrets** (the API-key trio is shared with the public workflow):
+
+| Secret | What it is |
+| --- | --- |
+| `BETA_UPLOAD_API_BASE` | Diagnostic-upload API base URL (e.g. `https://uh2vb8n4hg.execute-api.us-east-1.amazonaws.com`) |
+| `BETA_UPLOAD_TOKEN` | Diagnostic-upload abuse-gate token |
+
+Run: Actions → **Release Beta (TestFlight)** → Run workflow → lane `beta_testflight`.
+Testers on the "Loftmeter Beta" TestFlight app then upload ride diagnostics to S3; the
+public app and its TestFlight stay clean.
