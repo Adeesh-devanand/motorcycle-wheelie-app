@@ -68,8 +68,9 @@ platform :ios do
         export_method: "app-store",
         output_directory: ENV["FL_OUTPUT_DIR"] || "build",
         output_name: "Loftmeter.ipa",
+        # gym 2.239.0 also forwards xcargs to exportArchive. Setting export_xcargs
+        # to the same flags duplicates authenticationKeyPath and makes export fail.
         xcargs: signing_args,
-        export_xcargs: signing_args,
         export_options: {
           signingStyle: "automatic",
           teamID: TEAM_ID
