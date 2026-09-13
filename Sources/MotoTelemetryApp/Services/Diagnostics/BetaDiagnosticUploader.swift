@@ -245,7 +245,8 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
             put.httpMethod = "PUT"
             put.setValue("application/x-ndjson", forHTTPHeaderField: "Content-Type")
             let payload = Data("{\"kind\":\"connectivity-test\",\"synthetic\":true}\n".utf8)
-            let (_, result) = try await presignSession.upload(for: put, from: payload)
+            put.httpBody = payload
+            let (_, result) = try await presignSession.data(for: put)
             let putStatus = (result as? HTTPURLResponse)?.statusCode ?? -1
             guard (200..<300).contains(putStatus) else {
                 throw DiagnosticUploadProtocol.Failure.http(stage: "S3", status: putStatus)

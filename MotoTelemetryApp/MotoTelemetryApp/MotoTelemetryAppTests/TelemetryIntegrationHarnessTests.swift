@@ -395,6 +395,8 @@ extension TelemetryIntegrationHarnessTests {
     private func reachabilityUploader() -> (BetaDiagnosticUploader, URLSession) {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [UploadURLProtocol.self]
+        config.timeoutIntervalForRequest = 2
+        config.timeoutIntervalForResource = 5
         let session = URLSession(configuration: config)
         return (BetaDiagnosticUploader(apiBase: URL(string: "https://api.example.invalid/presign")!,
             token: "test-only-key", logDirectory: FileManager.default.temporaryDirectory,
@@ -480,6 +482,8 @@ extension TelemetryIntegrationHarnessTests {
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-90)], ofItemAtPath: file.path)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [UploadURLProtocol.self]
+        config.timeoutIntervalForRequest = 2
+        config.timeoutIntervalForResource = 5
         let session = URLSession(configuration: config)
         defer {
             session.invalidateAndCancel(); UploadURLProtocol.handler = nil
