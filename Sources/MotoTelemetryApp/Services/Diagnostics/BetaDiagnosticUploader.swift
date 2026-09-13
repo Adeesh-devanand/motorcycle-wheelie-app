@@ -2,6 +2,9 @@
 // Upload copies omit coordinate fields; originals remain subject to local cleanup.
 #if BETA
 import Foundation
+import Combine
+import SwiftUI
+import MotoTelemetryCore
 import UIKit
 import os
 
@@ -34,7 +37,17 @@ enum BetaInstallID {
 ///
 /// See the file header for the full contract and the `#if BETA` gating rationale.
 @MainActor
-final class BetaDiagnosticUploader: NSObject {
+final class BetaDiagnosticUploader: NSObject, ObservableObject {
+    @Published private(set) var connectionTitle = "Not checked"
+    @Published private(set) var connectionDetail = "Test the API and a small S3 upload over Wi-Fi."
+    @Published private(set) var checkingConnection = false
+    @Published private(set) var lastChecked: Date?
+    @Published private(set) var uploadStatus = "No upload attempted this launch."
+    @Published private(set) var pendingCount = 0
+    @Published private(set) var activeCount = 0
+
+    var endpointHost: String { apiBase.host ?? "Invalid endpoint" }
+
 
     // MARK: Configuration read from Info.plist (empty in production → no-op)
 
@@ -99,16 +112,28 @@ final class BetaDiagnosticUploader: NSObject {
     /// background session is now reserved for `uploadTask(with:fromFile:)`, which is
     /// the only kind of task it may legally be given here, and which is also the
     /// only part that needs to survive suspension.
-    private lazy var presignSession: URLSession = {
+    private let presignSession: URLSession
+
+    nonisolated private static func makeRequestSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.allowsCellularAccess = false
-        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
         return URLSession(configuration: config)
-    }()
+    }
 
     private let log = Logger(subsystem: "com.mototelemetry.app", category: "beta.upload")
 
     // MARK: Init
+
+    nonisolated static var configurationIssue: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        do {
+            _ = try DiagnosticUploadProtocol.endpoint(base: info["BetaUploadAPIBase"] as? String ?? "",
+                                                      token: info["BetaUploadToken"] as? String ?? "")
+            return "Uploader is not available. Relaunch the app."
+        } catch { return DiagnosticUploadProtocol.networkMessage(error) }
+    }
 
     /// Builds an uploader ONLY if both Info.plist keys are present and non-empty.
     /// Returns nil in production (empty settings) so callers get a clean no-op.
@@ -129,36 +154,7 @@ final class BetaDiagnosticUploader: NSObject {
         let token = (info?["BetaUploadToken"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        // Reject a value that still contains an UNEXPANDED build-setting
-        // placeholder. The Info.plist carries these as `$(BetaUploadAPIBase)` /
-        // `$(BetaUploadToken)` and relies on the plist step expanding them; if that
-        // ever stops happening, the literal string arrives here instead. That must
-        // not be treated as configured: `URL(string: "$(BetaUploadAPIBase)")`
-        // returns a NON-nil *relative* URL, so the guard below would pass and the
-        // uploader would fail later at request time with nothing pointing at the
-        // real cause. Requiring an absolute https URL with a host turns a silent
-        // misconfiguration into a clean no-op plus one log line.
-        guard !baseString.contains("$("), !token.contains("$(") else {
-            Logger(subsystem: "com.mototelemetry.app", category: "beta.upload")
-                .error("beta upload config not expanded — check Info.plist $( ) substitution")
-            return nil
-        }
-
-        guard !baseString.isEmpty, !token.isEmpty,
-              let base = URL(string: baseString),
-              base.scheme == "https", base.host != nil else {
-            // Logged rather than returning nil silently. A silent nil is how an
-            // upload failure presents as "absolutely nothing happens, anywhere" —
-            // no cycle line, no error — which is genuinely hard to diagnose. The
-            // usual cause is a missing or unwired BetaUpload.xcconfig, so name it.
-            Logger(subsystem: "com.mototelemetry.app", category: "beta.upload")
-                .error("""
-                    beta upload disabled: config missing or invalid \
-                    (baseEmpty=\(baseString.isEmpty, privacy: .public) \
-                    tokenEmpty=\(token.isEmpty, privacy: .public)) \
-                    — check BetaUpload.xcconfig is present and wired as the app \
-                    target's Debug base configuration
-                    """)
+        guard let base = try? DiagnosticUploadProtocol.endpoint(base: baseString, token: token) else {
             return nil
         }
         return BetaDiagnosticUploader(apiBase: base, token: token,
@@ -167,7 +163,8 @@ final class BetaDiagnosticUploader: NSObject {
 
     /// `nonisolated` for the same reason as `makeUploader` — it only assigns
     /// immutable stored properties, so it needs no main-actor hop.
-    nonisolated init(apiBase: URL, token: String, logDirectory: URL, defaults: UserDefaults = .standard) {
+    nonisolated init(apiBase: URL, token: String, logDirectory: URL, defaults: UserDefaults = .standard, requestSession: URLSession? = nil) {
+        self.presignSession = requestSession ?? Self.makeRequestSession()
         self.defaults = defaults
         self.apiBase = apiBase
         self.token = token
@@ -188,7 +185,10 @@ final class BetaDiagnosticUploader: NSObject {
     /// been uploaded and is not the currently-open log file. Fire-and-forget:
     /// per-file failures are logged and left for the next cycle.
     func start() {
-        guard Self.consentDate(defaults: defaults) != nil else { return }
+        guard Self.consentDate(defaults: defaults) != nil else {
+            uploadStatus = "Sharing is off. Enable Share diagnostics in Settings to upload logs."
+            return
+        }
         let installID = BetaInstallID.current
 
         // Unconditional entry line. Without it, "the scene-phase trigger never fired"
@@ -197,7 +197,9 @@ final class BetaDiagnosticUploader: NSObject {
         log.info("upload cycle start")
 
         let candidates = pendingFiles()
+        pendingCount = candidates.count
         guard !candidates.isEmpty else { return }
+        uploadStatus = "Preparing \(candidates.count) file(s) for upload over Wi-Fi."
 
         if scheduleForTesting == nil { beginBackgroundAssertion() }
 
@@ -205,9 +207,54 @@ final class BetaDiagnosticUploader: NSObject {
             // Claim the file BEFORE any async work so a second `start()` in the same
             // backgrounding cannot pick it up again (see `inFlight`).
             inFlight.insert(fileURL.lastPathComponent)
+            activeCount = inFlight.count
 
             if let scheduleForTesting { scheduleForTesting(fileURL) }
             else { presignThenUpload(fileURL: fileURL, installID: installID) }
+        }
+    }
+
+    private func presignRequest(installID: String, sessionID: String, timestamp: Int) throws -> URLRequest {
+        let endpoint = try DiagnosticUploadProtocol.endpoint(base: apiBase.absoluteString, token: token)
+        let url = try DiagnosticUploadProtocol.requestURL(endpoint: endpoint, installID: installID,
+                                                        session: sessionID, timestamp: timestamp)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.setValue(token, forHTTPHeaderField: "X-Beta-Key")
+        return request
+    }
+
+    /// Tests the SAME authenticated route and content type as real uploads. The
+    /// explicit button writes one synthetic record, never sensor data or coordinates.
+    func testConnection() async {
+        guard !checkingConnection else { return }
+        checkingConnection = true
+        connectionTitle = "Checking API…"
+        connectionDetail = "Requesting permission for a small test upload."
+        defer { checkingConnection = false; lastChecked = Date() }
+        do {
+            let request = try presignRequest(installID: "connectivity-" + UUID().uuidString,
+                sessionID: "connection-test", timestamp: Int(Date().timeIntervalSince1970 * 1000))
+            let (data, response) = try await presignSession.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let url = try DiagnosticUploadProtocol.uploadURL(data: data, status: status)
+            connectionTitle = "API reachable — testing S3…"
+            connectionDetail = "Verifying that S3 accepts an upload."
+            var put = URLRequest(url: url)
+            put.httpMethod = "PUT"
+            put.setValue("application/x-ndjson", forHTTPHeaderField: "Content-Type")
+            let payload = Data("{\"kind\":\"connectivity-test\",\"synthetic\":true}\n".utf8)
+            let (_, result) = try await presignSession.upload(for: put, from: payload)
+            let putStatus = (result as? HTTPURLResponse)?.statusCode ?? -1
+            guard (200..<300).contains(putStatus) else {
+                throw DiagnosticUploadProtocol.Failure.http(stage: "S3", status: putStatus)
+            }
+            connectionTitle = "Reachable"
+            connectionDetail = "API authenticated and S3 accepted the test file."
+        } catch {
+            connectionTitle = "Upload path unavailable"
+            connectionDetail = DiagnosticUploadProtocol.networkMessage(error)
         }
     }
 
@@ -259,7 +306,10 @@ final class BetaDiagnosticUploader: NSObject {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: logDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
+            includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            uploadStatus = "Log folder could not be read. No files were uploaded."
+            return []
+        }
 
         let uploaded = uploadedFileNames()
         let liveFileName = DiagnosticLog.shared.currentFileURL.lastPathComponent
@@ -268,12 +318,12 @@ final class BetaDiagnosticUploader: NSObject {
         // Per-reason counters, logged below. A no-upload run is otherwise impossible to
         // explain from the outside: "already sent", "still being written" and "nothing
         // there at all" produce the same silence.
-        var skippedLive = 0, skippedUploaded = 0, skippedInFlight = 0, skippedRecent = 0
+        var skippedLive = 0, skippedUploaded = 0, skippedInFlight = 0, skippedRecent = 0, skippedConsent = 0
 
         let result = urls.filter { url in
             guard url.pathExtension == "ndjson", let consent = Self.consentDate(defaults: defaults),
                   let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                  created >= consent else { return false }
+                  created >= consent else { skippedConsent += 1; return false }
             if url.lastPathComponent == liveFileName { skippedLive += 1; return false }
             if uploaded.contains(url.lastPathComponent) { skippedUploaded += 1; return false }
             if inFlight.contains(url.lastPathComponent) { skippedInFlight += 1; return false }
@@ -296,6 +346,9 @@ final class BetaDiagnosticUploader: NSObject {
             skippedLive=\(skippedLive, privacy: .public)
             """)
 
+        if result.isEmpty {
+            uploadStatus = "No eligible closed logs. Active: \(skippedLive), recent (wait 60s): \(skippedRecent), before consent/unavailable date: \(skippedConsent), sent: \(skippedUploaded), queued: \(skippedInFlight)."
+        }
         return result
     }
 
@@ -306,18 +359,13 @@ final class BetaDiagnosticUploader: NSObject {
         let sessionID = Self.sessionIdentifier(for: fileURL)
         let ts = Self.timestampMillis(for: fileURL)   // unix millis, from the file
 
-        var components = URLComponents(url: apiBase.appendingPathComponent("presign"),
-                                       resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "installID", value: installID),
-            URLQueryItem(name: "session", value: sessionID),
-            URLQueryItem(name: "ts", value: String(ts)),
-        ]
-        guard let presignURL = components?.url else { return }
-
-        var request = URLRequest(url: presignURL)
-        request.httpMethod = "GET"
-        request.setValue(token, forHTTPHeaderField: "X-Beta-Key")
+        let request: URLRequest
+        do { request = try presignRequest(installID: installID, sessionID: sessionID, timestamp: ts) }
+        catch {
+            uploadStatus = DiagnosticUploadProtocol.networkMessage(error)
+            releaseClaim(fileURL.lastPathComponent)
+            return
+        }
 
         // The presign GET runs on `presignSession` (a standard ephemeral session), NOT
         // on the background session: a background session rejects completion-handler
@@ -327,24 +375,17 @@ final class BetaDiagnosticUploader: NSObject {
         // needs to survive suspension, and that one uses the background session.
         let task = presignSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
-            if let error {
-                self.log.error("presign failed: \(error.localizedDescription, privacy: .public)")
-                Task { @MainActor in self.releaseClaim(fileURL.lastPathComponent) }
-                return
-            }
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let uploadURLString = json["uploadURL"] as? String,
-                  let uploadURL = URL(string: uploadURLString) else {
-                self.log.error("presign returned no usable uploadURL")
-                Task { @MainActor in self.releaseClaim(fileURL.lastPathComponent) }
-                return
-            }
-            // Hop back to the main actor to touch the actor-isolated session/state.
             Task { @MainActor in
-                self.putFile(fileURL: fileURL, to: uploadURL, consent: consent)
+                do {
+                    if let error { throw error }
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    let url = try DiagnosticUploadProtocol.uploadURL(data: data ?? Data(), status: status)
+                    self.putFile(fileURL: fileURL, to: url, consent: consent)
+                } catch {
+                    self.uploadStatus = DiagnosticUploadProtocol.networkMessage(error)
+                    self.log.error("presign failed: \(self.uploadStatus, privacy: .public)")
+                    self.releaseClaim(fileURL.lastPathComponent)
+                }
             }
         }
         task.resume()
@@ -360,11 +401,15 @@ final class BetaDiagnosticUploader: NSObject {
         }
         let copy: URL
         do { copy = try Self.redactedCopy(of: fileURL) }
-        catch { releaseClaim(fileURL.lastPathComponent); return }
+        catch {
+            uploadStatus = "Could not prepare a redacted log. The original is kept on this phone."
+            releaseClaim(fileURL.lastPathComponent); return
+        }
         var request = URLRequest(url: uploadURL)
         request.httpMethod = "PUT"
         request.setValue("application/x-ndjson", forHTTPHeaderField: "Content-Type")
 
+        uploadStatus = "Uploading \(fileURL.lastPathComponent) over Wi-Fi."
         let task = session.uploadTask(with: request, fromFile: copy)
         // Stash the source file name so the delegate can mark it uploaded on success.
         task.taskDescription = fileURL.lastPathComponent
@@ -382,6 +427,8 @@ final class BetaDiagnosticUploader: NSObject {
         presignSession.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
         session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
         inFlight.removeAll()
+        activeCount = 0
+        uploadStatus = "Sharing is off. Pending transfers were cancelled."
         endBackgroundAssertion()
     }
 
@@ -417,14 +464,14 @@ final class BetaDiagnosticUploader: NSObject {
     // MARK: Uploaded-set persistence
 
     private func uploadedFileNames() -> Set<String> {
-        let arr = UserDefaults.standard.stringArray(forKey: Self.uploadedKey) ?? []
+        let arr = defaults.stringArray(forKey: Self.uploadedKey) ?? []
         return Set(arr)
     }
 
     fileprivate func markUploaded(_ fileName: String) {
         var set = uploadedFileNames()
         set.insert(fileName)
-        UserDefaults.standard.set(Array(set), forKey: Self.uploadedKey)
+        defaults.set(Array(set), forKey: Self.uploadedKey)
     }
 
     /// Release an `inFlight` claim. Called on completion (success or failure) and on
@@ -432,6 +479,7 @@ final class BetaDiagnosticUploader: NSObject {
     /// again on the next background cycle rather than being stuck forever.
     fileprivate func releaseClaim(_ fileName: String) {
         inFlight.remove(fileName)
+        activeCount = inFlight.count
         let copy = FileManager.default.temporaryDirectory.appendingPathComponent("beta-redacted")
             .appendingPathComponent(fileName)
         try? FileManager.default.removeItem(at: copy)
@@ -501,7 +549,7 @@ extension BetaDiagnosticUploader: URLSessionTaskDelegate {
         // hop below, and without it a `status -1` (no HTTP response at all) says only
         // "something went wrong at the transport layer" — which is the difference
         // between a network blip that URLSession will retry and a systematic fault.
-        let errorText = error?.localizedDescription ?? "none"
+        let errorText = error.map { DiagnosticUploadProtocol.networkMessage($0) }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -513,13 +561,56 @@ extension BetaDiagnosticUploader: URLSessionTaskDelegate {
             }
             if succeeded, let fileName, !fileName.isEmpty {
                 self.markUploaded(fileName)
+                self.uploadStatus = "Uploaded \(fileName) to S3."
                 // Keep the local raw original; normal storage-budget cleanup owns it.
                 self.log.info("uploaded \(fileName, privacy: .public)")
             } else {
+                self.uploadStatus = errorText ?? DiagnosticUploadProtocol.Failure.http(stage: "S3", status: statusCode).localizedDescription
                 self.log.error("""
                     upload failed status=\(statusCode, privacy: .public) \
-                    error=\(errorText, privacy: .public); will retry next cycle
+                    error=\(errorText ?? "none", privacy: .public); will retry next cycle
                     """)
+            }
+        }
+    }
+}
+
+private struct BetaUploaderEnvironmentKey: EnvironmentKey {
+    static let defaultValue: BetaDiagnosticUploader? = nil
+}
+extension EnvironmentValues {
+    var betaUploader: BetaDiagnosticUploader? {
+        get { self[BetaUploaderEnvironmentKey.self] }
+        set { self[BetaUploaderEnvironmentKey.self] = newValue }
+    }
+}
+
+struct BetaUploadPanel: View {
+    @ObservedObject var uploader: BetaDiagnosticUploader
+    var body: some View {
+        TelemetryCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("DIAGNOSTIC UPLOADS").font(.headline)
+                Text(uploader.endpointHost).font(.caption).foregroundStyle(.secondary)
+                Text(uploader.connectionTitle).font(.headline)
+                Text(uploader.connectionDetail).font(.footnote)
+                if let checked = uploader.lastChecked {
+                    Text("Checked \(checked.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Button(uploader.checkingConnection ? "Checking…" : "Test connection") {
+                    Task { await uploader.testConnection() }
+                }
+                .disabled(uploader.checkingConnection)
+                Text("Sends a tiny synthetic test file over Wi-Fi. No ride data is included.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Text(uploader.uploadStatus).font(.footnote)
+                Text("Eligible at last scan: \(uploader.pendingCount) · Active: \(uploader.activeCount)")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Upload pending logs") { uploader.start() }
+                Text("Log sharing must be enabled. Only closed logs created after consent are eligible; recently changed logs wait 60 seconds.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }

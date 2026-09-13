@@ -65,12 +65,30 @@ final class DiagnosticsViewModel {
 
 struct DiagnosticsView: View {
     @State private var model = DiagnosticsViewModel()
+    #if BETA
+    @Environment(\.betaUploader) private var betaUploader
+    #endif
     @State private var pendingDelete: LogFileEntry?
     @State private var confirmDeleteAll = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                #if BETA
+                if let betaUploader {
+                    BetaUploadPanel(uploader: betaUploader)
+                } else {
+                    TelemetryCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("UPLOADS NOT CONFIGURED").font(.headline)
+                            Text(BetaDiagnosticUploader.configurationIssue).font(.footnote)
+                        }
+                    }
+                }
+                #else
+                Text("Cloud diagnostics require the Loftmeter Beta build. You can still share logs below.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                #endif
                 if model.isEmpty && !model.isLoading {
                     emptyState
                 } else {

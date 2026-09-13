@@ -224,6 +224,14 @@ Resources:
       RouteKey: "GET /presign"
       Target: !Sub "integrations/${PresignIntegration}"
 
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PresignFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/presign"
+
   DefaultStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:

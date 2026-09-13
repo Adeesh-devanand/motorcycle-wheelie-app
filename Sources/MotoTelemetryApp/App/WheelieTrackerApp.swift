@@ -38,6 +38,7 @@ struct WheelieTrackerApp: App {
                 .environment(services.repository)
                 .environment(services.preferences)
                 #if BETA
+                .environment(\.betaUploader, betaUploader)
                 // BETA ONLY: attempt an upload at LAUNCH, not just on background.
                 //
                 // The background transition was the only trigger, and that made the
@@ -61,12 +62,13 @@ struct WheelieTrackerApp: App {
                 // suspension. Absent entirely from a production (non-BETA) build.
                 .onChange(of: services.preferences.diagnosticUploadsEnabled) { _, _ in
                     betaUploader?.privacyDidChange()
+                    betaUploader?.start()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     // Logged unconditionally so a missing `.background` is visible
                     // rather than indistinguishable from "fired but found nothing".
                     betaUploader?.noteScenePhase(String(describing: newPhase))
-                    if newPhase == .background {
+                    if newPhase == .background || newPhase == .active {
                         betaUploader?.start()
                     }
                 }

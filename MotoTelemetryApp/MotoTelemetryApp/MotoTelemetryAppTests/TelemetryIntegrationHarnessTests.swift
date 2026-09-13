@@ -372,3 +372,134 @@ extension TelemetryIntegrationHarnessTests {
         }
     }
 }
+
+private final class UploadURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) throws -> (Int, Data))?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        do {
+            guard let handler = Self.handler else { throw URLError(.badServerResponse) }
+            let (code, data) = try handler(request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch { client?.urlProtocol(self, didFailWithError: error) }
+    }
+    override func stopLoading() {}
+}
+
+extension TelemetryIntegrationHarnessTests {
+    @MainActor
+    private func reachabilityUploader() -> (BetaDiagnosticUploader, URLSession) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [UploadURLProtocol.self]
+        let session = URLSession(configuration: config)
+        return (BetaDiagnosticUploader(apiBase: URL(string: "https://api.example.invalid/presign")!,
+            token: "test-only-key", logDirectory: FileManager.default.temporaryDirectory,
+            requestSession: session), session)
+    }
+
+    @MainActor
+    func testReachabilityVerifiesAuthenticatedAPIAndS3PUT() async {
+        let (uploader, session) = reachabilityUploader()
+        defer { session.invalidateAndCancel(); UploadURLProtocol.handler = nil }
+        var methods: [String] = []
+        UploadURLProtocol.handler = { request in
+            methods.append(request.httpMethod ?? "")
+            if request.httpMethod == "GET" {
+                XCTAssertEqual(request.url?.path, "/presign")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "X-Beta-Key"), "test-only-key")
+                XCTAssertTrue(request.url?.query?.contains("connectivity-") == true)
+                return (200, Data(#"{"uploadURL":"https://bucket.example.invalid/beta/test?signature=test"}"#.utf8))
+            }
+            XCTAssertEqual(request.httpMethod, "PUT")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-ndjson")
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Beta-Key"), "API token must not be forwarded to S3")
+            return (200, Data())
+        }
+        await uploader.testConnection()
+        XCTAssertEqual(methods, ["GET", "PUT"])
+        XCTAssertEqual(uploader.connectionTitle, "Reachable")
+        XCTAssertNotNil(uploader.lastChecked)
+        XCTAssertFalse(uploader.checkingConnection)
+    }
+
+    @MainActor
+    func testReachabilityDoesNotReportSuccessWhenS3RejectsPUT() async {
+        let (uploader, session) = reachabilityUploader()
+        defer { session.invalidateAndCancel(); UploadURLProtocol.handler = nil }
+        UploadURLProtocol.handler = { request in
+            request.httpMethod == "GET"
+                ? (200, Data(#"{"uploadURL":"https://bucket.example.invalid/beta/test?signature=secret"}"#.utf8))
+                : (403, Data("SignatureDoesNotMatch".utf8))
+        }
+        await uploader.testConnection()
+        XCTAssertEqual(uploader.connectionTitle, "Upload path unavailable")
+        XCTAssertTrue(uploader.connectionDetail.contains("S3"))
+        XCTAssertTrue(uploader.connectionDetail.contains("403"))
+        XCTAssertFalse(uploader.connectionDetail.contains("secret"))
+    }
+
+    @MainActor
+    func testReachabilityReportsAuthMalformedResponseAndNetworkFailures() async {
+        let (uploader, session) = reachabilityUploader()
+        defer { session.invalidateAndCancel(); UploadURLProtocol.handler = nil }
+        for scenario in ["auth", "malformed", "offline", "timeout", "dns"] {
+            var requests = 0
+            UploadURLProtocol.handler = { _ in
+                requests += 1
+                switch scenario {
+                case "auth": return (403, Data())
+                case "malformed": return (200, Data("{}".utf8))
+                case "offline": throw URLError(.notConnectedToInternet)
+                case "timeout": throw URLError(.timedOut)
+                default: throw URLError(.cannotFindHost)
+                }
+            }
+            await uploader.testConnection()
+            XCTAssertEqual(requests, 1, scenario)
+            XCTAssertEqual(uploader.connectionTitle, "Upload path unavailable", scenario)
+            XCTAssertFalse(uploader.checkingConnection)
+            XCTAssertNotNil(uploader.lastChecked)
+            XCTAssertFalse(uploader.connectionDetail.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testFailedPresignReleasesFileForRetryAndShowsHTTPError() async throws {
+        let suite = "upload-retry-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(true, forKey: "beta.uploadConsent")
+        defaults.set(Date().addingTimeInterval(-120).timeIntervalSince1970, forKey: "beta.uploadConsentSince")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("closed.ndjson")
+        try Data("{\"kind\":\"synthetic\"}\n".utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-90)], ofItemAtPath: file.path)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [UploadURLProtocol.self]
+        let session = URLSession(configuration: config)
+        defer {
+            session.invalidateAndCancel(); UploadURLProtocol.handler = nil
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let uploader = BetaDiagnosticUploader(apiBase: URL(string: "https://api.example.invalid")!,
+            token: "test-only-key", logDirectory: directory, defaults: defaults, requestSession: session)
+        UploadURLProtocol.handler = { _ in (403, Data()) }
+        uploader.start()
+        // Await the actual callback state, bounded to avoid hanging the test runner.
+        for _ in 0..<100 where uploader.activeCount > 0 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(uploader.activeCount, 0)
+        XCTAssertTrue(uploader.uploadStatus.contains("403"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        var retries = 0
+        uploader.scheduleForTesting = { _ in retries += 1 }
+        uploader.start()
+        XCTAssertEqual(retries, 1)
+    }
+}
