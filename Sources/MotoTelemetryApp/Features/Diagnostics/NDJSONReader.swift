@@ -212,6 +212,8 @@ enum NDJSONReader {
             return nil
         }
 
+        if let kind = dict["kind"] as? String, kind != "header" { return nil }
+
         // A session header line has no `lvl`/`cat` but carries config/device
         // fields. We still surface it so the viewer shows the header row.
         let hasEventShape = dict["lvl"] != nil || dict["msg"] != nil

@@ -286,6 +286,8 @@ private struct LogFileRow: View {
                     .clipShape(Circle())
             }
 
+            .disabled(entry.url == DiagnosticLog.shared.currentFileURL)
+
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
                     .font(.system(size: 14))

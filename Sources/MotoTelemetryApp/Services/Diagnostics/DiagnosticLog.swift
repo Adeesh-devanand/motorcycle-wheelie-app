@@ -424,9 +424,8 @@ final class DiagnosticLog: DiagnosticSink {
         let reached = limitReached
         if bytesWritten >= rotateThresholdBytes && active { limitReached = true }
         bufferLock.unlock()
-        if bytesWritten >= rotateThresholdBytes {
-            if !active { rotate() }
-            else if !reached {
+        if bytesWritten >= rotateThresholdBytes && active {
+            if !reached {
                 let marker = "{\"kind\":\"recordingIncomplete\",\"reason\":\"512 MB recording limit reached\"}\n"
                 try? h.write(contentsOf: Data(marker.utf8))
                 h.synchronizeFile()
