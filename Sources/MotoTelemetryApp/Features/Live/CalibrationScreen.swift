@@ -1,23 +1,8 @@
 import SwiftUI
 import MotoTelemetryCore
 
-/// Full-screen calibration, shown on every launch before the live screen — the
-/// replacement for `CalibrationOverlay`, which floated over a live view that had
-/// nothing valid to show yet.
-///
-/// It reads `CalibrationService.phase` directly. The service is fed raw IMU by
-/// `RunRecorder`, whose sensor session the parent starts, so this view only
-/// renders state and offers the two actions a stuck calibration needs: retry, and
-/// (on `.measured`) continue to the swipe.
-///
-/// The rider-facing reset reason is the important part. On every dwell reset the
-/// service sets `blockingReason` — "too much vibration — switch the engine off",
-/// "still moving" — and this shows it the instant it changes, which is the
-/// behaviour the rider valued: the countdown visibly restarts and says why.
-/// `@MainActor` because it reads `CalibrationService`'s `@Observable` mirrors and
-/// calls `restart()`, which is main-actor isolated so it can publish those mirrors
-/// synchronously. SwiftUI's `body` is not itself isolated in Swift 5, so without this
-/// the "Try again" button is a main-actor call from a nonisolated context.
+/// Optional calibration flow. Skip returns to Live without enabling measurements.
+
 @MainActor
 struct CalibrationScreen: View {
     let service: CalibrationService
@@ -25,6 +10,7 @@ struct CalibrationScreen: View {
     /// (which holds both the bias and the gravity anchor the swipe consumes).
     let onMeasured: (BiasEstimate) -> Void
     var onRetry: (() -> Void)? = nil
+    var onSkip: (() -> Void)? = nil
 
     @State private var isPulsing = false
 
@@ -86,6 +72,11 @@ struct CalibrationScreen: View {
 
                 Spacer(minLength: 0)
 
+                if let onSkip {
+                    Button("Skip for now", action: onSkip)
+                        .font(AppTypography.bodyText)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
                 actionButton
                     .padding(.bottom, AppSpacing.xxl)
                     }

@@ -26,6 +26,22 @@ struct SettingsView: View {
 
     var body: some View {
         List {
+            Section {
+                Toggle("Minimum wheelie duration", isOn: $preferences.minimumDurationEnabled)
+                if preferences.minimumDurationEnabled {
+                    Picker("Minimum duration", selection: $preferences.minimumWheelieDuration) {
+                        Text("0.25 seconds").tag(0.25)
+                        Text("0.5 seconds").tag(0.5)
+                        Text("1 second").tag(1.0)
+                        Text("2 seconds").tag(2.0)
+                    }
+                }
+            } header: {
+                Text("Wheelie detection")
+            } footer: {
+                Text("Applies when you next calibrate or return to Live from Runs. Off removes the duration cutoff; angle and entry/exit checks still apply.")
+            }
+
             Section("Speed") {
                 // No unit picker: speed is km/h throughout. An mph option existed but
                 // only changed the LABEL, never the value — it displayed km/h numbers

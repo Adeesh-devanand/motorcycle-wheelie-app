@@ -81,7 +81,7 @@ final class RunRecorder: @unchecked Sendable {
     private let speedService: any SpeedProviding
     private let calibrationService: CalibrationService
     private let repository: RunRepository
-    private let config: Config
+    private var config: Config
     private let monotonicNow: @Sendable () -> TimeInterval
     private let cueRenderer: CueAudioRenderer?
 
@@ -299,7 +299,8 @@ final class RunRecorder: @unchecked Sendable {
                       angleTarget: MetricRange,
                       speedTarget: MetricRange,
                       speedGaugeMaximum: Double,
-                      speedEnabled: Bool) {
+                      speedEnabled: Bool,
+                      minimumWheelieDuration: Double = 0.5) {
         // Reachable from .idle (no prior sensing) OR .sensing (calibration ran
         // first, the normal path). Refuse from .running AND .paused: the guard used
         // to be `!= .running`, which let a .paused session fall through and start a
@@ -312,6 +313,9 @@ final class RunRecorder: @unchecked Sendable {
         // Snapshot calibration before taking the processing lock; the hot path
         // must never read observable calibration state off the main actor.
         let estimate = calibrationService.estimate
+        processLock.lock()
+        config.eventMinDuration = minimumWheelieDuration.isFinite ? max(0, minimumWheelieDuration) : 0.5
+        processLock.unlock()
         let newPipeline = Pipeline(config: config, alignment: mountAlignment,
             initialBias: estimate, gravityAnchor: estimate?.measuredGravity,
             sink: DiagnosticLog.shared)

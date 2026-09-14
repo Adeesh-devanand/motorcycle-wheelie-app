@@ -56,6 +56,7 @@ final class LiveWheelieViewModel {
     var speedometerEnabled: Bool { recorder.effectiveSettings.enabled }
 
     var acquisitionStatus: String {
+        if alignment == nil { return "Calibrate first to enable live meters" }
         if !recorder.unsavedRuns.isEmpty { return "Attempt not saved — retry above" }
         if !recorder.sensorHealthy { return "Waiting for fresh motion data" }
         if recorder.eventActive { return "Recording attempt" }
@@ -82,6 +83,7 @@ final class LiveWheelieViewModel {
     /// Live values are only trustworthy once calibrated. §7.2 requires them frozen
     /// or blank otherwise.
     var isCalibrated: Bool {
+        guard alignment != nil else { return false }
         if case .calibrated = calibrationState { return true }
         return false
     }
@@ -94,7 +96,7 @@ final class LiveWheelieViewModel {
     private let bikeProfileID: UUID
     /// The measured phone->bike alignment from calibration + swipe. Required — the
     /// live screen is only reachable once it exists.
-    private let alignment: MountAlignment
+    private let alignment: MountAlignment?
 
     // MARK: - Private
 
@@ -119,7 +121,7 @@ final class LiveWheelieViewModel {
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
-         alignment: MountAlignment,
+         alignment: MountAlignment?,
          bikeProfileID: UUID = UUID()) {
         self.calibrationService = calibrationService
         self.preferences = preferences
@@ -151,7 +153,7 @@ final class LiveWheelieViewModel {
     /// starts calibration — `RunRecorder` feeds every raw IMU sample to
     /// `CalibrationService` as it runs the pipeline.
     private func startSession() {
-        guard !sessionStarted else { return }
+        guard !sessionStarted, let alignment else { return }
         sessionStarted = true
         recorder.startSession(
             bikeProfileID: bikeProfileID,
@@ -164,7 +166,8 @@ final class LiveWheelieViewModel {
             angleTarget: preferences.angleTarget,
             speedTarget: preferences.speedTarget,
             speedGaugeMaximum: preferences.speedGaugeMaximum,
-            speedEnabled: preferences.speedEnabled
+            speedEnabled: preferences.speedEnabled,
+            minimumWheelieDuration: preferences.effectiveMinimumDuration
         )
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "session started (subscribed)", values: [:])

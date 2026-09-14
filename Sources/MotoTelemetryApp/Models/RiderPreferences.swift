@@ -71,6 +71,10 @@ final class RiderPreferences {
     var speedEnabled: Bool {
         didSet { save() }
     }
+    var minimumDurationEnabled = true { didSet { save() } }
+    var minimumWheelieDuration = 0.5 { didSet { save() } }
+    var effectiveMinimumDuration: Double { minimumDurationEnabled ? minimumWheelieDuration : 0 }
+
     var speedUnit: SpeedUnit {
         didSet { save() }
     }
@@ -124,6 +128,9 @@ final class RiderPreferences {
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let stored = try? JSONDecoder().decode(StoredPreferences.self, from: data) {
+            self.minimumDurationEnabled = stored.minimumDurationEnabled ?? true
+            let duration = stored.minimumWheelieDuration ?? 0.5
+            self.minimumWheelieDuration = [0.25, 0.5, 1.0, 2.0].contains(duration) ? duration : 0.5
             self.angleTarget = stored.angleTarget
             self.speedTarget = stored.speedTarget
             self.speedGaugeMaximum = Self.clampGaugeMaximum(stored.speedGaugeMaximum)
@@ -202,7 +209,9 @@ final class RiderPreferences {
             speedEnabled: speedEnabled,
             speedUnit: speedUnit,
             angleColorHex: angleColorHex,
-            speedColorHex: speedColorHex
+            speedColorHex: speedColorHex,
+            minimumDurationEnabled: minimumDurationEnabled,
+            minimumWheelieDuration: minimumWheelieDuration
         )
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
@@ -223,4 +232,6 @@ private struct StoredPreferences: Codable {
     /// missing value falls back to the new defaults in `init`.
     let angleColorHex: UInt?
     let speedColorHex: UInt?
+    let minimumDurationEnabled: Bool?
+    let minimumWheelieDuration: Double?
 }

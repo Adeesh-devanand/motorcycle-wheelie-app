@@ -1,24 +1,16 @@
 import SwiftUI
 import MotoTelemetryCore
 
-/// The Live tab's flow container: calibration, then swipe alignment, then the live
-/// screen. Calibration runs on EVERY launch (no persistence), so this sequence is
-/// the front door, not an occasional interruption.
-///
-/// One sensor session spans all three phases. `RunRecorder.startSensing()` begins
-/// CoreMotion updates and feeds `CalibrationService` immediately; the same running
-/// session is promoted to a recording session (with the captured alignment) when the
-/// rider confirms the swipe. That ordering resolves the chicken-and-egg — calibration
-/// needs the sensor stream, and the alignment the live view needs is what calibration
-/// produces — without starting the stream twice.
-/// `@MainActor` for the same reason `LiveScreen` and `CalibrationScreen` are: it owns
+/// Live is always accessible. Calibration and mount alignment enable telemetry;
+/// skipping either step returns to inactive meters with Settings and Runs available.
+@MainActor` for the same reason `LiveScreen` and `CalibrationScreen` are: it owns
 /// the flow `phase` and calls `CalibrationService.restart()`, which is main-actor
 /// isolated so it can publish the observable mirrors synchronously.
 @MainActor
 struct LiveWheelieView: View {
-    private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment) }
+    private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment?) }
 
-    @State private var phase: Phase = .calibrating
+    @State private var phase: Phase = .live(nil)
     private let calibrationService: CalibrationService
     private let preferences: RiderPreferences
     private let recorder: RunRecorder
@@ -53,7 +45,7 @@ struct LiveWheelieView: View {
             case .calibrating:
                 CalibrationScreen(service: calibrationService, onMeasured: { estimate in
                     phase = .swiping(estimate)
-                }, onRetry: restart)
+                }, onRetry: restart, onSkip: skipCalibration)
                 .onAppear { recorder.startSensing(bikeProfileID: bikeProfileID) }
 
             case .swiping(let estimate):
@@ -64,6 +56,9 @@ struct LiveWheelieView: View {
                     onConfirmed: { alignment in phase = .live(alignment) },
                     onRecalibrate: restart
                 )
+                .safeAreaInset(edge: .bottom) {
+                    Button("Skip for now", action: skipCalibration).padding()
+                }
 
             case .live(let alignment):
                 LiveScreen(
@@ -78,21 +73,12 @@ struct LiveWheelieView: View {
         }
     }
 
-    /// Return to the front of the flow: the calibration screen, then the swipe.
-    ///
-    /// Owned here rather than in `LiveWheelieViewModel` because `phase` lives here.
-    /// The view model's old `requestRecalibration()` did half the job — it restarted
-    /// the service but could not move the phase it does not own, so the rider stayed
-    /// on the live screen watching a pill that said CALIBRATING while the angle they
-    /// were reading was derived from the bias being replaced.
-    ///
-    /// Ordering is deliberate and matches the swipe screen's own path: restart the
-    /// service, then change phase. `LiveScreen` disappearing runs
-    /// `LiveWheelieViewModel.onDisappear` -> `recorder.stopSession()`, which returns
-    /// the recorder to `.idle`, and `CalibrationScreen.onAppear` then calls
-    /// `startSensing` whose guard requires exactly that. A new alignment is required
-    /// too: a re-zero without a fresh swipe would keep an alignment measured against
-    /// the old reference.
+    private func skipCalibration() {
+        recorder.stopSession()
+        calibrationService.restart()
+        phase = .live(nil)
+    }
+
     private func restart() {
         recorder.stopSession()
         calibrationService.restart()
@@ -120,7 +106,7 @@ struct LiveScreen: View {
     init(calibrationService: CalibrationService,
          preferences: RiderPreferences,
          recorder: RunRecorder,
-         alignment: MountAlignment,
+         alignment: MountAlignment?,
          bikeProfileID: UUID,
          onRecalibrate: @escaping @MainActor () -> Void) {
         self.onRecalibrate = onRecalibrate
@@ -145,8 +131,19 @@ struct LiveScreen: View {
                     .accessibilityAddTraits(.updatesFrequently)
                 headerBar
                 metersSection
+                    .opacity(viewModel.isCalibrated ? 1 : 0.25)
+                    .allowsHitTesting(viewModel.isCalibrated)
+                    .overlay {
+                        if !viewModel.isCalibrated {
+                            Text("Calibrate first")
+                                .font(.headline)
+                                .padding()
+                                .background(AppColors.surfaceCard, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
                     .frame(maxHeight: .infinity)
                 bottomMetrics
+                    .opacity(viewModel.isCalibrated ? 1 : 0.25)
             }
             .padding(AppSpacing.screenPadding)
         }
@@ -165,8 +162,23 @@ struct LiveScreen: View {
     private var headerBar: some View {
         ZStack {
             // Centered status pill
-            StatusPill(state: viewModel.calibrationState, onTapRecalibrate: onRecalibrate)
-                .frame(width: UIScreen.main.bounds.width * 0.62)
+            Group {
+                if viewModel.isCalibrated {
+                    StatusPill(state: viewModel.calibrationState, onTapRecalibrate: onRecalibrate)
+                } else {
+                    Button(action: onRecalibrate) {
+                        HStack(spacing: 8) {
+                            Circle().fill(Color.red).frame(width: 8, height: 8)
+                            Text("Calibrate")
+                        }
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 20)
+                        .background(AppColors.surfaceButton, in: Capsule())
+                    }
+                    .accessibilityLabel("Calibrate. Calibration required")
+                }
+            }
+            .frame(width: UIScreen.main.bounds.width * 0.62)
 
             // Gear button at trailing edge
             HStack {
