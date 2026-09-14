@@ -1,201 +1,126 @@
 import SwiftUI
 import MotoTelemetryCore
 
-/// Live is always accessible. Calibration and mount alignment enable telemetry;
-/// skipping either step returns to inactive meters with Settings and Runs available.
+/// One persistent Live page owns meters, calibration, alignment and pause controls.
 @MainActor
 struct LiveWheelieView: View {
-    private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment?) }
-
-    @State private var phase: Phase = .live(nil)
-    private let calibrationService: CalibrationService
-    private let preferences: RiderPreferences
-    private let recorder: RunRecorder
-    private let bikeProfileID = UUID()
-
-    init(calibrationService: CalibrationService,
-         preferences: RiderPreferences,
-         recorder: RunRecorder) {
-        self.calibrationService = calibrationService
-        self.preferences = preferences
-        self.recorder = recorder
-    }
+    let calibrationService: CalibrationService
+    let preferences: RiderPreferences
+    let recorder: RunRecorder
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !recorder.unsavedRuns.isEmpty {
-                Button("\(recorder.unsavedRuns.count) unsaved attempt(s) — Retry saving") {
-                    recorder.retryUnsavedRuns()
-                }
-                .foregroundStyle(AppColors.warning)
-                .padding()
-                Text("Keep the app open until saving succeeds.")
-                    .font(.caption)
-            }
-            phaseContent
-        }
-    }
-
-    private var phaseContent: some View {
-        Group {
-            switch phase {
-            case .calibrating:
-                CalibrationScreen(service: calibrationService, onMeasured: { estimate in
-                    phase = .swiping(estimate)
-                }, onRetry: restart, onSkip: skipCalibration)
-                .onAppear { recorder.startSensing(bikeProfileID: bikeProfileID) }
-
-            case .swiping(let estimate):
-                SwipeAlignmentScreen(
-                    gravityAnchor: estimate.measuredGravity ?? Vector3(0, 0, -Conventions.g),
-                    config: Config(),
-                    bikeProfileID: bikeProfileID,
-                    onConfirmed: { alignment in phase = .live(alignment) },
-                    onRecalibrate: restart
-                )
-                .safeAreaInset(edge: .bottom) {
-                    Button("Skip for now", action: skipCalibration).padding()
-                }
-
-            case .live(let alignment):
-                LiveScreen(
-                    calibrationService: calibrationService,
-                    preferences: preferences,
-                    recorder: recorder,
-                    alignment: alignment,
-                    bikeProfileID: bikeProfileID,
-                    onRecalibrate: restart
-                )
-            }
-        }
-    }
-
-    private func skipCalibration() {
-        recorder.stopSession()
-        calibrationService.restart()
-        phase = .live(nil)
-    }
-
-    private func restart() {
-        recorder.stopSession()
-        calibrationService.restart()
-        if case .calibrating = phase { recorder.startSensing(bikeProfileID: bikeProfileID) }
-        phase = .calibrating
+        LiveScreen(calibrationService: calibrationService, preferences: preferences,
+                   recorder: recorder, alignment: nil, bikeProfileID: UUID())
     }
 }
 
-/// The live telemetry screen proper — reached only after calibration and swipe,
-/// and handed a real measured alignment.
-///
-/// `@MainActor` because every property it reads — `LiveWheelieViewModel` and, one
-/// layer down, `RunRecorder`'s display mirrors — is main-actor isolated by the
-/// concurrency fix. SwiftUI's `body` is not itself isolated in Swift 5, so without
-/// this the view reads main-actor state from a nonisolated context and the app
-/// does not compile.
 @MainActor
 struct LiveScreen: View {
     @State private var viewModel: LiveWheelieViewModel
     @State private var showSettings = false
-    /// Sends the rider back to the calibration screen. Owned by `LiveWheelieView`,
-    /// which holds the phase.
-    private let onRecalibrate: @MainActor () -> Void
+    private let calibrationService: CalibrationService
+    private let recorder: RunRecorder
 
-    init(calibrationService: CalibrationService,
-         preferences: RiderPreferences,
-         recorder: RunRecorder,
-         alignment: MountAlignment?,
-         bikeProfileID: UUID,
-         onRecalibrate: @escaping @MainActor () -> Void) {
-        self.onRecalibrate = onRecalibrate
+    init(calibrationService: CalibrationService, preferences: RiderPreferences,
+         recorder: RunRecorder, alignment: MountAlignment?, bikeProfileID: UUID) {
+        self.calibrationService = calibrationService
+        self.recorder = recorder
         _viewModel = State(wrappedValue: LiveWheelieViewModel(
-            calibrationService: calibrationService,
-            preferences: preferences,
-            recorder: recorder,
-            alignment: alignment,
-            bikeProfileID: bikeProfileID
-        ))
+            calibrationService: calibrationService, preferences: preferences,
+            recorder: recorder, alignment: alignment, bikeProfileID: bikeProfileID))
     }
 
     var body: some View {
         ZStack {
-            AppColors.background
-                .ignoresSafeArea()
-
+            AppColors.background.ignoresSafeArea()
             VStack(spacing: AppSpacing.lg) {
-                Text(viewModel.acquisitionStatus)
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textSecondary)
-                    .accessibilityAddTraits(.updatesFrequently)
                 headerBar
-                metersSection
-                    .opacity(viewModel.isCalibrated ? 1 : 0.25)
-                    .allowsHitTesting(viewModel.isCalibrated)
-                    .overlay {
-                        if !viewModel.isCalibrated {
-                            Text("Calibrate first")
-                                .font(.headline)
-                                .padding()
-                                .background(AppColors.surfaceCard, in: RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                    .frame(maxHeight: .infinity)
-                bottomMetrics
-                    .opacity(viewModel.isCalibrated ? 1 : 0.25)
+                if !recorder.unsavedRuns.isEmpty {
+                    Button("Retry saving unsaved attempts") { recorder.retryUnsavedRuns() }
+                        .foregroundStyle(AppColors.warning)
+                }
+                if !viewModel.acquisitionStatus.isEmpty {
+                    Text(viewModel.acquisitionStatus)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                instrumentContent.frame(maxHeight: .infinity)
+                if !viewModel.isCalibrating {
+                    bottomMetrics.opacity(viewModel.metersEnabled ? 1 : 0.25)
+                }
             }
             .padding(AppSpacing.screenPadding)
         }
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
         .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView(preferences: viewModel.preferences)
+            NavigationStack { SettingsView(preferences: viewModel.preferences) }
+        }
+    }
+
+    @ViewBuilder
+    private var instrumentContent: some View {
+        switch viewModel.phase {
+        case .meters:
+            metersSection
+                .opacity(viewModel.metersEnabled ? 1 : 0.25)
+                .allowsHitTesting(viewModel.metersEnabled)
+        case .calibrating:
+            CalibrationScreen(service: calibrationService,
+                onMeasured: viewModel.didMeasureCalibration,
+                onRetry: viewModel.beginCalibration,
+                onSkip: viewModel.skipCalibration)
+        case .aligning(let estimate):
+            VStack(spacing: 8) {
+                SwipeAlignmentScreen(
+                    gravityAnchor: estimate.measuredGravity ?? Vector3(0, 0, -Conventions.g),
+                    config: Config(), bikeProfileID: viewModel.profileID,
+                    onConfirmed: viewModel.confirmAlignment,
+                    onRecalibrate: viewModel.beginCalibration)
+                Button("Skip for now", action: viewModel.skipCalibration)
+                    .padding(.bottom, 8)
             }
         }
     }
 
-    // MARK: - Header
-
-    /// Centered status pill (~62% width), circular gear button at trailing edge.
     private var headerBar: some View {
-        ZStack {
-            // Centered status pill
-            Group {
-                if viewModel.isCalibrated {
-                    StatusPill(state: viewModel.calibrationState, onTapRecalibrate: onRecalibrate)
-                } else {
-                    Button(action: onRecalibrate) {
-                        HStack(spacing: 8) {
-                            Circle().fill(Color.red).frame(width: 8, height: 8)
-                            Text("Calibrate")
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 20)
-                        .background(AppColors.surfaceButton, in: Capsule())
-                    }
-                    .accessibilityLabel("Calibrate. Calibration required")
-                }
-            }
-            .frame(width: UIScreen.main.bounds.width * 0.62)
-
-            // Gear button at trailing edge
-            HStack {
-                Spacer()
-                Button {
-                    showSettings = true
-                } label: {
+        HStack(spacing: 10) {
+            Button(action: viewModel.beginCalibration) {
+                HStack(spacing: 8) {
                     Circle()
-                        .fill(AppColors.surfaceButton)
-                        .frame(width: 48, height: 48)
-                        .overlay(
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 20))
-                                .foregroundStyle(AppColors.textSecondary)
-                        )
+                        .fill(viewModel.isCalibrating ? Color.yellow :
+                              (viewModel.isCalibrated ? Color.green : Color.red))
+                        .frame(width: 8, height: 8)
+                    Text(viewModel.isCalibrating ? "Calibrating" :
+                         (viewModel.isCalibrated ? "Recalibrate" : "Calibrate"))
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Settings")
+                .frame(minHeight: 44)
+                .padding(.horizontal, 12)
+                .background(AppColors.surfaceButton, in: Capsule())
             }
+            .accessibilityLabel(viewModel.isCalibrating ? "Restart calibration" :
+                                (viewModel.isCalibrated ? "Recalibrate" : "Calibrate"))
+
+            Button(action: viewModel.togglePause) {
+                Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
+                    .frame(width: 44, height: 44)
+                    .background(AppColors.surfaceButton, in: Circle())
+            }
+            .disabled(!viewModel.isCalibrated || viewModel.isCalibrating)
+            .accessibilityLabel(viewModel.isPaused ? "Resume meters and recording" : "Pause meters and recording")
+            Spacer(minLength: 0)
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape.fill")
+                    .frame(width: 44, height: 44)
+                    .background(AppColors.surfaceButton, in: Circle())
+            }
+            .accessibilityLabel("Settings")
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppColors.textPrimary)
     }
 
     // MARK: - Meters Section
@@ -373,6 +298,6 @@ struct LiveScreen: View {
     // MARK: - Helpers
 
     private var targetEditDisabled: Bool {
-        viewModel.eventActive || !viewModel.isCalibrated
+        viewModel.eventActive || !viewModel.metersEnabled
     }
 }

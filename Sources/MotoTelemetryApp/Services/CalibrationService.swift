@@ -43,6 +43,7 @@ final class CalibrationService: @unchecked Sendable {
 
     private(set) var phase: Phase = .measuring(progress: nil)
     private(set) var hasSeenSample = false
+    private(set) var rotationRateDegrees = Vector3.zero
 
     /// Which gate condition last reset the dwell, phrased for the rider. This is the
     /// per-sample reason the calibration screen shows the instant the countdown
@@ -84,6 +85,8 @@ final class CalibrationService: @unchecked Sendable {
     private var internalPhase: Phase = .measuring(progress: nil)
     private var internalBlockingReason: String?
     private var internalHasSeenSample = false
+    private var internalRotationRateDegrees = Vector3.zero
+    private var lastRotationPublish: TimeInterval = -.infinity
     /// At most one publish hop in flight, so 100 Hz of samples costs one main-actor
     /// hop per turn instead of a `Task` per sample.
     private var publishScheduled = false
@@ -143,6 +146,11 @@ final class CalibrationService: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        if sample.time - lastRotationPublish >= 0.1 {
+            internalRotationRateDegrees = sample.rotationRate * (180 / .pi)
+            lastRotationPublish = sample.time
+            schedulePublishLocked()
+        }
         if !internalHasSeenSample {
             internalHasSeenSample = true
             if internalPhase == .unavailable {
@@ -185,10 +193,12 @@ final class CalibrationService: @unchecked Sendable {
         let newPhase = internalPhase
         let newReason = internalBlockingReason
         let newSeen = internalHasSeenSample
+        let newRotation = internalRotationRateDegrees
         lock.unlock()
 
         // Guarded so an unchanged value does not invalidate a SwiftUI view — the
         // `.collecting` path re-publishes the same phase on most samples.
+        if rotationRateDegrees != newRotation { rotationRateDegrees = newRotation }
         if phase != newPhase { phase = newPhase }
         if hasSeenSample != newSeen { hasSeenSample = newSeen }
         publishReason(newReason)
@@ -290,6 +300,8 @@ final class CalibrationService: @unchecked Sendable {
 
     private func restartLocked() {
         internalHasSeenSample = false
+        internalRotationRateDegrees = .zero
+        lastRotationPublish = -.infinity
         estimator = BiasEstimator(config: config,
                                   bikeProfileID: bikeProfileID,
                                   thermalState: ProcessInfo.processInfo.thermalState.rawValue,

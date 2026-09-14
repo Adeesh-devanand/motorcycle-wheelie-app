@@ -16,7 +16,7 @@ struct CalibrationScreen: View {
 
     var body: some View {
         ZStack {
-            AppColors.background.ignoresSafeArea()
+            AppColors.background
 
             // Scrollable so the largest accessibility text can't clip the instruction
             // or push the action button off-screen. On normal sizes the min-height frame
@@ -45,6 +45,14 @@ struct CalibrationScreen: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, AppSpacing.xl)
+
+                Text(String(format: "Gyro °/s   X %.2f   Y %.2f   Z %.2f",
+                            service.rotationRateDegrees.x,
+                            service.rotationRateDegrees.y,
+                            service.rotationRateDegrees.z))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
 
                 // Progress fraction = how much of the 2 s still-window is complete.
                 if case .measuring(let progress) = service.phase {
@@ -92,7 +100,7 @@ struct CalibrationScreen: View {
                 onMeasured(estimate)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Calibration")
         .accessibilityValue(title)
     }

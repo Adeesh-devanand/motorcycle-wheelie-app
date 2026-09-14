@@ -507,3 +507,79 @@ extension TelemetryIntegrationHarnessTests {
         XCTAssertEqual(retries, 1)
     }
 }
+
+
+extension TelemetryIntegrationHarnessTests {
+    @MainActor
+    func testInlineCalibrationStartsImmediatelyAndSkipStopsSensing() {
+        let store = TemporaryRunStore()
+        defer { store.cleanup() }
+        let motion = ScriptedMotionSource()
+        let speed = ScriptedSpeedSource()
+        let calibration = CalibrationService()
+        let recorder = RunRecorder(motionService: motion, speedService: speed,
+            calibrationService: calibration, repository: store.repository)
+        recorder.rawRecordingEnabled = false
+        let model = LiveWheelieViewModel(calibrationService: calibration,
+            preferences: RiderPreferences(), recorder: recorder, alignment: nil)
+        model.onAppear()
+        defer { model.onDisappear() }
+        XCTAssertEqual(motion.startCalls, 0)
+        model.beginCalibration()
+        XCTAssertEqual(recorder.recordingState, .sensing)
+        XCTAssertEqual(motion.startCalls, 1, "Calibrate must start sensing without a tab switch")
+        XCTAssertTrue(model.isCalibrating)
+        model.beginCalibration()
+        XCTAssertEqual(motion.startCalls, 2, "Retry must restart immediately too")
+        model.skipCalibration()
+        XCTAssertEqual(recorder.recordingState, .idle)
+        XCTAssertFalse(model.isCalibrating)
+        XCTAssertFalse(model.metersEnabled)
+    }
+
+    @MainActor
+    func testPauseSurvivesNavigationAndResumeRetainsCalibration() async throws {
+        let store = TemporaryRunStore()
+        defer { store.cleanup() }
+        let motion = ScriptedMotionSource()
+        let speed = ScriptedSpeedSource()
+        let calibration = CalibrationService()
+        let recorder = RunRecorder(motionService: motion, speedService: speed,
+            calibrationService: calibration, repository: store.repository)
+        recorder.rawRecordingEnabled = false
+        let model = LiveWheelieViewModel(calibrationService: calibration,
+            preferences: RiderPreferences(), recorder: recorder, alignment: nil)
+        model.onAppear()
+        defer { model.onDisappear() }
+        model.beginCalibration()
+        for i in 0..<500 {
+            calibration.feedIMU(IMUSample(time: 990 + Double(i) * 0.01,
+                rotationRate: .zero, specificForce: Vector3(0, 0, -9.80665)))
+        }
+        for _ in 0..<1000 {
+            if calibration.estimate != nil { break }
+            await Task.yield()
+        }
+        let estimate = try XCTUnwrap(calibration.estimate)
+        model.didMeasureCalibration(estimate)
+        model.confirmAlignment(.identity())
+        XCTAssertEqual(recorder.recordingState, .running)
+        XCTAssertTrue(model.metersEnabled)
+        model.togglePause()
+        XCTAssertEqual(recorder.recordingState, .idle)
+        XCTAssertTrue(model.isPaused)
+        XCTAssertFalse(model.metersEnabled)
+        XCTAssertFalse(model.eventActive)
+        XCTAssertGreaterThan(motion.stopCalls, 0)
+        XCTAssertGreaterThan(speed.stopCalls, 0)
+        let startsAtPause = motion.startCalls
+        model.onDisappear()
+        model.onAppear()
+        XCTAssertEqual(motion.startCalls, startsAtPause, "Navigation must not resume a paused session")
+        model.togglePause()
+        XCTAssertEqual(recorder.recordingState, .running)
+        XCTAssertEqual(motion.startCalls, startsAtPause + 1)
+        XCTAssertEqual(calibration.estimate?.id, estimate.id)
+        XCTAssertTrue(model.metersEnabled)
+    }
+}

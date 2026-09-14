@@ -56,7 +56,9 @@ final class LiveWheelieViewModel {
     var speedometerEnabled: Bool { recorder.effectiveSettings.enabled }
 
     var acquisitionStatus: String {
-        if alignment == nil { return "Calibrate first to enable live meters" }
+        if isCalibrating { return "" }
+        if isPaused { return "Paused" }
+        if alignment == nil { return "" }
         if !recorder.unsavedRuns.isEmpty { return "Attempt not saved — retry above" }
         if !recorder.sensorHealthy { return "Waiting for fresh motion data" }
         if recorder.eventActive { return "Recording attempt" }
@@ -84,7 +86,7 @@ final class LiveWheelieViewModel {
     /// or blank otherwise.
     var isCalibrated: Bool {
         guard alignment != nil else { return false }
-        if case .calibrated = calibrationState { return true }
+        if case .calibrated = calibrationService.state { return true }
         return false
     }
 
@@ -96,7 +98,16 @@ final class LiveWheelieViewModel {
     private let bikeProfileID: UUID
     /// The measured phone->bike alignment from calibration + swipe. Required — the
     /// live screen is only reachable once it exists.
-    private let alignment: MountAlignment?
+    private var alignment: MountAlignment?
+    enum Phase { case meters, calibrating, aligning(BiasEstimate) }
+    private(set) var phase: Phase = .meters
+    private(set) var isPaused = false
+    var profileID: UUID { bikeProfileID }
+    var isCalibrating: Bool {
+        switch phase { case .meters: return false; default: return true }
+    }
+    var metersEnabled: Bool { isCalibrated && !isPaused && !isCalibrating }
+
 
     // MARK: - Private
 
@@ -136,7 +147,11 @@ final class LiveWheelieViewModel {
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "onAppear", values: [:])
         startDisplayDecimation()
-        startSession()
+        if isCalibrating {
+            recorder.startSensing(bikeProfileID: bikeProfileID)
+        } else if !isPaused {
+            startSession()
+        }
     }
 
     func onDisappear() {
@@ -153,7 +168,8 @@ final class LiveWheelieViewModel {
     /// starts calibration — `RunRecorder` feeds every raw IMU sample to
     /// `CalibrationService` as it runs the pipeline.
     private func startSession() {
-        guard !sessionStarted, let alignment else { return }
+        guard !sessionStarted, !isPaused, !isCalibrating,
+              calibrationService.estimate != nil, let alignment else { return }
         sessionStarted = true
         recorder.startSession(
             bikeProfileID: bikeProfileID,
@@ -175,6 +191,69 @@ final class LiveWheelieViewModel {
 
     // MARK: - User Actions
 
+    func beginCalibration() {
+        recorder.stopSession()
+        sessionStarted = false
+        alignment = nil
+        isPaused = false
+        resetMeters()
+        calibrationService.restart()
+        phase = .calibrating
+        // Explicit ordering; swapping the instrument content has no lifecycle hooks.
+        recorder.startSensing(bikeProfileID: bikeProfileID)
+    }
+
+    func didMeasureCalibration(_ estimate: BiasEstimate) {
+        guard case .calibrating = phase else { return }
+        phase = .aligning(estimate)
+    }
+
+    func confirmAlignment(_ captured: MountAlignment) {
+        guard case .aligning = phase, calibrationService.estimate != nil else { return }
+        alignment = captured
+        phase = .meters
+        isPaused = false
+        startSession()
+    }
+
+    func skipCalibration() {
+        recorder.stopSession()
+        sessionStarted = false
+        alignment = nil
+        calibrationService.restart()
+        phase = .meters
+        isPaused = false
+        resetMeters()
+    }
+
+    func togglePause() {
+        guard isCalibrated, !isCalibrating else { return }
+        if isPaused {
+            isPaused = false
+            resetMeters()
+            startSession()
+            diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                        message: "resumed with retained calibration", values: [:])
+        } else {
+            diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
+                        message: "paused by rider", values: [:])
+            // Stops motion, GPS and audio, closes any current attempt and seals its file.
+            recorder.stopSession()
+            sessionStarted = false
+            isPaused = true
+            eventActive = false
+            speedAvailable = false
+        }
+    }
+
+    private func resetMeters() {
+        currentAngle = 0; currentSpeed = 0
+        attemptMaxAngle = 0; attemptMaxSpeed = 0
+        wheelieTime = 0; eventActive = false; speedAvailable = false
+        angleDisplayFilter.reset(); speedDisplayFilter.reset()
+    }
+
+
     // `requestRecalibration()` was removed. It called
     // `calibrationService.restart()` and nothing else, which restarted the
     // measurement but could not move the flow's `phase` — that lives in
@@ -186,6 +265,7 @@ final class LiveWheelieViewModel {
     // MARK: - Private
 
     private func startDisplayDecimation() {
+        guard displayLink == nil else { return }
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "display link start (30 Hz)", values: [:])
         displayLink = DisplayLinkProxy { [weak self] applyData in
@@ -247,7 +327,7 @@ final class LiveWheelieViewModel {
         }
 
         // §7.2: freeze live values unless calibrated.
-        guard isCalibrated, recorder.sensorHealthy else {
+        guard metersEnabled, recorder.sensorHealthy else {
             speedAvailable = false
             angleDisplayFilter.reset(); speedDisplayFilter.reset()
             return

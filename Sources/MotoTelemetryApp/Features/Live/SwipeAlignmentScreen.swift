@@ -45,7 +45,7 @@ struct SwipeAlignmentScreen: View {
 
     var body: some View {
         ZStack {
-            AppColors.background.ignoresSafeArea()
+            AppColors.background
 
             VStack(spacing: AppSpacing.lg) {
                 // "back to front", NOT "front to back", which is what this said.
