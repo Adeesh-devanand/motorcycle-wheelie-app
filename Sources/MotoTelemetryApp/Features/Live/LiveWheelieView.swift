@@ -3,9 +3,6 @@ import MotoTelemetryCore
 
 /// Live is always accessible. Calibration and mount alignment enable telemetry;
 /// skipping either step returns to inactive meters with Settings and Runs available.
-@MainActor` for the same reason `LiveScreen` and `CalibrationScreen` are: it owns
-/// the flow `phase` and calls `CalibrationService.restart()`, which is main-actor
-/// isolated so it can publish the observable mirrors synchronously.
 @MainActor
 struct LiveWheelieView: View {
     private enum Phase { case calibrating, swiping(BiasEstimate), live(MountAlignment?) }
