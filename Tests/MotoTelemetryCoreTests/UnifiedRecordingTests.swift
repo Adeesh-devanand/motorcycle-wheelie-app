@@ -2,6 +2,55 @@ import XCTest
 @testable import MotoTelemetryCore
 
 final class UnifiedRecordingTests: XCTestCase {
+    func testPausedOrientationContinuesAndResumedRecordingReplays() throws {
+        let config = Config()
+        let gravity = Vector3(0, 0, -9.80665)
+        var pipe = Pipeline(config: config, alignment: .identity(), initialBias: nil,
+                            gravityAnchor: gravity)
+        _ = pipe.process(.imu(IMUSample(time: 0, rotationRate: .zero, specificForce: gravity)))
+        // Reach 20 degrees before pausing.
+        for i in 1...100 {
+            _ = pipe.process(.imu(IMUSample(time: Double(i) * 0.01,
+                rotationRate: Vector3(0, -20 * .pi / 180, 0), specificForce: gravity)))
+        }
+        XCTAssertEqual(pipe.orientationCheckpoint.estimator.pitch * 180 / .pi, 20, accuracy: 0.001)
+        // Hold through a pause, then move another 15 degrees while still paused.
+        for i in 101...300 {
+            pipe.trackOrientation(IMUSample(time: Double(i) * 0.01,
+                rotationRate: i <= 200 ? .zero : Vector3(0, -15 * .pi / 180, 0),
+                specificForce: gravity))
+            if i == 200 {
+                XCTAssertEqual(pipe.orientationCheckpoint.estimator.pitch * 180 / .pi, 20, accuracy: 0.001)
+            }
+        }
+        let checkpoint = pipe.orientationCheckpoint
+        XCTAssertEqual(checkpoint.estimator.pitch * 180 / .pi, 35, accuracy: 0.001)
+        var resumed = Pipeline(config: config, alignment: .identity(), initialBias: nil,
+                               gravityAnchor: gravity)
+        resumed.restoreOrientation(checkpoint)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ndjson")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var header = LogHeader(); header.formatVersion = 2
+        var data = try LogFile.encodeHeader(header)
+        func append<T: Encodable>(_ value: T) throws {
+            data.append(try JSONEncoder().encode(value)); data.append(10)
+        }
+        try append(RecordingContext(time: 3, config: config, alignment: .identity(),
+            initialBias: nil, gravityAnchor: gravity, speedEnabled: false,
+            orientationCheckpoint: checkpoint))
+        let sample = Sample.imu(IMUSample(time: 3.01, rotationRate: .zero, specificForce: gravity))
+        try append(sample)
+        let output = try XCTUnwrap(resumed.process(sample))
+        XCTAssertEqual(output.pitch * 180 / .pi, 35, accuracy: 0.001)
+        try append(RecordedOutput(output))
+        data.append(Data("{\"kind\":\"recordingEnd\",\"complete\":true}\n".utf8))
+        try data.write(to: url)
+        let report = try RecordingAudit.run(url: url)
+        XCTAssertEqual(report.comparedOutputs, 1)
+        XCTAssertEqual(report.mismatchedOutputs, 0)
+        XCTAssertFalse(report.incomplete)
+    }
+
     func testDisplayTracksFastLiftWithoutFrameRateDependentDelay() {
         for hz in [30.0, 60.0, 120.0] {
             var filter = ResponsiveDisplayFilter()

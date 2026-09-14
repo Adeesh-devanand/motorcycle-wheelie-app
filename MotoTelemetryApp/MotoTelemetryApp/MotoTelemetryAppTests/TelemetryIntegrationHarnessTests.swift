@@ -566,11 +566,11 @@ extension TelemetryIntegrationHarnessTests {
         XCTAssertEqual(recorder.recordingState, .running)
         XCTAssertTrue(model.metersEnabled)
         model.togglePause()
-        XCTAssertEqual(recorder.recordingState, .idle)
+        XCTAssertEqual(recorder.recordingState, .paused)
         XCTAssertTrue(model.isPaused)
         XCTAssertFalse(model.metersEnabled)
         XCTAssertFalse(model.eventActive)
-        XCTAssertGreaterThan(motion.stopCalls, 0)
+        XCTAssertEqual(motion.stopCalls, 0, "Pause keeps the 100 Hz motion stream alive")
         XCTAssertGreaterThan(speed.stopCalls, 0)
         let startsAtPause = motion.startCalls
         model.onDisappear()
@@ -578,7 +578,7 @@ extension TelemetryIntegrationHarnessTests {
         XCTAssertEqual(motion.startCalls, startsAtPause, "Navigation must not resume a paused session")
         model.togglePause()
         XCTAssertEqual(recorder.recordingState, .running)
-        XCTAssertEqual(motion.startCalls, startsAtPause + 1)
+        XCTAssertEqual(motion.startCalls, startsAtPause, "Resume must not restart Core Motion")
         XCTAssertEqual(calibration.estimate?.id, estimate.id)
         XCTAssertTrue(model.metersEnabled)
     }

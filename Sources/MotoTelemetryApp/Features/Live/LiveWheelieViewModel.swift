@@ -146,7 +146,7 @@ final class LiveWheelieViewModel {
     func onAppear() {
         diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                     message: "onAppear", values: [:])
-        startDisplayDecimation()
+        if !isPaused { startDisplayDecimation() }
         if isCalibrating {
             recorder.startSensing(bikeProfileID: bikeProfileID)
         } else if !isPaused {
@@ -159,8 +159,10 @@ final class LiveWheelieViewModel {
                     message: "onDisappear — stopping display link & session", values: [:])
         displayLink?.stop()
         displayLink = nil
-        recorder.stopSession()
-        sessionStarted = false
+        if !isPaused {
+            recorder.stopSession()
+            sessionStarted = false
+        }
     }
 
     /// Starts the recording session. This is what asks CoreMotion for updates,
@@ -231,15 +233,16 @@ final class LiveWheelieViewModel {
         if isPaused {
             isPaused = false
             resetMeters()
-            startSession()
+            recorder.resumeSession()
+            startDisplayDecimation()
             diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                         message: "resumed with retained calibration", values: [:])
         } else {
             diag.always(time: ProcessInfo.processInfo.systemUptime, level: .info,
                         message: "paused by rider", values: [:])
-            // Stops motion, GPS and audio, closes any current attempt and seals its file.
-            recorder.stopSession()
-            sessionStarted = false
+            recorder.pauseSession()
+            displayLink?.stop()
+            displayLink = nil
             isPaused = true
             eventActive = false
             speedAvailable = false

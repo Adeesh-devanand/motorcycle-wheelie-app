@@ -81,6 +81,7 @@ final class RunRecorder: @unchecked Sendable {
     private let speedService: any SpeedProviding
     private let calibrationService: CalibrationService
     private let repository: RunRepository
+    private var orientationOnly = false
     private var config: Config
     private let monotonicNow: @Sendable () -> TimeInterval
     private let cueRenderer: CueAudioRenderer?
@@ -268,7 +269,7 @@ final class RunRecorder: @unchecked Sendable {
         guard epoch == sessionEpoch else { return }
         if let speedGeneration, speedGeneration != speedEpoch { return }
         if case .imu(let imu) = sample {
-            calibrationService.feedIMU(imu)
+            if !orientationOnly { calibrationService.feedIMU(imu) }
             lastIMUArrival = monotonicNow()
         }
         processSample(sample, epoch: epoch)
@@ -472,6 +473,88 @@ final class RunRecorder: @unchecked Sendable {
         }
     }
 
+    /// Keep the same motion task and estimator at 100 Hz, but close the scored run.
+    @MainActor
+    func pauseSession() {
+        guard recordingState == .running else { return }
+        processLock.lock()
+        if var seg = segmenter {
+            let transition = seg.finish()
+            segmenter = seg
+            if let transition { handleTransition(transition, at: monotonicNow(), speed: nil) }
+        }
+        DiagnosticLog.shared.appendRecord(RecordingControl(time: monotonicNow(), action: "stop"))
+        orientationOnly = true
+        internalEventActive = false
+        internalCurrentEventDuration = 0
+        eventOnsetTime = nil
+        pipeline?.eventActive = false
+        pipeline?.clearSpeed()
+        segmenter = nil
+        scorer = nil
+        collectedSamples.removeAll(keepingCapacity: true)
+        pendingDisplay.eventActive = false
+        pendingDisplay.currentEventDuration = 0
+        speedEpoch &+= 1
+        let closing = rawRecorder
+        rawRecorder = nil
+        processLock.unlock()
+        recordingState = .paused
+        speedTask?.cancel(); speedTask = nil
+        speedService.stop()
+        cueRenderer?.stop()
+        eventActive = false
+        drainPendingSaves()
+        closing?.finish()
+        DiagnosticLog.shared.sealCapture()
+    }
+
+    @MainActor
+    func resumeSession() {
+        guard recordingState == .paused else { return }
+        let estimate = calibrationService.estimate
+        processLock.lock()
+        guard let existing = pipeline else { processLock.unlock(); return }
+        let checkpoint = existing.orientationCheckpoint
+        // Reset ancillary detectors/filters without resetting attitude or gyro timebase.
+        let mount = existing.mountAlignment
+        var resumed = Pipeline(config: config, alignment: mount,
+            initialBias: estimate, gravityAnchor: estimate?.measuredGravity,
+            sink: DiagnosticLog.shared)
+        resumed.restoreOrientation(checkpoint)
+        pipeline = resumed
+        DiagnosticLog.shared.beginCapture()
+        if rawRecordingEnabled {
+            rawRecorder = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID ?? UUID())
+        }
+        DiagnosticLog.shared.appendRecord(RecordingContext(time: monotonicNow(), config: config,
+            alignment: mount, initialBias: estimate, gravityAnchor: estimate?.measuredGravity,
+            speedEnabled: speedEnabled,
+            angleTarget: angleTarget.map { [$0.lower, $0.upper] } ?? [],
+            speedTarget: [speedTarget.lower, speedTarget.upper], orientationCheckpoint: checkpoint))
+        segmenter = EventSegmenter(config: config, sink: DiagnosticLog.shared)
+        scorer = RunScorer(config: config)
+        orientationOnly = false
+        let epoch = sessionEpoch
+        speedEpoch &+= 1
+        let generation = speedEpoch
+        let resumeSpeed = speedEnabled
+        processLock.unlock()
+        recordingState = .running
+        if resumeSpeed {
+            speedService.start()
+            let fixes = speedService.fixes
+            speedTask = Task { [weak self] in
+                guard let self else { return }
+                for await sample in fixes {
+                    self.processLocked(sample, epoch: epoch, speedGeneration: generation)
+                }
+            }
+        }
+        evaluateSensorHealth()
+        if sensorHealthy { cueRenderer?.start() }
+    }
+
     @MainActor
     func stopSession() {
         guard recordingState != .idle else { return }
@@ -490,6 +573,7 @@ final class RunRecorder: @unchecked Sendable {
         // race the next `startSession`. The bump is under the lock so it is ordered
         // against a concurrent `processSample`'s epoch read.
         processLock.lock()
+        orientationOnly = false
         sessionEpoch &+= 1
         let emitted = internalSampleCount
         processLock.unlock()
@@ -660,6 +744,11 @@ final class RunRecorder: @unchecked Sendable {
         // Runs under `processLock` (held by the caller), so the comparison is ordered
         // against `stopSession`'s bump.
         guard epoch == sessionEpoch else { return }
+
+        if orientationOnly {
+            if case .imu(let imu) = sample { pipeline?.trackOrientation(imu) }
+            return
+        }
 
         // Raw trace runs BEFORE the pipeline guard, so it works during the
         // sensing-only phase (calibration + swipe) when `pipeline` is still nil.

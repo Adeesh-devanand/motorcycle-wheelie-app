@@ -105,14 +105,17 @@ public struct RecordingContext: Codable, Sendable {
     public var speedEnabled: Bool
     public var angleTarget: [Double]
     public var speedTarget: [Double]
+    public var orientationCheckpoint: Pipeline.OrientationCheckpoint?
     public init(time: TimeInterval, sessionID: UUID = UUID(), config: Config,
                 alignment: MountAlignment, initialBias: BiasEstimate?,
                 gravityAnchor: Vector3?, speedEnabled: Bool,
-                angleTarget: [Double] = [], speedTarget: [Double] = []) {
+                angleTarget: [Double] = [], speedTarget: [Double] = [],
+                orientationCheckpoint: Pipeline.OrientationCheckpoint? = nil) {
         self.time = time; self.sessionID = sessionID; self.config = config
         self.alignment = alignment; self.initialBias = initialBias
         self.gravityAnchor = gravityAnchor; self.speedEnabled = speedEnabled
         self.angleTarget = angleTarget; self.speedTarget = speedTarget
+        self.orientationCheckpoint = orientationCheckpoint
     }
 }
 
@@ -204,6 +207,7 @@ public enum RecordingAudit {
                 let config = configOverride ?? context.config
                 pipeline = Pipeline(config: config, alignment: context.alignment,
                     initialBias: context.initialBias, gravityAnchor: context.gravityAnchor)
+                if let checkpoint = context.orientationCheckpoint { pipeline?.restoreOrientation(checkpoint) }
                 segmenter = EventSegmenter(config: config)
                 speedEnabled = context.speedEnabled
                 expected = nil

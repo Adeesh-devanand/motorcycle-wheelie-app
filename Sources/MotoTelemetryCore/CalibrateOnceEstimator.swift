@@ -4,7 +4,7 @@ import Foundation
 /// Dynamic acceleration never corrects attitude. The pipeline may refresh bias
 /// and gravity only after independent stop evidence and a stable sensor window.
 /// Drift remains unobservable during sustained motion or without reliable GNSS.
-public struct CalibrateOnceEstimator {
+public struct CalibrateOnceEstimator: Codable, Sendable {
     private let config: Config
     private let alignment: MountAlignment
     public private(set) var bias: Vector3

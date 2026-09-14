@@ -82,6 +82,39 @@ public struct Pipeline {
     private var lastSpeedTime: TimeInterval?
     public static let speedFreshnessLimit: TimeInterval = 2.5
 
+    public struct OrientationCheckpoint: Codable, Sendable {
+        public var estimator: CalibrateOnceEstimator
+        public var biasMeanSigma: Double?
+        public var uncertaintyAnchorTime: TimeInterval?
+        public var uncertaintyInvalid: Bool
+        public var previousIntegrationTime: TimeInterval?
+    }
+
+    /// Pause keeps only raw-gyro propagation alive; no scoring, filtering or logging.
+    public mutating func trackOrientation(_ sample: IMUSample) {
+        if let previous = previousIntegrationTime,
+           sample.time <= previous || sample.time - previous >= config.maxIntegrationDt {
+            uncertaintyInvalid = true
+        }
+        previousIntegrationTime = sample.time
+        if uncertaintyAnchorTime == nil { uncertaintyAnchorTime = sample.time }
+        _ = estimator.integrate(sample)
+    }
+
+    public var mountAlignment: MountAlignment { alignment }
+    public var orientationCheckpoint: OrientationCheckpoint {
+        OrientationCheckpoint(estimator: estimator, biasMeanSigma: biasMeanSigma,
+            uncertaintyAnchorTime: uncertaintyAnchorTime, uncertaintyInvalid: uncertaintyInvalid,
+            previousIntegrationTime: previousIntegrationTime)
+    }
+    public mutating func restoreOrientation(_ checkpoint: OrientationCheckpoint) {
+        estimator = checkpoint.estimator
+        biasMeanSigma = checkpoint.biasMeanSigma
+        uncertaintyAnchorTime = checkpoint.uncertaintyAnchorTime
+        uncertaintyInvalid = checkpoint.uncertaintyInvalid
+        previousIntegrationTime = checkpoint.previousIntegrationTime
+    }
+
     public mutating func clearSpeed() {
         lastSpeed = nil; lastSpeedTime = nil; stationaryFix = nil
         stationaryWindow.reset()
