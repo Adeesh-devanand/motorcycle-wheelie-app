@@ -92,6 +92,27 @@ public struct GNSSFix: Codable, Sendable {
         self.altitude = altitude; self.horizontalAccuracy = horizontalAccuracy
     }
 
+    public var coordinatesRedacted: Bool = false
+    private enum CodingKeys: String, CodingKey {
+        case fixTime, arrivalTime, speed, speedAccuracy, course, courseAccuracy
+        case latitude, longitude, altitude, horizontalAccuracy, coordinatesRedacted
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fixTime = try c.decode(Double.self, forKey: .fixTime)
+        arrivalTime = try c.decode(Double.self, forKey: .arrivalTime)
+        speed = try c.decode(Double.self, forKey: .speed)
+        speedAccuracy = try c.decode(Double.self, forKey: .speedAccuracy)
+        course = try c.decodeIfPresent(Double.self, forKey: .course) ?? -1
+        courseAccuracy = try c.decodeIfPresent(Double.self, forKey: .courseAccuracy) ?? -1
+        latitude = try c.decodeIfPresent(Double.self, forKey: .latitude) ?? 0
+        longitude = try c.decodeIfPresent(Double.self, forKey: .longitude) ?? 0
+        altitude = try c.decodeIfPresent(Double.self, forKey: .altitude) ?? 0
+        horizontalAccuracy = try c.decodeIfPresent(Double.self, forKey: .horizontalAccuracy) ?? -1
+        coordinatesRedacted = try c.decodeIfPresent(Bool.self, forKey: .coordinatesRedacted)
+            ?? (!c.contains(.latitude) || !c.contains(.longitude))
+    }
+
     public var isSpeedValid: Bool { speed >= 0 }
 
     /// The speed this fix can actually defend, m/s, or nil when it carries no speed

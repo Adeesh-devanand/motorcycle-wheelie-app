@@ -6,10 +6,9 @@ import UIKit
 #endif
 
 /// App-side implementation of the core `DiagnosticSink` seam. Writes one JSON
-/// object per line (NDJSON) to `<Documents>/logs/session-<stamp>.ndjson`, mirrors
-/// `.info` and above into OSLog, prunes old `session-*` and `raw-*` files at launch
-/// (and on rotation) keeping only the newest few, rotates a single file at ~20 MB, and
-/// flushes on background / terminate so a kill never loses the tail.
+/// object per line to a unified `recording-*.ndjson` file, including raw samples
+/// and replay state. Mirrors diagnostics to OSLog and seals on session stop.
+/// Recordings are retained until explicitly deleted; incomplete writes are marked.
 ///
 /// ## The clock (`t`)
 ///
@@ -46,8 +45,7 @@ final class DiagnosticLog: DiagnosticSink {
     /// as defence in depth over the core's own rate discipline.
     private let coalesceWindow: TimeInterval = 0.05     // ~20/s
     private let flushInterval: TimeInterval = 0.25
-    private let rotateThresholdBytes: UInt64 = 20 * 1024 * 1024
-    private let keepFiles = 3   // set to 5 total via retention below
+    private let rotateThresholdBytes: UInt64 = 512 * 1024 * 1024
 
     // MARK: - Paths
 
@@ -77,6 +75,59 @@ final class DiagnosticLog: DiagnosticSink {
     private var buffer: [String] = []
     private let bufferLock = NSLock()
     private var droppedCount = 0
+    private var totalDrops = 0
+    private var captureActive = false
+    private var limitReached = false
+    private var diskSize: UInt64 = 0
+    private var firstSensorTime: Double?
+    private var lastSensorTime: Double?
+    private var imuCount = 0
+    private var validSpeedCount = 0
+    private var maxSpeedKPH: Double?
+    private var writeFailure: String?
+    var recordingSize: UInt64 { bufferLock.lock(); defer { bufferLock.unlock() }; return diskSize }
+    var recordingDrops: Int { bufferLock.lock(); defer { bufferLock.unlock() }; return totalDrops }
+    var recordingLimitReached: Bool { bufferLock.lock(); defer { bufferLock.unlock() }; return limitReached }
+    var recordingError: String? { bufferLock.lock(); defer { bufferLock.unlock() }; return writeFailure }
+
+    func beginCapture() {
+        bufferLock.lock(); captureActive = true; bufferLock.unlock()
+    }
+
+    /// The pipeline calls this in processing order. Do not sort by GNSS fix time:
+    /// the estimator saw the fix at this position in the stream, not retroactively.
+    func appendRecord<T: Encodable>(_ record: T) {
+        do {
+            let data = try JSONEncoder().encode(record)
+            guard let line = String(data: data, encoding: .utf8) else { return }
+            bufferLock.lock()
+            defer { bufferLock.unlock() }
+            guard !limitReached, writeFailure == nil else { return }
+            if buffer.count >= maxBufferedLines { droppedCount += 1; totalDrops += 1 }
+            else {
+                buffer.append(line)
+                if let sample = record as? Sample {
+                    if case .imu(let imu) = sample {
+                        firstSensorTime = firstSensorTime ?? imu.time
+                        lastSensorTime = imu.time; imuCount += 1
+                    } else if case .gnss(let fix) = sample, fix.isSpeedValid {
+                        validSpeedCount += 1
+                        maxSpeedKPH = max(maxSpeedKPH ?? 0, fix.speed * 3.6)
+                    }
+                }
+            }
+        } catch {
+            bufferLock.lock(); writeFailure = "Recording encoding failed: \(error.localizedDescription)"; bufferLock.unlock()
+        }
+    }
+
+    /// Close a ride and immediately open a new diagnostic file. The closed ride
+    /// can now be uploaded without waiting for another launch or guessing a pair.
+    func sealCapture() {
+        bufferLock.lock(); captureActive = false; bufferLock.unlock()
+        flushQueue.sync { self.drain(); self.rotate() }
+    }
+
     /// Last emit time per `(category|message)` key, for coalescing.
     ///
     /// INVARIANT: `message` MUST be a compile-time constant (or a finite enum
@@ -114,7 +165,7 @@ final class DiagnosticLog: DiagnosticSink {
 
         let stamp = Self.stamp()
         self.currentFileURLLock = OSAllocatedUnfairLock(
-            initialState: dir.appendingPathComponent("session-\(stamp).ndjson"))
+            initialState: dir.appendingPathComponent("recording-\(stamp)-\(UUID().uuidString.prefix(8)).ndjson"))
 
         openCurrentFile()
         writeHeaderLine()
@@ -122,7 +173,7 @@ final class DiagnosticLog: DiagnosticSink {
         // rotate-only call site meant pruning effectively never ran. Safe here
         // because no session (and therefore no RawSampleRecorder file handle) exists
         // yet at construction time.
-        pruneOldFiles()
+        // Retain recordings until the rider explicitly deletes them.
         startTimer()
         registerLifecycleObservers()
     }
@@ -134,9 +185,10 @@ final class DiagnosticLog: DiagnosticSink {
         let line = encode(event)
 
         bufferLock.lock()
+        guard !limitReached, writeFailure == nil else { bufferLock.unlock(); return }
         // Defence-in-depth coalescing over the core's transition+heartbeat rule.
         let key = event.category + "|" + event.message
-        let exemptFromCoalescing = (event.level == .warn || event.level == .error)
+        let exemptFromCoalescing = (event.level == .warn || event.level == .error || event.category == "event" || event.values["changed"] == 1)
         if let last = lastEmitByKey[key], event.time - last < coalesceWindow,
            !exemptFromCoalescing {
             droppedCount += 1
@@ -148,6 +200,7 @@ final class DiagnosticLog: DiagnosticSink {
         let bufferFull = buffer.count >= maxBufferedLines
         if bufferFull {
             droppedCount += 1
+            totalDrops += 1
         } else {
             buffer.append(line)
         }
@@ -235,7 +288,7 @@ final class DiagnosticLog: DiagnosticSink {
     private func number(_ d: Double) -> String {
         if d.isNaN || d.isInfinite { return "null" }
         // Trim to milli-precision-ish without locale surprises.
-        return String(format: "%.6g", d)
+        return String(format: "%.17g", locale: Locale(identifier: "en_US_POSIX"), d)
     }
 
     private func jsonString(_ s: String) -> String {
@@ -315,7 +368,10 @@ final class DiagnosticLog: DiagnosticSink {
         }()
 
         let wall = iso.string(from: Date())
-        let header = "{\"kind\":\"header\",\"logFormatVersion\":1,"
+        let header = "{\"kind\":\"header\",\"logFormatVersion\":2,\"formatVersion\":2,"
+            + "\"sessionID\":\(jsonString(UUID().uuidString)),\"startedAt\":\(Date().timeIntervalSinceReferenceDate),"
+            + "\"deviceModel\":\(jsonString(machine)),\"notes\":\"Unified sensor and diagnostic recording\","
+            + "\"timestampUnit\":\"monotonic seconds\",\"speedUnit\":\"m/s; negative means unavailable\","
             + "\"t\":\(number(ProcessInfo.processInfo.systemUptime)),"
             + "\"appVersion\":\(jsonString(version)),\"build\":\(jsonString(build)),"
             + "\"device\":\(jsonString(machine)),\"os\":\(jsonString(osVersion)),"
@@ -355,107 +411,60 @@ final class DiagnosticLog: DiagnosticSink {
                 + "\"wall\":\(jsonString(iso.string(from: Date())))}\n"
         }
         guard let data = blob.data(using: .utf8), let h = handle else { return }
-        h.write(data)
+        do { try h.write(contentsOf: data) }
+        catch {
+            bufferLock.lock(); writeFailure = "Recording write failed: \(error.localizedDescription)"; bufferLock.unlock()
+            return
+        }
         bytesWritten += UInt64(data.count)
 
-        if bytesWritten >= rotateThresholdBytes { rotate() }
+        bufferLock.lock()
+        diskSize = bytesWritten
+        let active = captureActive
+        let reached = limitReached
+        if bytesWritten >= rotateThresholdBytes && active { limitReached = true }
+        bufferLock.unlock()
+        if bytesWritten >= rotateThresholdBytes {
+            if !active { rotate() }
+            else if !reached {
+                let marker = "{\"kind\":\"recordingIncomplete\",\"reason\":\"512 MB recording limit reached\"}\n"
+                try? h.write(contentsOf: Data(marker.utf8))
+                h.synchronizeFile()
+            }
+        }
+        // Bound crash loss to the flush cadence; never depend only on page cache.
+        h.synchronizeFile()
     }
 
     private func rotate() {
+        bufferLock.lock()
+        let complete = totalDrops == 0 && !limitReached && writeFailure == nil
+        let drops = totalDrops
+        let duration = max(0, (lastSensorTime ?? 0) - (firstSensorTime ?? 0))
+        let samples = imuCount
+        let fixes = validSpeedCount
+        let maxSpeed = maxSpeedKPH.map { String($0) } ?? "null"
+        bufferLock.unlock()
+        let footer = "{\"kind\":\"recordingEnd\",\"complete\":\(complete),\"droppedRecords\":\(drops),"
+            + "\"duration\":\(duration),\"imuSamples\":\(samples),\"validSpeedFixes\":\(fixes),\"maxSpeedKPH\":\(maxSpeed)}\n"
+        try? handle?.write(contentsOf: Data(footer.utf8))
         handle?.synchronizeFile()
         try? handle?.close()
         handle = nil
 
         let stamp = Self.stamp()
         currentFileURLLock.withLock {
-            $0 = logDirectory.appendingPathComponent("session-\(stamp).ndjson")
+            $0 = logDirectory.appendingPathComponent("recording-\(stamp)-\(UUID().uuidString.prefix(8)).ndjson")
         }
+        bufferLock.lock()
+        totalDrops = 0; limitReached = false; diskSize = 0; writeFailure = nil
+        firstSensorTime = nil; lastSensorTime = nil; imuCount = 0
+        validSpeedCount = 0; maxSpeedKPH = nil
+        bufferLock.unlock()
         openCurrentFile()
         writeHeaderLine()
-        pruneOldFiles()
+        // Retain recordings until the rider explicitly deletes them.
     }
-
-    /// Enforce a SIZE budget on the log directory: if the total exceeds
-    /// `pruneHighWaterMarkBytes`, delete oldest-first until back under
-    /// `pruneLowWaterMarkBytes`.
-    ///
-    /// Called at LAUNCH as well as from `rotate()`. The rotate-only call site was a
-    /// bug: `rotate()` only fires when a single session file crosses
-    /// `rotateThresholdBytes` (20 MB), and a normal session file is a few hundred KB,
-    /// so rotation never happened and pruning never ran — the directory grew by one
-    /// session file plus one raw file per launch, indefinitely. Observed live: 16
-    /// accumulated files totalling ~28 MB on a development device.
-    ///
-    /// A size budget rather than a file count because the two kinds differ by orders
-    /// of magnitude — a session file is a few hundred KB while `RawSampleRecorder`
-    /// caps a single raw file at 64 MB — so "keep N files" bounds the real footprint
-    /// very poorly in either direction. Both kinds compete for one budget, oldest
-    /// first. The high/low watermark pair means this runs rarely and frees a
-    /// meaningful amount, rather than nibbling one file off on every launch.
-    ///
-    /// NEVER deletes a file that is still being written: the current session file is
-    /// excluded by name, and so is anything modified within `activeFileGraceInterval`,
-    /// because `RawSampleRecorder` holds an open `FileHandle` on its file for the
-    /// whole session and unlinking that would leave it writing to a vanished inode,
-    /// losing the recording with no error at all.
-    private func pruneOldFiles() {
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(
-            at: logDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])
-        else { return }
-
-        struct Entry {
-            let url: URL
-            let size: UInt64
-            let modified: Date
-            let deletable: Bool
-        }
-
-        let liveName = currentFileURLLock.withLock { $0 }.lastPathComponent
-        let now = Date()
-
-        var entries: [Entry] = []
-        var total: UInt64 = 0
-
-        for url in urls where url.pathExtension == "ndjson" {
-            let values = try? url.resourceValues(
-                forKeys: [.contentModificationDateKey, .fileSizeKey])
-            let size = UInt64(values?.fileSize ?? 0)
-            total += size
-
-            guard let modified = values?.contentModificationDate else {
-                // No modification date → treat as possibly open and never delete.
-                entries.append(Entry(url: url, size: size,
-                                     modified: .distantFuture, deletable: false))
-                continue
-            }
-            let stillOpen = now.timeIntervalSince(modified) < Self.activeFileGraceInterval
-            entries.append(Entry(url: url, size: size, modified: modified,
-                                 deletable: url.lastPathComponent != liveName && !stillOpen))
-        }
-
-        guard total > Self.pruneHighWaterMarkBytes else { return }
-
-        let oldestFirst = entries
-            .filter { $0.deletable }
-            .sorted { $0.modified < $1.modified }
-
-        for entry in oldestFirst {
-            if total <= Self.pruneLowWaterMarkBytes { break }
-            do {
-                try fm.removeItem(at: entry.url)
-                total -= min(total, entry.size)
-            } catch {
-                continue
-            }
-        }
-    }
-
-    /// Total-size budget for `<Documents>/logs`: prune above the high mark, down to
-    /// the low mark.
-    private static let pruneHighWaterMarkBytes: UInt64 = 100 * 1024 * 1024
-    private static let pruneLowWaterMarkBytes: UInt64 = 50 * 1024 * 1024
 
     /// A file modified more recently than this is assumed to still have an open write
     /// handle and is never deleted. `RawSampleRecorder` flushes every 0.5 s, so an

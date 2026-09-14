@@ -7,6 +7,7 @@ import Foundation
 /// writes the files — we never reference the writer's types.
 enum LogFileKind: String {
     /// `session-<yyyyMMdd-HHmmss>.ndjson` — structured DiagnosticEvent stream.
+    case recording
     case session
     /// `raw-<yyyyMMdd-HHmmss>.ndjson` — raw sensor trace.
     case raw
@@ -15,7 +16,8 @@ enum LogFileKind: String {
 
     var displayName: String {
         switch self {
-        case .session: return "Session"
+        case .recording: return "Recording"
+        case .session: return "Legacy session"
         case .raw: return "Raw sensor"
         case .other: return "File"
         }
@@ -33,6 +35,7 @@ struct LogFileEntry: Identifiable, Equatable {
     let modifiedDate: Date
     let kind: LogFileKind
 
+    var recordingSummary: String? = nil
     var id: URL { url }
 
     /// Human-formatted size, e.g. "2.4 MB". Uses the file byte-count style.
@@ -104,7 +107,8 @@ struct LogFileBrowser {
                 name: url.lastPathComponent,
                 byteCount: size,
                 modifiedDate: modified,
-                kind: Self.classify(url.lastPathComponent)
+                kind: Self.classify(url.lastPathComponent),
+                recordingSummary: Self.recordingSummary(url)
             )
             entries.append(entry)
             total += size
@@ -125,9 +129,27 @@ struct LogFileBrowser {
     /// lets us assume about the writer.
     static func classify(_ name: String) -> LogFileKind {
         let lower = name.lowercased()
+        if lower.hasPrefix("recording-") { return .recording }
         if lower.hasPrefix("session-") { return .session }
         if lower.hasPrefix("raw-") { return .raw }
         return .other
+    }
+
+    /// Read only the footer, never load hundreds of MB to draw a list row.
+    private static func recordingSummary(_ url: URL) -> String? {
+        guard classify(url.lastPathComponent) == .recording,
+              let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return nil }
+        try? handle.seek(toOffset: size > 8192 ? size - 8192 : 0)
+        guard let data = try? handle.readToEnd(),
+              let last = data.split(separator: 10).last,
+              let object = try? JSONSerialization.jsonObject(with: Data(last)) as? [String: Any],
+              object["kind"] as? String == "recordingEnd" else { return "Open or interrupted recording" }
+        let seconds = Int(object["duration"] as? Double ?? 0)
+        let speed = (object["maxSpeedKPH"] as? Double).map { String(format: "Max %.1f km/h", $0) } ?? "GPS speed unavailable"
+        let complete = object["complete"] as? Bool == true ? "" : " · Incomplete"
+        return "\(seconds / 60)m \(seconds % 60)s · \(speed)\(complete)"
     }
 
     // MARK: - Formatting

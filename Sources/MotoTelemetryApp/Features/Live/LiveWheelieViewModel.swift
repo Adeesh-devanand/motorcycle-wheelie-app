@@ -98,6 +98,8 @@ final class LiveWheelieViewModel {
 
     // MARK: - Private
 
+    private var angleDisplayFilter = ResponsiveDisplayFilter()
+    private var speedDisplayFilter = ResponsiveDisplayFilter()
     private var displayLink: DisplayLinkProxy?
     private var sensorTask: Task<Void, Never>?
     private var sessionStarted = false
@@ -208,7 +210,6 @@ final class LiveWheelieViewModel {
     private func decimateToDisplay(applyData: Bool) {
         guard applyData else { return }
 
-        let alpha = 0.3
         // One data interval. The tween lasts exactly this long, so each 30 Hz sample's
         // animation ends right as the next begins — continuous motion with no gap and no
         // overlap. Linear (not eased) for the same reason: eased segments stitched end to
@@ -245,10 +246,11 @@ final class LiveWheelieViewModel {
         // §7.2: freeze live values unless calibrated.
         guard isCalibrated, recorder.sensorHealthy else {
             speedAvailable = false
+            angleDisplayFilter.reset(); speedDisplayFilter.reset()
             return
         }
 
-        let nextAngle = currentAngle + alpha * (recorder.livePitch - currentAngle)
+        let nextAngle = angleDisplayFilter.update(recorder.livePitch, time: now)
 
         // `recorder.liveSpeed` stays 0 until the first GNSS fix, so EMA-ing it
         // unconditionally would smooth toward a fabricated 0. Drive an explicit
@@ -262,18 +264,24 @@ final class LiveWheelieViewModel {
         // still gates `speedInRange`, so a held value cannot light the meter green.
         speedAvailable = recorder.liveSpeedAvailable
         let nextSpeed = speedAvailable
-            ? currentSpeed + alpha * (recorder.liveSpeed - currentSpeed)
+            ? speedDisplayFilter.update(recorder.liveSpeed, time: now)
             : currentSpeed
 
         // Tween the two meter-driving values over one data interval. Only these two are
         // animated: the numeric readouts, range colours, maxima and duration are stepped
         // as before, because interpolating an integer "48°" toward "49°" would just make
         // the digit flicker between the two with no benefit.
-        withAnimation(.linear(duration: dataInterval)) {
+        withAnimation(.linear(duration: min(dataInterval, 0.016))) {
             currentAngle = nextAngle
             if speedAvailable {
                 currentSpeed = nextSpeed
             }
+        }
+
+        if recorder.rawRecordingEnabled {
+            DiagnosticLog.shared.appendRecord(RecordedDisplay(time: now,
+                sourceTime: recorder.liveSampleTime, angleDegrees: nextAngle,
+                speedKPH: speedAvailable ? nextSpeed : nil))
         }
 
         let wasActive = eventActive

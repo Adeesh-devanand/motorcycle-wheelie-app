@@ -101,6 +101,16 @@ case "replay":
         effectiveConfig = try JSONDecoder().decode(Config.self, from: overrideData)
     }
 
+    if header.formatVersion >= 2 {
+        let report = try RecordingAudit.run(url: url,
+            configOverride: configOverridePath == nil ? nil : effectiveConfig,
+            stagesURL: stagesOutputPath.map { URL(fileURLWithPath: $0) })
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        print(String(decoding: try encoder.encode(report), as: UTF8.self))
+        exit(report.incomplete || (configOverridePath == nil && report.mismatchedOutputs > 0) ? 2 : 0)
+    }
+    FileHandle.standardError.write(Data("warning: legacy recording has no saved mount/calibration; replay is approximate, not the live result.\n".utf8))
+
     // Print header info
     if !jsonOutput {
         print("session:  \(header.sessionID)")

@@ -133,6 +133,9 @@ enum NDJSONReader {
             if data.isEmpty { continue }
             if let line = decode(data) {
                 parsed.append(line)
+            } else if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      object["imu"] != nil || object["gnss"] != nil || object["kind"] != nil {
+                // Valid machine-readable recording rows, not diagnostic messages.
             } else {
                 skipped += 1
             }
@@ -168,6 +171,9 @@ enum NDJSONReader {
             if slice.isEmpty { return }
             if let line = decode(Data(slice)) {
                 parsed.append(line)
+            } else if let object = try? JSONSerialization.jsonObject(with: Data(slice)) as? [String: Any],
+                      object["imu"] != nil || object["gnss"] != nil || object["kind"] != nil {
+                // Valid machine-readable recording rows, not diagnostic messages.
             } else {
                 skipped += 1
             }

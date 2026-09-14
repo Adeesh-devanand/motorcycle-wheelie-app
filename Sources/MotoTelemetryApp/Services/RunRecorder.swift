@@ -39,6 +39,7 @@ final class RunRecorder: @unchecked Sendable {
     // the critical section.
 
     @MainActor private(set) var recordingState: RecordingState = .idle
+    @MainActor private(set) var liveSampleTime: TimeInterval = 0
     @MainActor private(set) var livePitch: Double = 0           // degrees
     @MainActor private(set) var livePitchRate: Double = 0       // deg/s
     @MainActor private(set) var liveRoll: Double = 0            // degrees
@@ -59,6 +60,7 @@ final class RunRecorder: @unchecked Sendable {
     /// type so it can be read-modify-written inside the critical section with no
     /// isolation concerns.
     private struct PendingDisplay {
+        var time: TimeInterval = 0
         var pitch: Double = 0
         var pitchRate: Double = 0
         var roll: Double = 0
@@ -222,6 +224,10 @@ final class RunRecorder: @unchecked Sendable {
         // `processSample` compares against the live `sessionEpoch` and drops any
         // sample whose task outlived its session .
         processLock.lock()
+        DiagnosticLog.shared.beginCapture()
+        if rawRecordingEnabled && rawRecorder == nil {
+            rawRecorder = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID ?? UUID())
+        }
         acquisitionStartedAt = monotonicNow()
         lastIMUArrival = nil
         sessionEpoch &+= 1
@@ -309,7 +315,6 @@ final class RunRecorder: @unchecked Sendable {
         let newPipeline = Pipeline(config: config, alignment: mountAlignment,
             initialBias: estimate, gravityAnchor: estimate?.measuredGravity,
             sink: DiagnosticLog.shared)
-        let newRawRecorder = rawRecordingEnabled ? RawSampleRecorder(config: config, bikeProfileID: bikeProfileID) : nil
         processLock.lock()
         self.calibrationID = estimate?.id
         self.bikeProfileID = bikeProfileID
@@ -332,8 +337,16 @@ final class RunRecorder: @unchecked Sendable {
         internalRawLogSizeBytes = 0
         pendingDisplay = PendingDisplay()
         pipeline = newPipeline
-        rawRecorder = newRawRecorder
-        segmenter = EventSegmenter(config: config)
+        if rawRecordingEnabled && rawRecorder == nil {
+            rawRecorder = RawSampleRecorder(config: config, bikeProfileID: bikeProfileID)
+        }
+        DiagnosticLog.shared.appendRecord(RecordingContext(
+            time: sessionStartMonotonic ?? monotonicNow(), config: config,
+            alignment: mountAlignment, initialBias: estimate,
+            gravityAnchor: estimate?.measuredGravity, speedEnabled: speedEnabled,
+            angleTarget: [angleTarget.lower, angleTarget.upper],
+            speedTarget: [speedTarget.lower, speedTarget.upper]))
+        segmenter = EventSegmenter(config: config, sink: DiagnosticLog.shared)
         scorer = RunScorer(config: config)
         processLock.unlock()
         sampleCount = 0
@@ -417,8 +430,19 @@ final class RunRecorder: @unchecked Sendable {
         guard recordingState == .running else { return }
         processLock.lock()
         guard segmenter?.state == .idle else { processLock.unlock(); return }
+        if self.angleTarget != angleTarget || self.speedTarget != (speedEnabled ? speedTarget : MetricRange(lower: 0, upper: 0)) ||
+           self.speedGaugeMaximum != speedGaugeMaximum || self.speedEnabled != speedEnabled {
+            DiagnosticLog.shared.appendRecord(RecordedSettings(time: monotonicNow(),
+                angleTarget: [angleTarget.lower, angleTarget.upper],
+                speedTarget: [speedTarget.lower, speedTarget.upper],
+                speedGaugeMaximum: speedGaugeMaximum, speedEnabled: speedEnabled))
+        }
         let changedSpeed = self.speedEnabled != speedEnabled
-        if changedSpeed { pipeline?.clearSpeed(); speedEpoch &+= 1 }
+        if changedSpeed {
+            DiagnosticLog.shared.appendRecord(RecordingControl(time: monotonicNow(),
+                action: "speedChanged", speedEnabled: speedEnabled))
+            pipeline?.clearSpeed(); speedEpoch &+= 1
+        }
         self.angleTarget = angleTarget
         self.speedTarget = speedEnabled ? speedTarget : MetricRange(lower: 0, upper: 0)
         self.speedGaugeMaximum = speedGaugeMaximum
@@ -517,6 +541,7 @@ final class RunRecorder: @unchecked Sendable {
                 handleTransition(transition, at: at, speed: nil)
             }
         }
+        DiagnosticLog.shared.appendRecord(RecordingControl(time: monotonicNow(), action: "stop"))
         internalEventActive = false
         pipeline = nil
         segmenter = nil
@@ -542,6 +567,7 @@ final class RunRecorder: @unchecked Sendable {
                     message: "session stopped",
                     values: ["totalSamples": Double(emitted),
                              "rawLogBytes": Double(finalSize)])
+        DiagnosticLog.shared.sealCapture()
     }
 
     /// Copies the latest staged sensor values onto the `@MainActor` observable
@@ -558,6 +584,7 @@ final class RunRecorder: @unchecked Sendable {
         if !finished.isEmpty { pendingSavedRuns.removeAll(keepingCapacity: true) }
         processLock.unlock()
 
+        liveSampleTime = snap.time
         livePitch = snap.pitch
         livePitchRate = snap.pitchRate
         liveRoll = snap.roll
@@ -660,6 +687,7 @@ final class RunRecorder: @unchecked Sendable {
             return
         }
         pipeline = pipe
+        if rawRecordingEnabled { DiagnosticLog.shared.appendRecord(RecordedOutput(output)) }
 
         internalSampleCount += 1
         batchCount += 1
@@ -749,6 +777,7 @@ final class RunRecorder: @unchecked Sendable {
         // Stage the latest display values (still under `processLock`, no `await`).
         // `flushDisplay()` copies these onto the observable properties on the main
         // actor at the 30 Hz display tick.
+        pendingDisplay.time = output.time
         pendingDisplay.pitch = pitchDeg
         pendingDisplay.pitchRate = pitchRateDeg
         pendingDisplay.roll = rollDeg
@@ -766,6 +795,7 @@ final class RunRecorder: @unchecked Sendable {
     private func handleTransition(_ transition: EventSegmenter.Transition,
                                   at time: TimeInterval,
                                   speed: Double?) {
+        DiagnosticLog.shared.appendRecord(RecordedDetection(time: time, transition: transition))
         switch transition.kind {
         case .onset(let onsetTime):
             log.info("Event onset at \(onsetTime, format: .fixed(precision: 3))s")

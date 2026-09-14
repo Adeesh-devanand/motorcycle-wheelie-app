@@ -91,6 +91,20 @@ public struct LogStreamReader {
     /// a malformed trailing PARTIAL line is reported through `endedMidLine`
     /// instead, because that is a crash artefact rather than corruption.
     public mutating func next() throws -> Sample? {
+        while let line = try nextRecord() {
+            do {
+                if header.formatVersion >= 2,
+                   let object = try JSONSerialization.jsonObject(with: line) as? [String: Any],
+                   object["kind"] != nil || object["cat"] != nil { continue }
+                let sample = try decoder.decode(Sample.self, from: line)
+                decodedCount += 1
+                return sample
+            } catch { throw Failure.badSample(line: lineNumber, underlying: error) }
+        }
+        return nil
+    }
+
+    public mutating func nextRecord() throws -> Data? {
         while true {
             if pendingIndex < pendingLines.count {
                 let line = pendingLines[pendingIndex]
@@ -98,13 +112,7 @@ public struct LogStreamReader {
                 lineNumber += 1
                 lastCompleteOffset += line.count + 1
                 if line.isEmpty { continue }
-                do {
-                    let sample = try decoder.decode(Sample.self, from: line)
-                    decodedCount += 1
-                    return sample
-                } catch {
-                    throw Failure.badSample(line: lineNumber, underlying: error)
-                }
+                return line
             }
 
             pendingLines.removeAll(keepingCapacity: true)

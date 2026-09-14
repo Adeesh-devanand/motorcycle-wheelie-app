@@ -22,16 +22,17 @@ final class DiagnosticsViewModel {
     var newestRaw: LogFileEntry? { browser.newest(.raw, in: snapshot) }
 
     var shareAllURLs: [URL] {
-        [newestSession?.url, newestRaw?.url].compactMap { $0 }
+        snapshot.files.filter { $0.url != DiagnosticLog.shared.currentFileURL }.map(\.url)
     }
 
     func reload() {
+        DiagnosticLog.shared.flush()
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let snap = self.browser.snapshot()
             var summary: SessionSummary?
-            if let newest = self.browser.newest(.session, in: snap) {
+            if let newest = self.browser.newest(.recording, in: snap) ?? self.browser.newest(.session, in: snap) {
                 let result = NDJSONReader.allLines(url: newest.url)
                 summary = SessionSummaryParser.parse(
                     fileName: newest.name, lines: result.lines, skipped: result.skippedCount
@@ -47,13 +48,14 @@ final class DiagnosticsViewModel {
 
     func delete(_ entry: LogFileEntry) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard entry.url != DiagnosticLog.shared.currentFileURL else { return }
             try? FileManager.default.removeItem(at: entry.url)
             DispatchQueue.main.async { self?.reload() }
         }
     }
 
     func deleteAll() {
-        let urls = snapshot.files.map(\.url)
+        let urls = shareAllURLs
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             for url in urls { try? FileManager.default.removeItem(at: url) }
             DispatchQueue.main.async { self?.reload() }
@@ -68,6 +70,7 @@ struct DiagnosticsView: View {
     #if BETA
     @Environment(\.betaUploader) private var betaUploader
     #endif
+    @State private var selectedFiles: Set<URL> = []
     @State private var pendingDelete: LogFileEntry?
     @State private var confirmDeleteAll = false
 
@@ -110,7 +113,7 @@ struct DiagnosticsView: View {
                     Menu {
                         if !model.shareAllURLs.isEmpty {
                             ShareLink(items: model.shareAllURLs) {
-                                Label("Share newest session + raw", systemImage: "square.and.arrow.up.on.square")
+                                Label("Share all closed recordings", systemImage: "square.and.arrow.up.on.square")
                             }
                         }
                         Button(role: .destructive) {
@@ -126,6 +129,7 @@ struct DiagnosticsView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear { model.reload() }
+        .refreshable { model.reload() }
         .confirmationDialog(
             "Delete all \(model.snapshot.files.count) log files?",
             isPresented: $confirmDeleteAll,
@@ -136,7 +140,7 @@ struct DiagnosticsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently removes every session and raw log on this device. Export anything you need first.")
+            Text("This permanently removes closed recordings on this device. Export anything you need first.")
         }
         .confirmationDialog(
             "Delete this log file?",
@@ -169,6 +173,13 @@ struct DiagnosticsView: View {
                         .font(.system(size: 20, weight: .bold, design: .monospaced))
                         .foregroundStyle(model.exceedsSoftLimit ? AppColors.warning : AppColors.textPrimary)
                 }
+                if let error = DiagnosticLog.shared.recordingError {
+                    Text(error).foregroundStyle(AppColors.danger)
+                }
+                if DiagnosticLog.shared.recordingLimitReached {
+                    Text("Recording reached 512 MB and stopped saving. End this session and export it before recording again.")
+                        .foregroundStyle(AppColors.danger)
+                }
                 if model.exceedsSoftLimit {
                     Label("Logs exceed ~100 MB — consider deleting old logs after exporting.",
                           systemImage: "exclamationmark.triangle.fill")
@@ -183,11 +194,43 @@ struct DiagnosticsView: View {
 
     private var fileListSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text("Log Files")
-                .sectionHeaderStyle()
+            HStack {
+                Text("Recordings").sectionHeaderStyle()
+                Spacer()
+                Button(selectedFiles.count == model.shareAllURLs.count && !selectedFiles.isEmpty ? "Deselect All" : "Select All") {
+                    let all = Set(model.shareAllURLs)
+                    selectedFiles = selectedFiles == all ? [] : all
+                }
+            }
+            if !selectedFiles.isEmpty {
+                HStack {
+                    ShareLink(items: selectedFiles.sorted { $0.path < $1.path }) {
+                        Label("Share \(selectedFiles.count)", systemImage: "square.and.arrow.up")
+                    }
+                    Spacer()
+                    #if BETA
+                    if let betaUploader {
+                        Button("Upload \(selectedFiles.count)") {
+                            betaUploader.start(selectedFiles: Array(selectedFiles))
+                        }
+                    }
+                    #endif
+                }
+                .buttonStyle(.bordered)
+            }
+            Text("New recordings include sensors, calibration and diagnostics in one file. Open files are excluded from selection.")
+                .font(.footnote).foregroundStyle(.secondary)
             ForEach(model.snapshot.files) { entry in
-                LogFileRow(entry: entry) {
-                    pendingDelete = entry
+                HStack {
+                    Button {
+                        if selectedFiles.contains(entry.url) { selectedFiles.remove(entry.url) }
+                        else { selectedFiles.insert(entry.url) }
+                    } label: {
+                        Image(systemName: selectedFiles.contains(entry.url) ? "checkmark.circle.fill" : "circle")
+                    }
+                    .accessibilityLabel("Select \(entry.name)")
+                    .disabled(entry.url == DiagnosticLog.shared.currentFileURL)
+                    LogFileRow(entry: entry) { pendingDelete = entry }
                 }
             }
         }
@@ -203,7 +246,7 @@ struct DiagnosticsView: View {
             Text("No logs yet")
                 .font(AppTypography.cardTitle)
                 .foregroundStyle(AppColors.textPrimary)
-            Text("Logs are written while you record. Once you ride, session and raw sensor logs will appear here to view and export.")
+            Text("Recordings begin when sensing starts, including calibration. Each new recording contains sensor data and diagnostics together.")
                 .font(AppTypography.cardSubtitle)
                 .foregroundStyle(AppColors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -252,6 +295,7 @@ private struct LogFileRow: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .disabled(entry.url == DiagnosticLog.shared.currentFileURL)
         }
         .padding(AppSpacing.cardPadding)
         .background(AppColors.surfaceCard)
@@ -273,12 +317,16 @@ private struct LogFileRow: View {
                     Text(LocalizedStringKey(entry.kind.displayName))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppColors.textPrimary)
-                    if entry.kind == .session {
+                    if entry.kind == .session || entry.kind == .recording {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(AppColors.textTertiary)
                     }
                 }
+                if let summary = entry.recordingSummary {
+                    Text(summary).font(.caption).foregroundStyle(AppColors.textSecondary)
+                }
+                Text(entry.name).font(.caption2).foregroundStyle(AppColors.textTertiary)
                 Text("\(Self.dateText(entry.modifiedDate)) · \(entry.sizeText)")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(AppColors.textSecondary)

@@ -184,7 +184,7 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
     /// Scan the log directory and upload every `.ndjson` file that has not already
     /// been uploaded and is not the currently-open log file. Fire-and-forget:
     /// per-file failures are logged and left for the next cycle.
-    func start() {
+    func start(selectedFiles: [URL]? = nil) {
         guard Self.consentDate(defaults: defaults) != nil else {
             uploadStatus = "Sharing is off. Enable Share diagnostics in Settings to upload logs."
             return
@@ -196,7 +196,7 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         // which is exactly the ambiguity that made a no-upload run undiagnosable.
         log.info("upload cycle start")
 
-        let candidates = pendingFiles()
+        let candidates = pendingFiles(selectedFiles: selectedFiles)
         pendingCount = candidates.count
         guard !candidates.isEmpty else { return }
         uploadStatus = "Preparing \(candidates.count) file(s) for upload over Wi-Fi."
@@ -303,7 +303,7 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
     /// vanish with no error. Excluding anything touched in the last
     /// `activeFileGraceInterval` costs only a one-cycle delay: the file is picked up
     /// on the next background transition after the session ends.
-    private func pendingFiles() -> [URL] {
+    private func pendingFiles(selectedFiles: [URL]? = nil) -> [URL] {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: logDirectory,
@@ -321,10 +321,18 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         // there at all" produce the same silence.
         var skippedLive = 0, skippedUploaded = 0, skippedInFlight = 0, skippedRecent = 0, skippedConsent = 0
 
+        let selected = selectedFiles.map { Set($0.map(\.standardizedFileURL)) }
         let result = urls.filter { url in
-            guard url.pathExtension == "ndjson", let consent = Self.consentDate(defaults: defaults),
-                  let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                  created >= consent else { skippedConsent += 1; return false }
+            if let selected, !selected.contains(url.standardizedFileURL) { return false }
+            guard url.pathExtension == "ndjson", let consent = Self.consentDate(defaults: defaults) else {
+                skippedConsent += 1; return false
+            }
+            // Explicit selection authorizes uploading older recordings too. Automatic
+            // background uploads remain restricted to files created after consent.
+            if selected == nil {
+                guard let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
+                      created >= consent else { skippedConsent += 1; return false }
+            }
             if url.lastPathComponent == liveFileName { skippedLive += 1; return false }
             if uploaded.contains(url.lastPathComponent) { skippedUploaded += 1; return false }
             if inFlight.contains(url.lastPathComponent) { skippedInFlight += 1; return false }
@@ -332,7 +340,8 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
             // Unknown modification date → treat as possibly open and skip.
             guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate else { skippedRecent += 1; return false }
-            if now.timeIntervalSince(modified) < DiagnosticLog.activeFileGraceInterval {
+            if !url.lastPathComponent.hasPrefix("recording-"),
+               now.timeIntervalSince(modified) < DiagnosticLog.activeFileGraceInterval {
                 skippedRecent += 1
                 return false
             }
@@ -400,10 +409,15 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         guard Self.consentDate(defaults: defaults) == consent, uploadURL.scheme == "https" else {
             releaseClaim(fileURL.lastPathComponent); return
         }
+        Task { @MainActor [weak self] in
+        guard let self else { return }
         let copy: URL
-        do { copy = try Self.redactedCopy(of: fileURL) }
+        do { copy = try await Task.detached(priority: .utility) { try Self.redactedCopy(of: fileURL) }.value }
         catch {
             uploadStatus = "Could not prepare a redacted log. The original is kept on this phone."
+            releaseClaim(fileURL.lastPathComponent); return
+        }
+        guard Self.consentDate(defaults: defaults) == consent else {
             releaseClaim(fileURL.lastPathComponent); return
         }
         var request = URLRequest(url: uploadURL)
@@ -415,6 +429,7 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         // Stash the source file name so the delegate can mark it uploaded on success.
         task.taskDescription = fileURL.lastPathComponent
         task.resume()
+        }
     }
 
     nonisolated static func consentDate(defaults: UserDefaults = .standard) -> Date? {
@@ -458,7 +473,20 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("beta-redacted", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let copy = directory.appendingPathComponent(source.lastPathComponent)
-        try redactedData(Data(contentsOf: source)).write(to: copy, options: .atomic)
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        FileManager.default.createFile(atPath: copy.path, contents: nil)
+        let output = try FileHandle(forWritingTo: copy)
+        defer { try? output.close() }
+        var pending = Data()
+        while let chunk = try input.read(upToCount: 64 * 1024), !chunk.isEmpty {
+            pending.append(chunk)
+            if let last = pending.lastIndex(of: 10) {
+                try output.write(contentsOf: redactedData(Data(pending[...last])))
+                pending = Data(pending[pending.index(after: last)...])
+            }
+        }
+        if !pending.isEmpty { try output.write(contentsOf: redactedData(pending)) }
         return copy
     }
 
