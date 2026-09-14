@@ -54,10 +54,12 @@ final class DiagnosticsViewModel {
         }
     }
 
-    func deleteAll() {
-        let urls = shareAllURLs
+    func deleteSelected(_ selection: Set<URL>) {
+        let urls = shareAllURLs.filter { selection.contains($0) }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            for url in urls { try? FileManager.default.removeItem(at: url) }
+            for url in urls where url != DiagnosticLog.shared.currentFileURL {
+                try? FileManager.default.removeItem(at: url)
+            }
             DispatchQueue.main.async { self?.reload() }
         }
     }
@@ -72,7 +74,7 @@ struct DiagnosticsView: View {
     #endif
     @State private var selectedFiles: Set<URL> = []
     @State private var pendingDelete: LogFileEntry?
-    @State private var confirmDeleteAll = false
+    @State private var confirmDeleteSelected = false
 
     var body: some View {
         ScrollView {
@@ -107,36 +109,23 @@ struct DiagnosticsView: View {
         .background(AppColors.background)
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if !model.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        if !model.shareAllURLs.isEmpty {
-                            ShareLink(items: model.shareAllURLs) {
-                                Label("Share all closed recordings", systemImage: "square.and.arrow.up.on.square")
-                            }
-                        }
-                        Button(role: .destructive) {
-                            confirmDeleteAll = true
-                        } label: {
-                            Label("Delete all logs", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
-        }
         .preferredColorScheme(.dark)
         .onAppear { model.reload() }
         .refreshable { model.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DiagnosticLogsChanged"))) { _ in
+            model.reload()
+        }
+        .onChange(of: model.shareAllURLs) { _, available in
+            selectedFiles.formIntersection(Set(available))
+        }
         .confirmationDialog(
-            "Delete all \(model.snapshot.files.count) log files?",
-            isPresented: $confirmDeleteAll,
+            "Delete \(selectedFiles.count) selected log files?",
+            isPresented: $confirmDeleteSelected,
             titleVisibility: .visible
         ) {
-            Button("Delete all logs (\(model.totalBytesText))", role: .destructive) {
-                model.deleteAll()
+            Button("Delete selected logs", role: .destructive) {
+                model.deleteSelected(selectedFiles)
+                selectedFiles.removeAll()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -215,10 +204,14 @@ struct DiagnosticsView: View {
                         }
                     }
                     #endif
+                    Button(role: .destructive) { confirmDeleteSelected = true } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Delete selected logs")
                 }
                 .buttonStyle(.bordered)
             }
-            Text("New recordings include sensors, calibration and diagnostics in one file. Open files are excluded from selection.")
+            Text("New recordings include sensors, calibration and diagnostics in one file. Open files are excluded from selection. Successful S3 uploads automatically remove local originals; cloud copies omit coordinates.")
                 .font(.footnote).foregroundStyle(.secondary)
             ForEach(model.snapshot.files) { entry in
                 HStack {

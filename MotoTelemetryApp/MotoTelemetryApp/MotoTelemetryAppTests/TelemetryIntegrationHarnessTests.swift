@@ -470,6 +470,35 @@ extension TelemetryIntegrationHarnessTests {
     }
 
     @MainActor
+    func testOnlyConfirmedUploadsAreDeletedAndLiveFileIsProtected() throws {
+        let suite = "upload-cleanup-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let name = "recording-test-closed.ndjson"
+        let file = directory.appendingPathComponent(name)
+        try Data("synthetic".utf8).write(to: file)
+        let uploader = BetaDiagnosticUploader(apiBase: URL(string: "https://api.example.invalid")!,
+            token: "test-only-key", logDirectory: directory, defaults: defaults)
+        XCTAssertFalse(uploader.deleteUploadedFile(named: name))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        defaults.set([name], forKey: "beta.uploadedLogFiles")
+        XCTAssertTrue(uploader.deleteUploadedFile(named: name))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        let liveName = DiagnosticLog.shared.currentFileURL.lastPathComponent
+        let live = directory.appendingPathComponent(liveName)
+        try Data("synthetic live".utf8).write(to: live)
+        defaults.set([liveName, "../outside.ndjson"], forKey: "beta.uploadedLogFiles")
+        XCTAssertFalse(uploader.deleteUploadedFile(named: liveName))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: live.path))
+        XCTAssertFalse(uploader.deleteUploadedFile(named: "../outside.ndjson"))
+    }
+
+    @MainActor
     func testFailedPresignReleasesFileForRetryAndShowsHTTPError() async throws {
         let suite = "upload-retry-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

@@ -313,6 +313,7 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
         }
 
         let uploaded = uploadedFileNames()
+        for name in uploaded { deleteUploadedFile(named: name) }
         let liveFileName = DiagnosticLog.shared.currentFileURL.lastPathComponent
         let now = Date()
 
@@ -549,17 +550,26 @@ final class BetaDiagnosticUploader: NSObject, ObservableObject {
     /// before unlinking. `pendingFiles()` already applied both tests when the file was
     /// claimed, so this should never fire — it is here because the cost of being wrong
     /// is a rider's in-progress raw recording being written to a vanished inode.
-    fileprivate func deleteUploadedFile(named fileName: String) {
-        guard fileName != DiagnosticLog.shared.currentFileURL.lastPathComponent else { return }
-
+    @discardableResult
+    func deleteUploadedFile(named fileName: String) -> Bool {
+        guard uploadedFileNames().contains(fileName),
+              fileName == (fileName as NSString).lastPathComponent,
+              fileName.hasSuffix(".ndjson"),
+              fileName != DiagnosticLog.shared.currentFileURL.lastPathComponent else { return false }
         let url = logDirectory.appendingPathComponent(fileName)
-        guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-            .contentModificationDate,
-              Date().timeIntervalSince(modified) >= DiagnosticLog.activeFileGraceInterval
-        else { return }
-
-        try? FileManager.default.removeItem(at: url)
+        guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+              fileName.hasPrefix("recording-") || Date().timeIntervalSince(modified) >= DiagnosticLog.activeFileGraceInterval
+        else { return false }
+        do {
+            try FileManager.default.removeItem(at: url)
+            NotificationCenter.default.post(name: Notification.Name("DiagnosticLogsChanged"), object: nil)
+            return true
+        } catch {
+            log.error("Uploaded log cleanup failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
+
 }
 
 // MARK: - URLSessionTaskDelegate
@@ -590,8 +600,10 @@ extension BetaDiagnosticUploader: URLSessionTaskDelegate {
             }
             if succeeded, let fileName, !fileName.isEmpty {
                 self.markUploaded(fileName)
-                self.uploadStatus = "Uploaded \(fileName) to S3."
-                // Keep the local raw original; normal storage-budget cleanup owns it.
+                let removed = self.deleteUploadedFile(named: fileName)
+                self.uploadStatus = removed
+                    ? "Uploaded \(fileName) to S3; local original deleted."
+                    : "Uploaded \(fileName) to S3; local cleanup deferred."
                 self.log.info("uploaded \(fileName, privacy: .public)")
             } else {
                 self.uploadStatus = errorText ?? DiagnosticUploadProtocol.Failure.http(stage: "S3", status: statusCode).localizedDescription
